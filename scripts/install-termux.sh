@@ -175,10 +175,15 @@ python3 scripts/patch_termux.py --apply || true
 
 
 # Step 5: Build libraries and web assets
-echo -e "${BLUE}[5/5] Building TypeScript libraries and mobile web interface...${NC}"
-pnpm run build:lib:host
-pnpm run build:lib:client
-pnpm run build:web
+echo -e "${BLUE}[5/5] Preparing application and mobile web interface...${NC}"
+if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ] && [ -f "packages/client/ui-chat/lib/client.js" ]; then
+    echo -e "${GREEN}  -> Pre-compiled build artifacts verified. Ready for launch.${NC}"
+else
+    echo "  -> Building TypeScript libraries and mobile web interface..."
+    pnpm run build:lib:host
+    pnpm run build:lib:client
+    pnpm run build:web
+fi
 
 echo -e "\n${GREEN}=======================================================${NC}"
 echo -e "${GREEN}   DeepSeek Harness successfully installed on Termux!  ${NC}"
