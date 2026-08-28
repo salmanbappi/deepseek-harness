@@ -5,10 +5,14 @@
 # ==============================================================================
 set -e
 
+export DEBIAN_FRONTEND=noninteractive
+export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
+
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${CYAN}"
@@ -18,33 +22,60 @@ echo "               Automated Setup Installer                 "
 echo "  ======================================================="
 echo -e "${NC}"
 
-# 1. System packages check & installation
+# Step 1: System packages check & installation
 echo -e "${BLUE}[1/5] Checking and installing Termux system packages...${NC}"
 pkg update -y || true
-PACKAGES="nodejs-lts python git pnpm clang make binutils"
+
+PACKAGES="nodejs-lts python git clang make binutils tar curl"
+MISSING_PKGS=""
 for pkg in $PACKAGES; do
     if ! command -v "$pkg" &>/dev/null && ! dpkg -s "$pkg" &>/dev/null; then
-        echo -e "${YELLOW}  -> Installing $pkg...${NC}"
-        pkg install -y "$pkg" || true
+        MISSING_PKGS="$MISSING_PKGS $pkg"
     fi
 done
 
-# 2. Repository setup
+if [ -n "$MISSING_PKGS" ]; then
+    echo -e "${YELLOW}  -> Installing missing packages:${MISSING_PKGS}...${NC}"
+    pkg install -y -o Dpkg::Options::="--force-confold" $MISSING_PKGS || apt-get install -y $MISSING_PKGS || true
+fi
+
+# Ensure pnpm is available (via pkg or npm fallback)
+if ! command -v pnpm &>/dev/null; then
+    echo -e "${YELLOW}  -> Setting up pnpm...${NC}"
+    pkg install -y pnpm 2>/dev/null || npm install -g pnpm@9 2>/dev/null || npm install -g pnpm 2>/dev/null || true
+fi
+
+if ! command -v pnpm &>/dev/null; then
+    echo -e "${RED}[!] Failed to locate pnpm. Please install it with: npm install -g pnpm${NC}" >&2
+    exit 1
+fi
+
+# Step 2: Repository setup
 DSH_DIR="$HOME/deepseek-harness"
 echo -e "${BLUE}[2/5] Setting up DeepSeek Harness repository at $DSH_DIR...${NC}"
+git config --global --add safe.directory "$DSH_DIR" 2>/dev/null || true
+
 if [ -d "$DSH_DIR/.git" ]; then
-    echo "  -> Existing repository found. Fetching latest updates..."
+    echo "  -> Existing repository found. Updating to latest version..."
     cd "$DSH_DIR"
-    git fetch origin master || true
-    git checkout master || true
-    git pull origin master || true
+    git fetch origin master --quiet || true
+    git checkout master --quiet || true
+    git pull origin master --quiet || true
 else
     echo "  -> Cloning salmanbappi/deepseek-harness..."
-    git clone https://github.com/salmanbappi/deepseek-harness.git "$DSH_DIR"
+    MAX_RETRIES=3
+    COUNT=0
+    until [ "$COUNT" -ge "$MAX_RETRIES" ]
+    do
+        git clone https://github.com/salmanbappi/deepseek-harness.git "$DSH_DIR" && break
+        COUNT=$((COUNT+1))
+        echo -e "${YELLOW}  -> Clone attempt $COUNT failed. Retrying in 2 seconds...${NC}"
+        sleep 2
+    done
     cd "$DSH_DIR"
 fi
 
-# 3. CLI Helper Commands Installation (~/bin)
+# Step 3: CLI Helper Commands Installation (~/bin)
 echo -e "${BLUE}[3/5] Installing global commands (dsh, dsh-update, dsh-doctor)...${NC}"
 BIN_DIR="$HOME/bin"
 mkdir -p "$BIN_DIR"
@@ -53,11 +84,14 @@ mkdir -p "$BIN_DIR"
 cat <<'LAUNCHER_EOF' > "$BIN_DIR/dsh"
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
+export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
 DSH_DIR="$HOME/deepseek-harness"
+
 if [ ! -d "$DSH_DIR" ]; then
     echo "[!] Error: DeepSeek Harness directory not found at $DSH_DIR" >&2
     exit 1
 fi
+
 if [ -f "$DSH_DIR/apps/cli/lib/bin.js" ]; then
     exec node --expose-internals "$DSH_DIR/apps/cli/lib/bin.js" "$@"
 else
@@ -67,7 +101,11 @@ LAUNCHER_EOF
 chmod +x "$BIN_DIR/dsh"
 
 # Install dsh-update
-cp -f "$DSH_DIR/scripts/dsh-update.sh" "$BIN_DIR/dsh-update" 2>/dev/null || true
+if [ -f "$DSH_DIR/scripts/dsh-update.sh" ]; then
+    cp -f "$DSH_DIR/scripts/dsh-update.sh" "$BIN_DIR/dsh-update"
+else
+    cp -f "$DSH_DIR/scripts/dsh-update.sh" "$BIN_DIR/dsh-update" 2>/dev/null || true
+fi
 chmod +x "$BIN_DIR/dsh-update" 2>/dev/null || true
 
 # Install dsh-doctor
@@ -85,6 +123,17 @@ echo "[*] Harness Directory: Found at $DSH_DIR"
 if [ -d "$DSH_DIR" ]; then
     cd "$DSH_DIR"
     python3 scripts/patch_termux.py --check || true
+    echo ""
+    echo "[*] Checking Native Modules & Plugins:"
+    node -e "try { require('@img/sharp-wasm32'); console.log('    - sharp (raster images):   OK (wasm/native loaded)'); } catch(e) { console.log('    - sharp: FAIL (' + e.message + ')'); }" 2>/dev/null || true
+    node -e "try { require('node-pty'); console.log('    - node-pty (terminal):     OK (pty.node loaded)'); } catch(e) { console.log('    - node-pty: FAIL (' + e.message + ')'); }" 2>/dev/null || true
+    echo ""
+    echo "[*] Testing 'dsh --version' invocation:"
+    if dsh --version >/dev/null 2>&1; then
+        echo "    SUCCESS -> Version: $(dsh --version 2>/dev/null)"
+    else
+        echo "    FAILED -> dsh failed to start"
+    fi
 fi
 echo "=========================================="
 DOCTOR_EOF
@@ -104,8 +153,8 @@ python3 "$DSH_DIR/scripts/patch_termux.py" "$@"
 PATCH_EOF
 chmod +x "$BIN_DIR/dsh-patch"
 
-# Ensure PATH has ~/bin in shell profiles
-for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+# Ensure PATH has ~/bin in all common shell configuration profiles
+for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile"; do
     if [ -f "$rc" ]; then
         if ! grep -q 'HOME/bin' "$rc"; then
             echo 'export PATH="$HOME/bin:$PATH"' >> "$rc"
@@ -116,15 +165,16 @@ for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
 done
 export PATH="$HOME/bin:$PATH"
 
-# 4. Dependency installation & Termux patch application
+# Step 4: Dependency installation & Termux patch application
 echo -e "${BLUE}[4/5] Applying Termux & Mobile UX patches and installing dependencies...${NC}"
 cd "$DSH_DIR"
 python3 scripts/patch_termux.py --apply || true
-pnpm install --frozen-lockfile=false --ignore-scripts
+CI=true pnpm install --frozen-lockfile=false --ignore-scripts --force
 pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
 python3 scripts/patch_termux.py --apply || true
 
-# 5. Build libraries and web assets
+
+# Step 5: Build libraries and web assets
 echo -e "${BLUE}[5/5] Building TypeScript libraries and mobile web interface...${NC}"
 pnpm run build:lib:host
 pnpm run build:lib:client

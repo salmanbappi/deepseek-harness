@@ -131,7 +131,7 @@ if [ "$REAPPLY_ONLY" -eq 1 ]; then
     
     echo ""
     echo "[*] Verifying native dependencies..."
-    pnpm install --frozen-lockfile=false --ignore-scripts
+    CI=true pnpm install --frozen-lockfile=false --ignore-scripts --force
     pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
     python3 "$PATCHER" --apply
     
@@ -239,7 +239,7 @@ fi
 # Step 6: Verify and Rebuild Native Dependencies
 echo ""
 echo "[*] Verifying dependencies (pnpm install)..."
-pnpm install --frozen-lockfile=false --ignore-scripts
+CI=true pnpm install --frozen-lockfile=false --ignore-scripts --force
 pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
 
 # Re-run patcher for native node-pty and Koffi
