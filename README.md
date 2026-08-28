@@ -1,63 +1,141 @@
-# DeepSeek Harness
+# DeepSeek Harness (Termux & Mobile Edition)
+
+[![Termux Compatibility](https://img.shields.io/badge/Termux-Android%20arm64-green.svg)](https://github.com/salmanbappi/deepseek-harness)
+[![Mobile UX](https://img.shields.io/badge/UX-Mobile%20Optimized-blue.svg)](https://github.com/salmanbappi/deepseek-harness)
+[![Build Status](https://github.com/salmanbappi/deepseek-harness/actions/workflows/build-termux.yml/badge.svg)](https://github.com/salmanbappi/deepseek-harness/actions/workflows/build-termux.yml)
+[![Release](https://img.shields.io/github/v/release/salmanbappi/deepseek-harness?include_prereleases)](https://github.com/salmanbappi/deepseek-harness/releases)
 
 English | [中文](README.zh.md)
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+**DeepSeek Harness (`dsh`)** is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com), powered by [Cordis](https://github.com/cordiverse/cordis).
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+This repository is an optimized distribution specifically adapted for **Android Termux** and **Mobile Web Browsers**, featuring zero-loss automated upstream upgrades, Android filesystem workarounds, and responsive mobile UI enhancements.
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+---
 
-## Developer preview
+## 📱 Mobile & Termux Enhancements
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+* **Android Filesystem Compatibility**:
+  - Implements atomic `rename` fallback when hardlinks fail with `EACCES`, `EPERM`, or `EXDEV` on Android internal storage (`/data/data/com.termux/files/home`). File attachments and chat session persistence work seamlessly.
+* **Responsive Mobile Web UI**:
+  - **Slide-out Navigation Drawer**: Clean mobile sidebar toggle with backdrop touch dismiss.
+  - **Single-Line AI Message Footer**: Compact inline action icons and response metrics (`16:08 · Ran for 5s · TTFT · tok/s`) styled to fit narrow mobile viewports without wrapping or breaking.
+  - **Touch & Dropdown Support**: Fixed pointer events for model selection, settings modals, and touch dropdowns.
+* **Native ARM64 Terminal & Image Engine**:
+  - Pre-configured WASM image rasterizer (`@img/sharp-wasm32`) and native `node-pty` terminal bindings built for Android ARM64.
+* **Self-Healing Updater (`dsh-update`)**:
+  - Autonomous update pipeline that pulls new upstream features while automatically safeguarding, re-applying, and verifying your Termux mobile patches.
+* **Health Inspector (`dsh-doctor`)**:
+  - Comprehensive diagnostic tool auditing Node.js, Python, Android filesystem patches, local browser auth bypass, and native modules.
 
-Review the [safety notice](SAFETY.md) before running the project.
+---
 
-## Run
+## 🚀 Quickstart on Android Termux
+
+### Option 1: Run from Source (Recommended)
+
+1. **Install Prerequisites in Termux**:
+   ```sh
+   pkg update && pkg install nodejs-lts python git pnpm clang make
+   ```
+
+2. **Clone and Install**:
+   ```sh
+   git clone https://github.com/salmanbappi/deepseek-harness.git
+   cd deepseek-harness
+   pnpm install
+   pnpm run build
+   ```
+
+3. **Launch the Web Interface**:
+   ```sh
+   pnpm dsh web
+   ```
+   Open `http://127.0.0.1:3080` in Chrome, Firefox, or your preferred mobile browser.
+
+---
+
+### Option 2: Pre-compiled GitHub Releases
+
+Download the pre-built tarball bundle directly from [Releases](https://github.com/salmanbappi/deepseek-harness/releases/latest):
+
+```sh
+# Download and extract the latest prebuilt release
+curl -LO $(curl -s https://api.github.com/repos/salmanbappi/deepseek-harness/releases/latest | grep "browser_download_url.*dsh-termux-.*\.tar\.gz" | cut -d : -f 2,3 | tr -d \")
+tar -xzf dsh-termux-*.tar.gz
+cd deepseek-harness
+node apps/cli/lib/bin.js web
+```
+
+---
+
+## 🔄 Keeping Up-to-Date (`dsh-update`)
+
+To update your installation to the latest upstream release without losing mobile optimizations:
+
+```sh
+dsh-update
+```
+
+What `dsh-update` does automatically:
+1. Creates a safety backup branch (`backup/dsh-update-<timestamp>`).
+2. Pulls and merges the newest official commits from `deepseek-ai/deepseek-harness`.
+3. Re-injects all Termux & Mobile UX patches cleanly.
+4. Verifies dependencies and rebuilds libraries.
+5. Runs a health check to confirm everything is operational.
+
+---
+
+## 🩺 Diagnostics (`dsh-doctor`)
+
+Run the health check utility at any time to verify system integrity:
+
+```sh
+dsh-doctor
+```
+
+Output checklist:
+- `[*] Checking Node.js, pnpm, Python3`
+- `[*] Android File Attachment Fallback:  [PASS]`
+- `[*] Android Session Persistence:       [PASS]`
+- `[*] Local Mobile Auth Bypass:          [PASS]`
+- `[*] Responsive Mobile Drawer & UI:     [PASS]`
+- `[*] Touch & Dropdown Handling:         [PASS]`
+- `[*] Runtime Engine Flags & Wasm:       [PASS]`
+- `[*] Native Modules & Terminal (pty):   [PASS]`
+
+---
+
+## 💻 Standard Run (Desktop / Server)
 
 ### Run from `npm`
-
-Install `Node.js`, then run:
 
 ```sh
 npx @deepseek-ai/dsh web
 ```
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
-
 ### Run from source
 
-To run from a repository checkout:
-
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
+git clone https://github.com/salmanbappi/deepseek-harness.git
 cd deepseek-harness
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+---
 
-## Community and support
+## 🤝 Community and Support
 
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord community</a>.
+- Official Documentation: [deepseek-harness.github.io](https://deepseek-harness.github.io/deepseek-harness/)
+- Termux Fork Issues & Feedback: [salmanbappi/deepseek-harness/issues](https://github.com/salmanbappi/deepseek-harness/issues)
+- DeepSeek Discussions: [deepseek-ai/deepseek-harness/discussions](https://github.com/deepseek-ai/deepseek-harness/discussions)
+- Discord Community: <a href="https://discord.gg/Ycq5dCaS4">DeepSeek Harness Discord</a>
 
-## Contributing
+---
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+## 📄 License
 
-## Development
+[MIT](LICENSE) · Disclosures in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## License
-
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
