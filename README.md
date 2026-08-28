@@ -32,7 +32,23 @@ This repository is an optimized distribution specifically adapted for **Android 
 
 ## 🚀 Quickstart on Android Termux
 
-### Option 1: Run from Source (Recommended)
+### ⚡ 1-Line Automated Install (Fastest)
+
+Open Termux and run this single command to automatically install dependencies, clone the repository, apply all mobile & Termux patches, build assets, and configure global `dsh` commands:
+
+```sh
+curl -sSL https://raw.githubusercontent.com/salmanbappi/deepseek-harness/master/scripts/install-termux.sh | bash
+```
+
+Once installed, start the web interface anywhere with:
+```sh
+dsh web
+```
+
+---
+
+### Option 2: Manual Installation from Source
+
 
 1. **Install Prerequisites in Termux**:
    ```sh
