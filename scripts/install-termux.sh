@@ -125,7 +125,7 @@ if [ -d "$DSH_DIR" ]; then
     python3 scripts/patch_termux.py --check || true
     echo ""
     echo "[*] Checking Native Modules & Plugins:"
-    node -e "try { require('@img/sharp-wasm32'); console.log('    - sharp (raster images):   OK (wasm/native loaded)'); } catch(e) { console.log('    - sharp: FAIL (' + e.message + ')'); }" 2>/dev/null || true
+    node -e "try { require('sharp'); console.log('    - sharp (raster images):   OK (loaded)'); } catch(e) { console.log('    - sharp: FAIL (' + e.message + ')'); }" 2>/dev/null || true
     node -e "try { require('node-pty'); console.log('    - node-pty (terminal):     OK (pty.node loaded)'); } catch(e) { console.log('    - node-pty: FAIL (' + e.message + ')'); }" 2>/dev/null || true
     echo ""
     echo "[*] Testing 'dsh --version' invocation:"
