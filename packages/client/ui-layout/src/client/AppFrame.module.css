@@ -117,3 +117,109 @@
 .overlayLayer > * {
   pointer-events: auto;
 }
+
+.mobileBackdrop {
+  display: none;
+}
+
+.mobileSidebarToggle {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .frame {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+  }
+
+  .centerCol {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .sidebarCol {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(300px, 85vw);
+    height: 100%;
+    z-index: 100;
+    box-shadow: var(--dsw-shadow-lv3, 0 8px 30px rgba(0, 0, 0, 0.35));
+    transform: translateX(0);
+    transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  }
+
+  .frame[data-sidebar-collapsed] .sidebarCol {
+    transform: translateX(-100%);
+    pointer-events: none;
+  }
+
+  .detailsCol {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: min(340px, 90vw);
+    height: 100%;
+    z-index: 100;
+    background: var(--dsw-alias-bg-base);
+    box-shadow: var(--dsw-shadow-lv3, 0 8px 30px rgba(0, 0, 0, 0.35));
+    transform: translateX(0);
+    transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  }
+
+  .frame[data-details-collapsed] .detailsCol {
+    transform: translateX(100%);
+    pointer-events: none;
+  }
+
+  .mobileBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 95;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: mobile-backdrop-fade 200ms ease;
+  }
+
+  .mobileSidebarToggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 40;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--dsw-alias-border-l2);
+    border-radius: 8px;
+    background: var(--dsw-alias-button-floating-fill);
+    color: var(--dsw-alias-label-primary);
+    box-shadow: var(--dsw-shadow-lv1);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  .mobileSidebarToggle:active {
+    background: var(--dsw-alias-button-floating-hover);
+  }
+
+  .handle {
+    display: none !important;
+  }
+}
+
+@keyframes mobile-backdrop-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

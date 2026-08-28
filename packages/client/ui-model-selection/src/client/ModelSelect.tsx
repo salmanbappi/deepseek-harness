@@ -13,7 +13,7 @@
  */
 import {
   useEffect, useId, useMemo, useRef, useState, useSyncExternalStore,
-  type KeyboardEvent, type FocusEvent,
+  type KeyboardEvent,
 } from 'react'
 import clsx from 'clsx'
 import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
@@ -60,8 +60,26 @@ export function ModelSelect(
   const toastSeq = useRef(0)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
+
+  useEffect(() => {
+    if (!open || menuRef.current === null) return
+    const el = menuRef.current
+    if (typeof window === 'undefined') return
+    const rect = el.getBoundingClientRect()
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
+    if (rect.left < 8) {
+      const shift = 8 - rect.left
+      el.style.transform = `translateX(${shift}px)`
+    } else if (rect.right > viewportWidth - 8) {
+      const shift = (viewportWidth - 8) - rect.right
+      el.style.transform = `translateX(${shift}px)`
+    } else {
+      el.style.transform = ''
+    }
+  }, [open, pane])
 
   const choices = useMemo(() => state.groups.flatMap(group =>
     group.models.map(model => ({
@@ -107,11 +125,11 @@ export function ModelSelect(
 
   useEffect(() => {
     if (!open) return
-    const closeOutside = (event: MouseEvent): void => {
+    const closeOutside = (event: PointerEvent | MouseEvent): void => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', closeOutside)
-    return () => { document.removeEventListener('mousedown', closeOutside) }
+    document.addEventListener('pointerdown', closeOutside)
+    return () => { document.removeEventListener('pointerdown', closeOutside) }
   }, [open])
 
   if (!available) return null
@@ -149,11 +167,6 @@ export function ModelSelect(
       event.preventDefault()
       moveFocus(event.key === 'ArrowDown' ? 1 : -1)
     }
-  }
-
-  const onBlur = (event: FocusEvent<HTMLDivElement>): void => {
-    if (event.relatedTarget instanceof Node && rootRef.current?.contains(event.relatedTarget)) return
-    close()
   }
 
   const settleSelection = (accepted: boolean): void => {
@@ -213,7 +226,7 @@ export function ModelSelect(
   }
 
   return (
-    <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
+    <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown}>
       <button
         ref={triggerRef}
         type="button"
@@ -239,6 +252,7 @@ export function ModelSelect(
 
       {open && (
         <div
+          ref={menuRef}
           id={`${id}-menu`}
           className={css.menu}
           role="menu"

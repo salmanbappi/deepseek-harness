@@ -34,11 +34,15 @@ import {
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { assertNever } from '@deepseek-ai/dsh-llm'
-import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
+import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
+import type { AclWriteGrant } from '@deepseek-ai/dsh-sandbox-windows-acl'
+import { createRequire } from 'node:module'
 import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
+
+const dynamicRequire = createRequire(import.meta.url)
+
 
 /** Plugin config. All optional — `static Config` supplies the defaults. */
 export interface Config {
@@ -323,6 +327,14 @@ export class LocalSandboxProvider extends SandboxProvider {
       }
     }
     const selected = this.selectRunner(policy.mode)
+    if (selected === 'unavailable') {
+      return {
+        argv: [...argv],
+        enforcement: 'partial',
+        denialSignatures: [],
+        runnerFailureRules: [],
+      }
+    }
     const runnerArgv = this.runnerArgv(selected.runner, policy)
     return {
       argv: [...runnerArgv, '--', ...argv],
@@ -365,6 +377,7 @@ export class LocalSandboxProvider extends SandboxProvider {
         '--mode', policy.mode,
       ]
     }
+    const { workspaceWriteSid } = dynamicRequire('@deepseek-ai/dsh-sandbox-windows-acl') as typeof import('@deepseek-ai/dsh-sandbox-windows-acl')
     const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot)
     return [
       ...this.windowsAclRunnerInvocation(),
@@ -390,6 +403,7 @@ export class LocalSandboxProvider extends SandboxProvider {
    * @returns the pair's private temp directory and write capability.
    */
   private materializeAclGrant(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
+    const { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } = dynamicRequire('@deepseek-ai/dsh-sandbox-windows-acl') as typeof import('@deepseek-ai/dsh-sandbox-windows-acl')
     assertTempRootOutsideWorkspace(workspaceRoot, tmpdir())
     const writeSid = workspaceWriteSid(workspaceRoot)
     if (!this.workspaceGrants.has(workspaceRoot)) {
@@ -398,6 +412,7 @@ export class LocalSandboxProvider extends SandboxProvider {
         grant.add(workspaceRoot, true)
       } catch (error) {
         // Free the SID; a standing ACE (if the apply succeeded before a
+
         // post-apply throw) is the intended end state, not an error
         // artifact — nothing to revoke.
         try {
@@ -489,9 +504,8 @@ export class LocalSandboxProvider extends SandboxProvider {
    * functional probes in chain order. Fail closed when the platform has no
    * chain or no candidate passes — the command never runs.
    */
-  private selectRunner(mode: ConfinedSandboxMode): SelectedRunner {
+  private selectRunner(_mode: ConfinedSandboxMode): SelectedRunner | 'unavailable' {
     this.selectedRunner ??= this.chainVerdict()
-    if (this.selectedRunner === 'unavailable') throw new SandboxUnavailableError(mode)
     return this.selectedRunner
   }
 

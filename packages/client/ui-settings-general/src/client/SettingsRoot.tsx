@@ -11,6 +11,7 @@
  * to the step, so a mounted-but-deciding step paints nothing here.
  */
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import {
   IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
@@ -58,10 +59,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
   const closeButton = useRef<HTMLButtonElement | null>(null)
   useEffect(() => { closeButton.current?.focus() }, [])
 
-  return (
+  return createPortal(
     <div className={css.overlay} role="presentation">
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
       <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className={css.mobileHeader}>
+          <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
+          <div className={css.mobileActions}>
+            {renderSlot('settings.action', {})}
+            <button type="button" className={css.mobileClose} onClick={onClose} aria-label="Close">
+              <IconCloseOutline16 size={16} />
+            </button>
+          </div>
+        </div>
         <nav className={css.nav}>
           <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
           <div className={css.navList}>
@@ -92,7 +102,8 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

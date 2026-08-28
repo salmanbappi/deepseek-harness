@@ -96,6 +96,20 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
+@media (max-width: 640px) {
+  .menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--dsh-composer-height, 76px) + 12px);
+    width: auto;
+    min-width: 0;
+    max-width: calc(100vw - 24px);
+    max-height: min(400px, 60vh);
+    margin: 0 auto;
+  }
+}
+
 .status,
 .empty {
   padding: 10px;

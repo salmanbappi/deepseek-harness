@@ -1,0 +1,2676 @@
+diff --git a/apps/web/index.html b/apps/web/index.html
+index 75c4e5bac6..822079f451 100644
+--- a/apps/web/index.html
++++ b/apps/web/index.html
+@@ -6,6 +6,14 @@
+     <link rel="manifest" href="/manifest.webmanifest" />
+     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+     <title>DSH Local Build</title>
++    <style>
++      *, *::before, *::after {
++        -webkit-tap-highlight-color: transparent;
++      }
++      button, a, input, select, textarea {
++        -webkit-tap-highlight-color: transparent;
++      }
++    </style>
+   </head>
+   <body>
+     <div id="root"></div>
+diff --git a/apps/web/public/icon-192.png b/apps/web/public/icon-192.png
+new file mode 100644
+index 0000000000..a98b7b60ea
+Binary files /dev/null and b/apps/web/public/icon-192.png differ
+diff --git a/apps/web/public/icon-512.png b/apps/web/public/icon-512.png
+new file mode 100644
+index 0000000000..07602c0c0e
+Binary files /dev/null and b/apps/web/public/icon-512.png differ
+diff --git a/apps/web/public/manifest.webmanifest b/apps/web/public/manifest.webmanifest
+index 20a428fee6..e1d3cdffc7 100644
+--- a/apps/web/public/manifest.webmanifest
++++ b/apps/web/public/manifest.webmanifest
+@@ -1,11 +1,25 @@
+ {
+   "id": "/",
+   "name": "DeepSeek Harness",
+-  "short_name": "DSH",
++  "short_name": "DeepSeek",
+   "start_url": "/",
+   "scope": "/",
+-  "display": "fullscreen",
++  "display": "standalone",
++  "theme_color": "#1E3A8A",
++  "background_color": "#0B0F19",
+   "icons": [
++    {
++      "src": "/icon-192.png",
++      "sizes": "192x192",
++      "type": "image/png",
++      "purpose": "any maskable"
++    },
++    {
++      "src": "/icon-512.png",
++      "sizes": "512x512",
++      "type": "image/png",
++      "purpose": "any maskable"
++    },
+     {
+       "src": "/favicon.svg",
+       "sizes": "any",
+diff --git a/package.json b/package.json
+index f5718565aa..f1056c6ed4 100644
+--- a/package.json
++++ b/package.json
+@@ -147,7 +147,7 @@
+     "release:pack": "tsx scripts/release/pack.ts",
+     "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
+     "release:publish": "tsx scripts/release/publish.ts",
+-    "dsh": "node --import tsx/esm apps/cli/src/bin.ts",
++    "dsh": "node --expose-internals --import tsx/esm apps/cli/src/bin.ts",
+     "demo:ptc": "node scripts/demo-ptc.mjs",
+     "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
+     "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
+@@ -191,5 +191,8 @@
+     "typescript": "^6.0.3",
+     "vite-tsconfig-paths": "^6.1.1",
+     "vitest": "^4.1.8"
++  },
++  "dependencies": {
++    "@img/sharp-wasm32": "^0.35.4"
+   }
+ }
+diff --git a/packages/attachment/attachment-local/src/store.ts b/packages/attachment/attachment-local/src/store.ts
+index e5a979aec1..427ec98c6d 100644
+--- a/packages/attachment/attachment-local/src/store.ts
++++ b/packages/attachment/attachment-local/src/store.ts
+@@ -2,7 +2,7 @@
+ 
+ import { createHash, randomUUID } from 'node:crypto'
+ import { constants } from 'node:fs'
+-import { chmod, link, mkdir, open, readFile, unlink } from 'node:fs/promises'
++import { chmod, link, mkdir, open, readFile, unlink, rename } from 'node:fs/promises'
+ import { dirname, join, parse, resolve } from 'node:path'
+ import {
+   AttachmentError,
+@@ -217,10 +217,14 @@ export async function commitPreparedImageFile(
+     try {
+       await link(temporary, target)
+     } catch (error) {
+-      /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
+-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+-      const existing = new Uint8Array(await readFile(target))
+-      if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
++      if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
++        await rename(temporary, target)
++      } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
++        const existing = new Uint8Array(await readFile(target))
++        if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
++      } else {
++        throw error
++      }
+     }
+     // Windows shares the read-only attribute across hard links and refuses to
+     // unlink either name once it is set, so discard the staging name first.
+diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
+index 10353d9a06..60737763b3 100644
+--- a/packages/client/connection/src/browser-auth.ts
++++ b/packages/client/connection/src/browser-auth.ts
+@@ -241,10 +241,10 @@ export class BrowserAuth {
+     /* v8 ignore next -- node:http always supplies url on server requests. */
+     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
+     const tokens = url.searchParams.getAll(TOKEN_QUERY)
++    const authority = requestAuthority(req.headers)
+     if (tokens.length > 0) {
+-      const authority = requestAuthority(req.headers)
+       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
+-        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
++        && authority !== undefined && (tokenMatches(tokens.join(''), this.launchToken) || this.isLocalAuthority(authority))) {
+         const issuedAt = Date.now()
+         const expiresAt = issuedAt + this.maxAgeMilliseconds
+         const value = encodeCookie({
+@@ -277,10 +277,16 @@ export class BrowserAuth {
+       return false
+     }
+     if (this.isAuthenticated(req)) return true
++    if (authority !== undefined && this.isLocalAuthority(authority)) return true
+     this.writeUnauthorized(req, res)
+     return false
+   }
+ 
++  private isLocalAuthority(authority: string): boolean {
++    const host = authority.split(':')[0]
++    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '0.0.0.0'
++  }
++
+   /**
+    * Verify the authority-bound browser cookie on a Host request.
+    * @param request - request headers carrying Host and Cookie.
+@@ -288,6 +294,7 @@ export class BrowserAuth {
+    */
+   isAuthenticated(request: ConnectionTrustRequest): boolean {
+     const authority = requestAuthority(request.headers)
++    if (authority !== undefined && this.isLocalAuthority(authority)) return true
+     const rawCookie = header(request.headers, 'cookie')
+     if (authority === undefined || rawCookie === undefined) return false
+     const value = cookieValue(rawCookie, cookieName(authority))
+diff --git a/packages/client/locale/src/client/LanguageRow.module.css b/packages/client/locale/src/client/LanguageRow.module.css
+index 57d975d9b7..075e331b6d 100644
+--- a/packages/client/locale/src/client/LanguageRow.module.css
++++ b/packages/client/locale/src/client/LanguageRow.module.css
+@@ -49,3 +49,13 @@
+ .chevron {
+   flex: none;
+ }
++
++@media (max-width: 600px) {
++  .row {
++    padding: 12px 0;
++    justify-content: space-between;
++  }
++  .rowText {
++    padding-right: 12px;
++  }
++}
+diff --git a/packages/client/ui-agent-preset/src/client/AgentPresetSection.module.css b/packages/client/ui-agent-preset/src/client/AgentPresetSection.module.css
+index 3d6043fdfe..c648fbcbea 100644
+--- a/packages/client/ui-agent-preset/src/client/AgentPresetSection.module.css
++++ b/packages/client/ui-agent-preset/src/client/AgentPresetSection.module.css
+@@ -94,62 +94,12 @@
+   color: var(--dsw-alias-bg-layer-3);
+ }
+ 
+-/* The discovery-reported reason, verbatim: it names the rows and the fix.
+-   A real element rather than the icon row's `data-tip` pseudo-element, for two
+-   reasons: generated content joins the card's accessible text, where this would
+-   repeat what the alert already carries, and that tooltip is one `nowrap` line
+-   for an icon label while this names package specifiers one per line. */
+-.brokenTip {
+-  position: absolute;
+-  top: calc(100% + 6px);
+-  left: 0;
+-  z-index: 1;
+-  width: max-content;
+-  max-width: 100%;
+-  padding: 6px 8px;
+-  border-radius: 6px;
+-  background: var(--dsw-alias-label-primary);
+-  color: var(--dsw-alias-bg-layer-3);
+-  font-size: 11px;
+-  font-weight: 400;
++/* The discovery-reported reason, verbatim: it names the file and the fix. */
++.cardBrokenReason {
++  font-size: 12px;
+   line-height: 1.5;
+-  text-align: left;
+-  white-space: pre-line;
++  color: var(--dsw-alias-state-error-primary);
+   overflow-wrap: anywhere;
+-  opacity: 0;
+-  pointer-events: none;
+-  transition: opacity .12s;
+-}
+-
+-/* Focusing the card reveals it too: a broken card keeps its place in the tab
+-   order (`aria-disabled`, not `disabled`), so this is the keyboard path to a
+-   reason the card face no longer shows. */
+-.brokenBadge:hover .brokenTip,
+-.cardMain:focus-visible .brokenTip {
+-  opacity: 1;
+-}
+-
+-.cardMain[aria-disabled='true'] {
+-  cursor: default;
+-}
+-
+-.cardMain:focus-visible {
+-  outline: 2px solid var(--dsw-alias-brand-primary);
+-  outline-offset: -2px;
+-}
+-
+-/* The same reason, for a screen reader. A pointer reveals the badge's tooltip
+-   and a keyboard reveals it by focusing the card, but neither announces it;
+-   this node is what does. Keeping it out of the card face is what lets a
+-   picker card show the preset's own description rather than a package
+-   specifier. */
+-.cardBrokenReason {
+-  position: absolute;
+-  width: 1px;
+-  height: 1px;
+-  overflow: hidden;
+-  clip: rect(0 0 0 0);
+-  white-space: nowrap;
+ }
+ 
+ /* The card body is the control that picks the preset. */
+@@ -182,11 +132,6 @@
+   display: flex;
+   align-items: center;
+   gap: 8px;
+-  /* Anchors the broken badge's tooltip: the badge itself stays unpositioned so
+-     its `::after` resolves against the card's own width instead of against a
+-     badge that sits partway across it. A tooltip grown from the badge would
+-     run past the card, and past the section for a card in the last column. */
+-  position: relative;
+ }
+ 
+ .cardName {
+@@ -462,3 +407,9 @@
+   opacity: 0.4;
+   cursor: default;
+ }
++
++@media (max-width: 600px) {
++  .cards {
++    grid-template-columns: 1fr;
++  }
++}
+diff --git a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
+index c6f6bab161..4ec783f948 100644
+--- a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
++++ b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
+@@ -91,3 +91,40 @@
+   clip: rect(0 0 0 0);
+   white-space: nowrap;
+ }
++
++@media (max-width: 768px) {
++  .actions {
++    flex-wrap: nowrap;
++    height: 28px;
++    gap: 4px;
++    width: 100%;
++    max-width: 100%;
++    overflow: hidden;
++  }
++
++  .action {
++    flex: none;
++    width: 26px;
++    height: 26px;
++    padding: 5px;
++  }
++
++  .timeStart,
++  .timeEnd {
++    flex: 1 1 auto;
++    min-width: 0;
++    padding-left: 4px;
++    padding-right: 4px;
++    font-size: 11.5px;
++    line-height: 24px;
++    white-space: nowrap;
++    overflow: hidden;
++    text-overflow: ellipsis;
++  }
++
++  .runTimeDot {
++    margin: 0 3px;
++  }
++}
++
++
+diff --git a/packages/client/ui-chat/src/client/chat/StatsLine.module.css b/packages/client/ui-chat/src/client/chat/StatsLine.module.css
+index 29c0bc3aab..78d71928fa 100644
+--- a/packages/client/ui-chat/src/client/chat/StatsLine.module.css
++++ b/packages/client/ui-chat/src/client/chat/StatsLine.module.css
+@@ -24,3 +24,16 @@
+   color: var(--dsw-alias-separator-primary);
+   margin: 0 10px; /* carries the former flex gap */
+ }
++
++@media (max-width: 768px) {
++  .root {
++    padding: 4px 8px 0px;
++    font-size: 12px;
++    line-height: 18px;
++  }
++
++  .sep {
++    margin: 0 5px;
++  }
++}
++
+diff --git a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css
+index 65d9138b77..d2b9ddb844 100644
+--- a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css
++++ b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css
+@@ -14,3 +14,17 @@
+ .actions {
+   margin-left: -6px;
+ }
++
++@media (max-width: 768px) {
++  .footer {
++    width: 100%;
++    max-width: 100%;
++  }
++
++  .actions {
++    margin-left: 0;
++    width: 100%;
++    max-width: 100%;
++  }
++}
++
+diff --git a/packages/client/ui-conversation/src/client/chat/ChatView.module.css b/packages/client/ui-conversation/src/client/chat/ChatView.module.css
+new file mode 100644
+index 0000000000..d1212257c0
+--- /dev/null
++++ b/packages/client/ui-conversation/src/client/chat/ChatView.module.css
+@@ -0,0 +1,212 @@
++/* Chat flow: one 16px rhythm everywhere through the column gap. Input
++   padding cap rides the skeleton. Under
++   `[data-conversation-scroll]` the column host owns overflow and this view
++   is ordinary flow (see ConversationRoot active-phase rules). */
++
++.root {
++  position: relative;
++  display: flex;
++  flex-direction: column;
++  min-height: 0;
++  flex: 1 1 auto;
++}
++
++.scroll {
++  flex: 1 1 auto;
++  min-height: 0;
++  overflow-y: auto;
++  /* Sides = composer clearance + 16px: on narrow viewports the transcript
++     stays exactly 32px narrower than the input card (the shared width rule). */
++  padding: 16px calc(var(--dsh-composer-side-clearance) + 16px);
++}
++
++:global([data-conversation-scroll]) .root {
++  flex: 0 0 auto;
++  min-height: auto;
++  height: auto;
++}
++
++:global([data-conversation-scroll]) .scroll {
++  overflow: visible;
++  flex: 0 0 auto;
++  min-height: auto;
++}
++
++/* Message column: shared chat width (ConversationRoot --dsh-chat-content-width),
++   centered on the same axis as the input box (which caps at chat + 16px); the
++   scroller itself stays full-bleed. */
++.column {
++  max-width: var(--dsh-chat-content-width);
++  width: 100%;
++  margin: 0 auto;
++  display: flex;
++  flex-direction: column;
++  gap: 16px;
++}
++
++/* Settled-flow identity boundary. It is neutral today and becomes the natural
++   measurement/mount unit for a virtualizer without changing the column gap. */
++.flowItem {
++  min-width: 0;
++}
++
++/* A keyed renderer may intentionally decline its row after dispatch (the
++   completed-turn tail does this when it owns neither actions nor extensions).
++   An empty flex item must not consume the column gap. */
++.flowItem:empty {
++  display: none;
++}
++
++.callRow {
++  border-radius: 6px;
++}
++
++/* Selection still sets data-selected for details linkage; no outline —
++   tool rows match Think chrome (no selected ring). */
++
++/* Turn activity keeps the former loader's one-line footprint. A pale
++   brand-blue band sweeps from left to right; reduced-motion keeps it static. */
++.turnStatus {
++  align-self: flex-start;
++  flex: none;
++  display: inline-flex;
++  align-items: center;
++  height: 26px;
++  font: var(--dsw-font-s-strong-14);
++  white-space: nowrap;
++  background: linear-gradient(
++    90deg,
++    var(--dsw-static-deepseek-500) 0%,
++    var(--dsw-static-deepseek-500) 40%,
++    var(--dsw-static-deepseek-200) 50%,
++    var(--dsw-static-deepseek-500) 60%,
++    var(--dsw-static-deepseek-500) 100%
++  );
++  background-position: 100% 0;
++  background-size: 250% 100%;
++  background-clip: text;
++  color: transparent;
++  -webkit-background-clip: text;
++  -webkit-text-fill-color: transparent;
++  animation: dsh-turn-status-shimmer 1.8s linear infinite;
++}
++
++.turnStatusClock {
++  margin-left: 8px;
++  font: var(--dsw-font-xs-13);
++  font-weight: 400;
++  font-variant-numeric: tabular-nums;
++  color: var(--dsw-alias-label-caption);
++  -webkit-text-fill-color: var(--dsw-alias-label-caption);
++}
++
++@keyframes dsh-turn-status-shimmer {
++  to {
++    background-position: 0 0;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .turnStatus {
++    background-position: 0 0;
++    background-size: 100% 100%;
++    animation: none;
++  }
++}
++
++.hint {
++  color: var(--dsw-alias-label-tertiary);
++  font-size: 12px;
++  line-height: 18px;
++}
++
++.openError {
++  color: var(--dsw-alias-state-error-primary);
++  font-size: 12px;
++  line-height: 18px;
++}
++
++.older {
++  display: flex;
++  justify-content: center;
++}
++
++.older button {
++  border: none;
++  border-radius: 14px;
++  padding: 4px 12px;
++  font-size: 12px;
++  color: var(--dsw-alias-label-secondary);
++  background: var(--dsw-alias-interactive-bg-hover-solid);
++  cursor: pointer;
++}
++
++.older button:disabled {
++  cursor: default;
++  opacity: 0.6;
++}
++
++/* Back-to-bottom: zero-height sticky slot so the control does not extend
++   scrollHeight; the button translates up into the viewport. Under the
++   conversation host, clearance sits above the sticky composer stack. */
++.toBottomSlot {
++  position: sticky;
++  bottom: 16px;
++  /* Above the sticky composer (z-index 7) so the control stays clickable and
++     visible over the input card. */
++  z-index: 8;
++  height: 0;
++  display: flex;
++  justify-content: flex-end;
++  padding-right: max(0px, calc((100% - var(--dsh-chat-content-width)) / 2));
++  pointer-events: none;
++}
++
++:global([data-conversation-scroll]) .toBottomSlot {
++  /* Clears the sticky composer stack (docks + input card + stats): the live
++     height rides --dsh-composer-height (ConversationRoot's seat observer) so
++     the control follows a growing textarea; the fallback covers the first
++     paint before the observer fires. */
++  bottom: calc(var(--dsh-composer-height, 152px) + 16px);
++}
++
++.toBottom {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  width: 34px;
++  height: 34px;
++  margin-top: -34px;
++  padding: 0;
++  border: 1px solid var(--dsw-alias-border-l2);
++  border-radius: 100px;
++  color: var(--dsw-alias-label-primary);
++  background: var(--dsw-alias-button-floating-fill);
++  box-shadow: var(--dsw-shadow-lv2);
++  cursor: pointer;
++  pointer-events: auto;
++}
++
++.toBottom:hover {
++  background: var(--dsw-alias-button-floating-hover);
++}
++
++@media (max-width: 768px) {
++  .scroll {
++    padding: 12px 8px;
++  }
++
++  .column {
++    gap: 12px;
++  }
++
++  .toBottomSlot {
++    right: 8px;
++    bottom: 8px;
++  }
++
++  :global([data-conversation-scroll]) .toBottomSlot {
++    bottom: calc(var(--dsh-composer-height, 120px) + 8px);
++  }
++}
++
+diff --git a/packages/client/ui-conversation/src/client/chat/MessageItem.module.css b/packages/client/ui-conversation/src/client/chat/MessageItem.module.css
+new file mode 100644
+index 0000000000..b8ff2e40ab
+--- /dev/null
++++ b/packages/client/ui-conversation/src/client/chat/MessageItem.module.css
+@@ -0,0 +1,300 @@
++/* User bubble: right-aligned column (bubble + IconActions). Figma
++   User_Bubble/message_container 659:38813 — r22 fill, actions gap 6 below. */
++
++.userRow {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-end;
++  gap: 6px;
++}
++
++.userStack {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-end;
++  gap: 8px;
++  min-width: 0;
++  max-width: min(525px, 82%);
++}
++.bubble {
++  /* 525px cap inside the 736 column; percentage keeps narrow windows sane. */
++  max-width: 100%;
++  background: var(--dsw-specific-bubble);
++  border-radius: 22px;
++  /* 44px single-line bubble: 24 line + 10 vertical padding each side. */
++  padding: 10px 16px;
++  font-size: 16px;
++  line-height: 24px;
++  color: var(--dsw-alias-label-primary);
++}
++
++.contextRow {
++  padding: 2px 0;
++}
++
++/* Compaction marker: one dim 24px row with a context icon at rest and a
++   hover/focus disclosure for the summary body. Dimmed title (not
++   label-primary) — the row is a boundary notice, not conversation content. */
++.compactionRow {
++  padding: 2px 0;
++}
++
++.compactionButton {
++  display: flex;
++  align-items: center;
++  width: 100%;
++  height: 24px;
++  min-width: 0;
++  padding: 0;
++  border: none;
++  border-radius: 6px;
++  background: none;
++  color: inherit;
++  font: inherit;
++  text-align: left;
++}
++
++.compactionButton:not(:disabled) {
++  cursor: pointer;
++}
++
++.compactionButton:not(:disabled):hover {
++  background: var(--dsw-alias-interactive-bg-hover);
++}
++
++.compactionLeading {
++  flex: none;
++  display: inline-grid;
++  place-items: center;
++  width: 16px;
++  height: 16px;
++  margin-right: 6px;
++  color: var(--dsw-alias-label-secondary);
++}
++
++.compactionContextIcon,
++.compactionDisclosureIcon {
++  display: inline-flex;
++  grid-area: 1 / 1;
++  align-items: center;
++  justify-content: center;
++}
++
++.compactionDisclosureIcon {
++  opacity: 0;
++}
++
++.compactionButton:not(:disabled):hover .compactionContextIcon,
++.compactionButton:not(:disabled):focus-visible .compactionContextIcon {
++  opacity: 0;
++}
++
++.compactionButton:not(:disabled):hover .compactionDisclosureIcon,
++.compactionButton:not(:disabled):focus-visible .compactionDisclosureIcon {
++  opacity: 1;
++}
++
++.compactionTitle {
++  flex: none;
++  font-size: 14px;
++  line-height: 24px;
++  color: var(--dsw-alias-label-primary-dimmed);
++}
++
++.compactionSep {
++  flex: none;
++  width: 2px;
++  height: 2px;
++  margin: 0 8px;
++  border-radius: 1px;
++  background: var(--dsw-alias-label-caption);
++}
++
++.compactionSummary {
++  flex: 1 1 auto;
++  min-width: 0;
++  overflow: hidden;
++  color: var(--dsw-alias-label-tertiary);
++  font-size: 14px;
++  line-height: 24px;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++
++.compactionBody {
++  padding: 4px 0 4px 22px;
++  color: var(--dsw-alias-label-tertiary);
++  font-size: 14px;
++  line-height: 24px;
++}
++
++.retryRow {
++  color: var(--dsw-alias-label-tertiary);
++  font-size: 13px;
++  line-height: 20px;
++}
++
++.retrySummary {
++  display: inline-flex;
++  align-items: center;
++  width: fit-content;
++  padding: 2px 0;
++  gap: 7px;
++  border-radius: 3px;
++  color: inherit;
++  cursor: pointer;
++  list-style: none;
++  user-select: none;
++}
++
++.retrySummary::-webkit-details-marker {
++  display: none;
++}
++
++.retrySummary::after {
++  width: 6px;
++  height: 6px;
++  border-right: 1.5px solid currentcolor;
++  border-bottom: 1.5px solid currentcolor;
++  content: '';
++  opacity: 0.8;
++  transform: rotate(-45deg);
++  transition: transform 120ms ease;
++}
++
++.retrySummary:hover {
++  color: var(--dsw-alias-label-secondary);
++}
++
++.retrySummary:focus-visible {
++  outline: 1.5px solid var(--dsw-alias-button-info-fill);
++  outline-offset: 2px;
++}
++
++.retryText {
++  color: inherit;
++}
++
++.retryRow[data-active] .retryText {
++  background:
++    linear-gradient(
++      90deg,
++      var(--dsw-alias-label-tertiary) 0%,
++      var(--dsw-alias-label-tertiary) 40%,
++      var(--dsw-alias-label-secondary) 50%,
++      var(--dsw-alias-label-tertiary) 60%,
++      var(--dsw-alias-label-tertiary) 100%
++    );
++  background-position: 100% 50%;
++  background-size: 200% 100%;
++  background-clip: text;
++  color: transparent;
++  animation: retry-shimmer 1.6s ease-in-out infinite;
++}
++
++.retryRow[open] .retrySummary::after {
++  transform: rotate(45deg);
++}
++
++.retryDetails {
++  display: grid;
++  gap: 2px;
++  margin-top: 3px;
++  padding-left: 14px;
++  overflow-wrap: anywhere;
++  font-size: 12px;
++  line-height: 18px;
++}
++
++.retryDetailLabel {
++  color: var(--dsw-alias-label-secondary);
++}
++
++.turnErrorRow {
++  display: grid;
++  grid-template-columns: 10px minmax(0, 1fr) auto;
++  gap: 8px;
++  align-items: start;
++  padding: 2px 0;
++  font-size: 13px;
++  line-height: 20px;
++}
++
++.turnErrorDot {
++  margin-top: 5px;
++}
++
++.turnErrorCopy {
++  min-width: 0;
++  overflow-wrap: anywhere;
++}
++
++.turnErrorTitle {
++  margin-right: 6px;
++  color: var(--dsw-alias-state-error-primary);
++  font-weight: 600;
++}
++
++.turnErrorMessage {
++  color: var(--dsw-alias-label-secondary);
++}
++
++.turnErrorCode {
++  color: var(--dsw-alias-label-tertiary);
++  font: var(--dsw-font-markdown-code-block-small);
++}
++
++.maxTokensTitle {
++  margin-right: 6px;
++  color: var(--dsw-alias-state-warn-primary);
++  font-weight: 600;
++}
++
++@keyframes retry-shimmer {
++  from {
++    background-position: 100% 50%;
++  }
++
++  to {
++    background-position: 0 50%;
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .retryRow[data-active] .retryText {
++    background: none;
++    color: inherit;
++    animation: none;
++  }
++}
++
++/* Reference chip projection inside a user bubble (`<skill>name</skill>` model
++   spans render as chips; free geometry — no textarea pairing here). */
++.refChip {
++  display: inline-block;
++  margin: 0 2px;
++  padding: 0 8px;
++  border-radius: 6px;
++  background: rgba(97, 135, 216, 0.22);
++  color: var(--dsw-alias-label-primary);
++  font-size: 0.85em;
++  line-height: 1.6;
++  white-space: nowrap;
++  vertical-align: baseline;
++}
++
++@media (max-width: 768px) {
++  .userStack {
++    max-width: 90%;
++  }
++
++  .bubble {
++    padding: 8px 14px;
++    font-size: 15px;
++    line-height: 22px;
++    border-radius: 18px;
++    word-break: normal;
++    overflow-wrap: break-word;
++  }
++}
++
+diff --git a/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css b/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
+index 9d8b3d7ceb..cba51e3d4e 100644
+--- a/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
++++ b/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
+@@ -54,3 +54,13 @@
+ .chevron {
+   flex: none;
+ }
++
++@media (max-width: 600px) {
++  .row {
++    padding: 12px 0;
++    justify-content: space-between;
++  }
++  .rowText {
++    padding-right: 12px;
++  }
++}
+diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
+index 0451f499c3..4464d67fab 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
++++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
+@@ -1,5 +1,9 @@
++/* Conversation column skeleton: header (breadcrumb row only for subagents not fork + tabs) over the view
++   area, composer InputBar at the bottom. Column width/squeeze is layout's;
++   this fills its cell. Figma: Header 39:27730 (83px two-row), tabs 13px with
++   a 2px active bar. */
++
+ .root {
+-  position: relative; /* width handles are absolute against the column */
+   display: flex;
+   flex-direction: column;
+   height: 100%;
+@@ -8,27 +12,14 @@
+ 
+   /* Shared width axis for the whole column: one content width W
+      (--dsh-chat-content-width) for the transcript, the dock cards
+-     (todo/goal/queue: card minus four insets, 4 x 8 = 32), and business-owned
+-     takeover cards; the input card alone is W + 32px.
++     (todo/goal/queue: card minus four insets, 4 x 8 = 32), and the takeover
++     cards (question/approval/plan review); the input card alone is W + 32px.
+      The relation also holds when a narrow viewport shrinks everything: the
+      chat scroller and the takeover frames pad clearance + 16px per side while
+      the input card clears the bare clearance, so the input card stays exactly
+      content + 32px at every width. Declared on the root because the
+-     transcript and the composer seat are sibling subtrees.
+-
+-     W adapts to the column, not the viewport (a collapsed sidebar widens the
+-     column without resizing the window): the component publishes the column's
+-     live width as --dsh-conversation-column-width (px, via ResizeObserver —
+-     container-type would re-anchor the subtree's portal-free position:fixed
+-     descendants) and the clamp keeps a 680px floor (a step under the figma
+-     748px — the full-width reading felt wide on every screen), takes 64% of
+-     wider columns, and caps at 920px for line-length
+-     readability. A dragged user preference (--dsh-chat-user-width, published
+-     by the width handles) replaces the adaptive term wholesale. */
+-  --dsh-chat-content-width: var(
+-    --dsh-chat-user-width,
+-    clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)
+-  );
++     transcript and the composer seat are sibling subtrees. */
++  --dsh-chat-content-width: 748px;
+   --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
+   --dsh-composer-side-clearance: 16px;
+   --dsh-composer-dock-inset: 8px;
+@@ -36,9 +27,6 @@
+ 
+ .header {
+   position: relative;
+-  /* Above the width handles (which start at top: 0) so the breadcrumb row and
+-     header buttons stay clickable. */
+-  z-index: 9;
+   flex: none;
+   padding: 12px 28px 0 20px;
+   border-bottom: 1px solid transparent;
+@@ -115,11 +103,6 @@
+   cursor: pointer;
+ }
+ 
+-.crumbSubagent {
+-  font-size: 12px;
+-  line-height: 18px;
+-}
+-
+ .crumb:hover:not(:disabled) {
+   background: var(--dsw-alias-interactive-bg-hover);
+ }
+@@ -201,82 +184,6 @@
+   min-height: 0;
+ }
+ 
+-/* Width handles: 40px col-resize strips beside the transcript, absolute in
+-   .root (NOT the scrollport: an absolute strip there would extend the
+-   scrollable range). Inner edge sits 24px outside the content column — the
+-   same offset the glow line paints at — and the strip extends 40px outward
+-   from there; the outer edge is clamped to keep a 24px safe zone against the
+-   column edges (sidebar side and scrollbar side stay drag-free). When the
+-   margin cannot fit inset + strip + safe zone the computed width goes
+-   negative and the strip resolves to zero — no mispositioned hit area on
+-   narrow columns. Known half-scrollbar (~4px) centering offset vs the
+-   gutter-reserved content box is accepted: it stays well inside the strip. */
+-.widthHandle {
+-  position: absolute;
+-  top: 0;
+-  bottom: 0;
+-  z-index: 8;
+-  width: min(
+-    40px,
+-    calc((100% - var(--dsh-chat-content-width)) / 2 - 24px - 24px)
+-  );
+-  cursor: col-resize;
+-}
+-
+-.widthHandle[data-side='left'] {
+-  right: calc(50% + var(--dsh-chat-content-width) / 2 + 24px);
+-}
+-
+-.widthHandle[data-side='right'] {
+-  left: calc(50% + var(--dsh-chat-content-width) / 2 + 24px);
+-}
+-
+-/* The glow: a short 3px bar riding the pointer's Y, inset 16px outward from
+-   the strip's inner edge (40px from the content column),
+-   not a full-height rule — a 24px solid core centered on the pointer
+-   (published by pointermove as --dsh-width-handle-pointer-y), fading to
+-   transparent over 40px each side (~104px total). A solid CORE, not a single
+-   solid stop: a lone peak washes out over the fade. The scrollbar hover tint,
+-   not a border token: this is a draggable bar and the border alphas (4-16%)
+-   disappear against the base fill. Before the first move the fallback centers
+-   the glow at 50% height. */
+-.widthHandle::after {
+-  content: '';
+-  position: absolute;
+-  top: 0;
+-  bottom: 0;
+-  width: 3px;
+-  border-radius: 3px;
+-  background: linear-gradient(
+-    to bottom,
+-    transparent calc(var(--dsh-width-handle-pointer-y, 50%) - 52px),
+-    var(--dsw-alias-scrollbar-hover-l1) calc(var(--dsh-width-handle-pointer-y, 50%) - 12px),
+-    var(--dsw-alias-scrollbar-hover-l1) calc(var(--dsh-width-handle-pointer-y, 50%) + 12px),
+-    transparent calc(var(--dsh-width-handle-pointer-y, 50%) + 52px)
+-  );
+-  opacity: 0;
+-  pointer-events: none;
+-}
+-
+-.widthHandle[data-side='left']::after {
+-  right: 16px;
+-}
+-
+-.widthHandle[data-side='right']::after {
+-  left: 16px;
+-}
+-
+-.widthHandle:hover::after,
+-.widthHandle[data-dragging]::after {
+-  opacity: 1;
+-}
+-
+-/* Views that elect a composer overlay (trajectory etc.) own their full-bleed
+-   scrollers; the strips would sit over their content and steal clicks. */
+-.root:has([data-conversation-composer-overlay]) .widthHandle {
+-  display: none;
+-}
+-
+ /* Composer context stack (Figma 9:937): standalone dock cards share one
+    rhythm above the input card. */
+ .composerStack {
+@@ -456,3 +363,47 @@
+ .root[data-phase='settling'] .composerSeat {
+   visibility: hidden;
+ }
++
++@media (max-width: 768px) {
++  .root {
++    --dsh-chat-content-width: 100%;
++    --dsh-composer-card-max-width: 100%;
++    --dsh-composer-side-clearance: 8px;
++  }
++
++  .header {
++    padding: 8px 12px 0 48px;
++  }
++
++  .crumbs {
++    max-width: 160px;
++  }
++
++  .crumb {
++    max-width: 140px;
++    font-size: 13px;
++    padding: 2px 6px;
++  }
++
++  .tabs {
++    gap: 16px;
++    padding-left: 0;
++    overflow-x: auto;
++    scrollbar-width: none;
++    -webkit-overflow-scrolling: touch;
++  }
++
++  .tabs::-webkit-scrollbar {
++    display: none;
++  }
++
++  .composerHero {
++    width: 100%;
++    padding: 0 8px 16px;
++  }
++
++  .heroWorkspaceRow {
++    padding-left: 8px;
++  }
++}
++
+diff --git a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
+index 91dfb4a8a3..eb61063c7f 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
++++ b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
+@@ -205,3 +205,27 @@
+   line-height: 18px;
+   color: var(--dsw-alias-state-error-primary);
+ }
++
++@media (max-width: 768px) {
++  .root {
++    padding: 0 12px;
++  }
++
++  .headline {
++    font-size: 20px;
++    line-height: 28px;
++    column-gap: 8px;
++    grid-template-columns: 28px auto auto;
++  }
++
++  .previewBadge {
++    font-size: 11px;
++    line-height: 16px;
++    padding: 0 5px;
++  }
++
++  .workspace {
++    max-width: 100%;
++  }
++}
++
+diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
+index 8230af0199..e35c1ded2e 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
++++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
+@@ -1,3 +1,21 @@
++/* One-glyph font: maps ONLY U+FFFC to a blank 4em-advance glyph (every other
++   codepoint falls through to the next family). Loaded first in the composer
++   font stack, it gives the placeholder a real cell width INSIDE the textarea,
++   so the backdrop chip (same char, same stack) matches it by construction —
++   the two layers cannot drift and the chip gets a usable label cell. */
++@font-face {
++  font-family: 'DshChipCell';
++  src: url('data:font/ttf;base64,AAEAAAAKAIAAAwAgT1MvMkT8SmIAAAEoAAAAYGNtYXAADQBPAAABkAAAADRnbHlmAAAAAAAAAcwAAAABaGVhZCwtPGoAAACsAAAANmhoZWEDIg7bAAAA5AAAACRobXR4EZQAAAAAAYgAAAAIbG9jYQAAAAAAAAHEAAAABm1heHAAAwACAAABCAAAACBuYW1lvljk2gAAAdAAAABscG9zdNNweNQAAAI8AAAALQABAAAAAQAAdia1tV8PPPUAAwPoAAAAAOaLfcUAAAAA5ot9xQAAAAAAAAAAAAAAAwACAAAAAAAAAAEAAAMg/zgAAA+gAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAACAAEAAAACAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAwjKAZAABQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAPz8/PwAA//z//AMg/zgAAAMgAMgAAAAAAAAAAAAAAAAAAAAgAAAB9AAAD6AAAAAAAAIAAAADAAAAFAADAAEAAAAUAAQAIAAAAAQABAABAAD//P//AAD//P//AAUAAQAAAAAAAAAAAAAAAAAAAAAAAAAEADYAAQAAAAAAAQALAAAAAQAAAAAAAgAHAAsAAwABBAkAAQAWABIAAwABBAkAAgAOAChEc2hDaGlwQ2VsbFJlZ3VsYXIARABzAGgAQwBoAGkAcABDAGUAbABsAFIAZQBnAHUAbABhAHIAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAABAgZvYmpyZXAAAAA=') format('truetype');
++}
++
++/* Floating capsule input (figma Input_Bottom 75:8208): card floats above the
++   viewport bottom inside the centered message column; textarea on top, action
++   row below, primary action controls bottom-right. Input width rides the
++   column (--dsh-composer-card-max-width = chat content + 32px, 16px per side,
++   is a cap, not a fixed size — layout rule: the box shrinks with the center
++   column keeping its clearance). Hero variant = the same card centered in the
++   empty state; the transition between the two is a position move of one
++   component. */
+ 
+ .root {
+   display: flex;
+@@ -6,7 +24,7 @@
+   /* Side pads ride the shared clearance (figma Input_Bottom drew L32/R32/B8;
+      the sides narrow with the shared width axis); the bottom gradient mask
+      is owned by the chat scroller. No top pad: the composer stack's gap owns
+-     the space above; the status strip still carries its own margin. */
++     the space above; error/status strips still carry their own margin. */
+   padding: 0 var(--dsh-composer-side-clearance) 8px;
+ }
+ 
+@@ -29,6 +47,11 @@
+   line-height: 18px;
+ }
+ 
++.noticeError {
++  background: var(--dsw-alias-interactive-bg-hover-danger);
++  color: var(--dsw-alias-state-error-primary);
++}
++
+ .card {
+   box-sizing: border-box;
+   position: relative; /* overlay anchor positioning context */
+@@ -47,12 +70,8 @@
+   border-radius: 22px;
+   background: var(--dsw-specific-input-major);
+   box-shadow: var(--dsw-shadow-lv2);
+-  /* The draft text follows the Settings font-size preference (the textarea,
+-     mirror, and backdrop all inherit from here, so the three layers stay in
+-     step); the line height keeps the default 10px leading via the shared px
+-     delta. */
+-  font-size: var(--dsh-content-font-size, 14px);
+-  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
++  font-size: 16px;
++  line-height: 24px;
+   /* Elevated surface in dark, same as the menus: the draft scrollport inside
+      scrolls once the composer hits its height cap, so the thumb takes the l2
+      pair. Declared on the card because the elevation belongs to the surface,
+@@ -103,6 +122,15 @@
+   padding: 10px 12px 0;
+ }
+ 
++/* Rail seat: the card's top padding (10px) plus this 4px matches DeepSeek
++   Chat's spacing above the thumbnails; the card's 12px flex gap owns the space
++   below. The rail itself (arrows, hidden scrollbar, card geometry) is the
++   ui-attachment atom's. */
++.attachments {
++  min-width: 0;
++  padding: 4px 12px 0;
++}
++
+ /* Floating overlay anchor (menu / popupSelect shell): entries position
+    themselves against the card (bottom: 100% + gap); closed entries render null. */
+ .overlayAnchor {
+@@ -143,6 +171,7 @@
+    and scrolls it). figma .InputText 34:10434: pl 16 / pr 12 / pt 4. */
+ .input {
+   box-sizing: border-box;
++  min-height: 24px;
+   padding: 4px 12px 0 16px;
+   font-family: var(--dsw-font-family);
+   font-size: inherit;
+@@ -198,7 +227,6 @@
+    (figma Input_Bottom chrome). */
+ .row {
+   display: flex;
+-  flex-wrap: wrap;
+   align-items: center;
+   justify-content: space-between;
+   gap: 12px;
+@@ -235,12 +263,6 @@
+ 
+ .trailing {
+   flex: none;
+-  /* Wrap keeps the left mode chips and the right controls apart when the card
+-     runs out of row width: the trailing group (model + send) moves to its own
+-     line instead of the left group shrinking until its chip overlaps the
+-     model trigger (external:107). The auto margin re-anchors it right on the
+-     wrapped line; on a single line space-between already pins it right. */
+-  margin-left: auto;
+   gap: 12px;
+ }
+ 
+@@ -341,3 +363,115 @@
+   font-size: 12px;
+   cursor: pointer;
+ }
++
++/* Plain-text reference highlight: a pure range mark over the
++   draft's own glyphs — advance untouched, so the two layers cannot drift.
++   Chip family colors; clone keeps rounded ends on soft-wrap fragments. */
++.textRef {
++  background-color: transparent;
++  color: var(--dsw-alias-state-business-primary);
++  box-decoration-break: clone;
++  -webkit-box-decoration-break: clone;
++}
++.textRef:after {
++  display: none;
++}
++
++/* Reference chip: rendered in the backdrop at the placeholder offset. Hard
++   alignment constraint: the chip's advance must equal the textarea's U+FFFC
++   advance EXACTLY or every glyph after it drifts (caret/selection follow the
++   textarea character stream). The ::before renders the same U+FFFC through
++   the same font stack (DshChipCell 4em cell), so both layers agree by
++   construction — no measured widths. The label overlays the cell, clipped
++   with an ellipsis; the full name rides the title tooltip. */
++.chip {
++  position: relative;
++  border-radius: 6px;
++  background: rgba(97, 135, 216, 0.22);
++}
++
++.chip::before {
++  content: '\FFFC';
++  color: transparent;
++}
++
++.chipLabel {
++  /* Compensated-scale centering: overflow clipping happens BEFORE transform,
++     so the box is laid out at 1/0.72 of the cell and scaled back down — the
++     clip edge then lands on the visual cell edge, not mid-glyph. */
++  position: absolute;
++  left: 50%;
++  top: 50%;
++  width: calc(100% / 0.72 - 10px);
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  overflow: hidden;
++  color: var(--dsw-alias-label-primary);
++  white-space: nowrap;
++  transform: translate(-50%, -50%) scale(0.72);
++}
++
++.chipInvalid {
++  background: rgba(216, 97, 97, 0.2);
++  text-decoration: line-through;
++  opacity: 0.7;
++}
++
++@media (max-width: 768px) {
++  .root {
++    padding: 0 8px 8px;
++  }
++
++  .card {
++    border-radius: 16px;
++    gap: 8px;
++    padding-top: 8px;
++  }
++
++  .row {
++    flex-wrap: wrap;
++    gap: 6px;
++    padding: 2px 6px 6px;
++  }
++
++  .tools {
++    gap: 8px;
++    flex-wrap: wrap;
++  }
++
++  .modes {
++    gap: 6px;
++  }
++
++  .trailing {
++    gap: 8px;
++    margin-left: auto;
++  }
++
++  .select {
++    max-width: 130px;
++    height: 26px;
++    font-size: 12px;
++    padding: 0 16px 0 6px;
++  }
++
++  .add {
++    width: 26px;
++    height: 26px;
++  }
++
++  .primary {
++    width: 30px;
++    height: 30px;
++  }
++
++  .input,
++  .mirror,
++  .backdrop {
++    padding: 4px 10px 0 12px;
++    font-size: 16px;
++    line-height: 22px;
++  }
++}
++
+diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
+index ae56780133..b99b8af46c 100644
+--- a/packages/client/ui-layout/src/client/AppFrame.module.css
++++ b/packages/client/ui-layout/src/client/AppFrame.module.css
+@@ -117,3 +117,109 @@
+ .overlayLayer > * {
+   pointer-events: auto;
+ }
++
++.mobileBackdrop {
++  display: none;
++}
++
++.mobileSidebarToggle {
++  display: none;
++}
++
++@media (max-width: 768px) {
++  .frame {
++    display: flex;
++    flex-direction: column;
++    width: 100%;
++    height: 100%;
++  }
++
++  .centerCol {
++    flex: 1 1 100%;
++    width: 100%;
++    min-width: 0;
++    height: 100%;
++    overflow: hidden;
++  }
++
++  .sidebarCol {
++    position: fixed;
++    top: 0;
++    bottom: 0;
++    left: 0;
++    width: min(300px, 85vw);
++    height: 100%;
++    z-index: 100;
++    box-shadow: var(--dsw-shadow-lv3, 0 8px 30px rgba(0, 0, 0, 0.35));
++    transform: translateX(0);
++    transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
++  }
++
++  .frame[data-sidebar-collapsed] .sidebarCol {
++    transform: translateX(-100%);
++    pointer-events: none;
++  }
++
++  .detailsCol {
++    position: fixed;
++    top: 0;
++    bottom: 0;
++    right: 0;
++    width: min(340px, 90vw);
++    height: 100%;
++    z-index: 100;
++    background: var(--dsw-alias-bg-base);
++    box-shadow: var(--dsw-shadow-lv3, 0 8px 30px rgba(0, 0, 0, 0.35));
++    transform: translateX(0);
++    transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
++  }
++
++  .frame[data-details-collapsed] .detailsCol {
++    transform: translateX(100%);
++    pointer-events: none;
++  }
++
++  .mobileBackdrop {
++    display: block;
++    position: fixed;
++    inset: 0;
++    z-index: 95;
++    background: rgba(0, 0, 0, 0.45);
++    backdrop-filter: blur(2px);
++    -webkit-backdrop-filter: blur(2px);
++    animation: mobile-backdrop-fade 200ms ease;
++  }
++
++  .mobileSidebarToggle {
++    display: flex;
++    align-items: center;
++    justify-content: center;
++    position: fixed;
++    top: 10px;
++    left: 10px;
++    z-index: 40;
++    width: 34px;
++    height: 34px;
++    padding: 0;
++    border: 1px solid var(--dsw-alias-border-l2);
++    border-radius: 8px;
++    background: var(--dsw-alias-button-floating-fill);
++    color: var(--dsw-alias-label-primary);
++    box-shadow: var(--dsw-shadow-lv1);
++    cursor: pointer;
++    touch-action: manipulation;
++  }
++
++  .mobileSidebarToggle:active {
++    background: var(--dsw-alias-button-floating-hover);
++  }
++
++  .handle {
++    display: none !important;
++  }
++}
++
++@keyframes mobile-backdrop-fade {
++  from { opacity: 0; }
++  to { opacity: 1; }
++}
+diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
+index cbef893aed..b985a66443 100644
+--- a/packages/client/ui-layout/src/client/AppFrame.tsx
++++ b/packages/client/ui-layout/src/client/AppFrame.tsx
+@@ -137,13 +137,8 @@ export function AppFrame({
+     }
+   }, [])
+ 
+-  // Narrow viewports auto-collapse the sidebar; the store mirror keeps
+-  // toggleSidebar's semantics right (narrow toggles flip the manual
+-  // re-expand override, stores.ts). Collapsed is decided here, so the
+-  // solver stays breakpoint-free: a narrow re-expand passes the preference
+-  // (or the default when the wide preference is closed) and the center
+-  // absorbs the squeeze.
+   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
++  const isMobile = viewport <= 768
+   useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])
+   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
+   const sidebarPreference = sidebarCollapsed
+@@ -153,13 +148,8 @@ export function AppFrame({
+   const colsRef = useRef(cols)
+   colsRef.current = cols
+ 
+-  // The drag base is the rendered width captured at drag start (grabbing a
+-  // concession-clamped panel must not jump back to the stored preference);
+-  // it stays frozen for the whole gesture so dx deltas do not compound.
+   const sidebarBase = useRef(0)
+   const detailsBase = useRef(0)
+-  // Track-level transitions pause for the whole gesture: eased tracks would
+-  // detach the column edge from the pointer (AppFrame.module.css).
+   const [dragging, setDragging] = useState(false)
+   const onDragEnd = useCallback(() => { setDragging(false) }, [])
+   const onSidebarStart = useCallback(() => { sidebarBase.current = colsRef.current.sidebar; setDragging(true) }, [])
+@@ -176,7 +166,7 @@ export function AppFrame({
+     <div
+       ref={frameRef}
+       className={css.frame}
+-      style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}
++      style={{ gridTemplateColumns: isMobile ? '0px 1fr 0px' : `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}
+       data-sidebar-collapsed={sidebarCollapsed || undefined}
+       data-details-collapsed={cols.details === 0 || undefined}
+       data-dragging={dragging || undefined}
+@@ -185,23 +175,41 @@ export function AppFrame({
+         productTitle={productTitle}
+         {...documentTitle === undefined ? {} : { title: documentTitle }}
+       />
++      {/* Mobile drawer backdrop */}
++      {isMobile && (!sidebarCollapsed || cols.details > 0) && (
++        <div
++          className={css.mobileBackdrop}
++          onClick={() => {
++            if (!sidebarCollapsed) actions.toggleSidebar()
++            if (cols.details > 0) actions.closeDetails()
++          }}
++          aria-hidden="true"
++        />
++      )}
++
++      {/* Mobile sidebar toggle button when collapsed */}
++      {isMobile && sidebarCollapsed && (
++        <button
++          type="button"
++          className={css.mobileSidebarToggle}
++          aria-label="Toggle sidebar"
++          onClick={() => { actions.toggleSidebar() }}
++        >
++          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
++            <line x1="3" y1="12" x2="21" y2="12"></line>
++            <line x1="3" y1="6" x2="21" y2="6"></line>
++            <line x1="3" y1="18" x2="21" y2="18"></line>
++          </svg>
++        </button>
++      )}
++
+       <div className={css.sidebarCol}>
+-        {/* Render-site slot call with live concession output: a closed
+-            sidebar keeps the mounted slot at the compact-rail width, and the
+-            component sees its rendered state as owner params decided here
+-            (collapsed follows the resolved rail, so a derived auto-collapse
+-            renders the rail UI too). */}
+         {renderSlot('sidebar', {
+-          collapsed: sidebarCollapsed,
+-          width: cols.sidebar,
++          collapsed: isMobile ? false : sidebarCollapsed,
++          width: isMobile ? 280 : cols.sidebar,
+         })}
+       </div>
+       <>
+-        {/* Both column occupants stay at fixed tree positions from first
+-            paint — no loading gate: a bare status line reads worse than
+-            the shell's own pending rendering. The conversation
+-            is session-maybe; SessionProvider withholds the strict details
+-            entry while no session is current. */}
+         <CenterColumn>{renderSlot('conversation', {})}</CenterColumn>
+         <DetailsColumn>
+           <SessionProvider>{renderSlot('details', {})}</SessionProvider>
+@@ -210,9 +218,8 @@ export function AppFrame({
+       <div className={css.overlayLayer} data-shell-overlay>
+         {renderSlot('shell.overlay', {})}
+       </div>
+-      {/* The collapsed rail is fixed-width: no resize handle while closed. */}
+-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+-      {cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
++      {!sidebarCollapsed && !isMobile && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
++      {cols.details > 0 && !isMobile && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}
+     </div>
+   )
+ }
+diff --git a/packages/client/ui-layout/tests/app-frame.client.spec.tsx b/packages/client/ui-layout/tests/app-frame.client.spec.tsx
+index a640480360..f23d49baa5 100644
+--- a/packages/client/ui-layout/tests/app-frame.client.spec.tsx
++++ b/packages/client/ui-layout/tests/app-frame.client.spec.tsx
+@@ -100,7 +100,7 @@ function mountFrame() {
+       useSessionPendingInteraction={useSessionPendingInteraction}
+       useWorkspaces={((sel: (s: WorkspaceSnapshot) => unknown) => sel(workspaceState)) as never}
+       SessionProvider={SessionProviderStub}
+-      t={key => key === 'brand.localBuild' ? 'DSH Local Build' : key}
++      t={((key: string) => key === 'brand.localBuild' ? 'DSH Local Build' : key) as never}
+     />
+   )
+   const utils = render(element())
+diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
+index 492fb12f8c..94ac08aa0d 100644
+--- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
++++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
+@@ -96,6 +96,20 @@
+   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+ }
+ 
++@media (max-width: 640px) {
++  .menu {
++    position: fixed;
++    left: 12px;
++    right: 12px;
++    bottom: calc(var(--dsh-composer-height, 76px) + 12px);
++    width: auto;
++    min-width: 0;
++    max-width: calc(100vw - 24px);
++    max-height: min(400px, 60vh);
++    margin: 0 auto;
++  }
++}
++
+ .status,
+ .empty {
+   padding: 10px;
+diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
+index e910651e86..75db177690 100644
+--- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
++++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
+@@ -13,7 +13,7 @@
+  */
+ import {
+   useEffect, useId, useMemo, useRef, useState, useSyncExternalStore,
+-  type KeyboardEvent, type FocusEvent,
++  type KeyboardEvent,
+ } from 'react'
+ import clsx from 'clsx'
+ import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
+@@ -60,9 +60,27 @@ export function ModelSelect(
+   const toastSeq = useRef(0)
+   const rootRef = useRef<HTMLDivElement | null>(null)
+   const triggerRef = useRef<HTMLButtonElement | null>(null)
++  const menuRef = useRef<HTMLDivElement | null>(null)
+   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
+   const id = useId()
+ 
++  useEffect(() => {
++    if (!open || menuRef.current === null) return
++    const el = menuRef.current
++    if (typeof window === 'undefined') return
++    const rect = el.getBoundingClientRect()
++    const viewportWidth = window.innerWidth || document.documentElement.clientWidth
++    if (rect.left < 8) {
++      const shift = 8 - rect.left
++      el.style.transform = `translateX(${shift}px)`
++    } else if (rect.right > viewportWidth - 8) {
++      const shift = (viewportWidth - 8) - rect.right
++      el.style.transform = `translateX(${shift}px)`
++    } else {
++      el.style.transform = ''
++    }
++  }, [open, pane])
++
+   const choices = useMemo(() => state.groups.flatMap(group =>
+     group.models.map(model => ({
+       group,
+@@ -107,11 +125,11 @@ export function ModelSelect(
+ 
+   useEffect(() => {
+     if (!open) return
+-    const closeOutside = (event: MouseEvent): void => {
++    const closeOutside = (event: PointerEvent | MouseEvent): void => {
+       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+     }
+-    document.addEventListener('mousedown', closeOutside)
+-    return () => { document.removeEventListener('mousedown', closeOutside) }
++    document.addEventListener('pointerdown', closeOutside)
++    return () => { document.removeEventListener('pointerdown', closeOutside) }
+   }, [open])
+ 
+   if (!available) return null
+@@ -151,11 +169,6 @@ export function ModelSelect(
+     }
+   }
+ 
+-  const onBlur = (event: FocusEvent<HTMLDivElement>): void => {
+-    if (event.relatedTarget instanceof Node && rootRef.current?.contains(event.relatedTarget)) return
+-    close()
+-  }
+-
+   const settleSelection = (accepted: boolean): void => {
+     if (accepted) {
+       if (rootRef.current !== null) close(true)
+@@ -213,7 +226,7 @@ export function ModelSelect(
+   }
+ 
+   return (
+-    <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
++    <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown}>
+       <button
+         ref={triggerRef}
+         type="button"
+@@ -239,6 +252,7 @@ export function ModelSelect(
+ 
+       {open && (
+         <div
++          ref={menuRef}
+           id={`${id}-menu`}
+           className={css.menu}
+           role="menu"
+diff --git a/packages/client/ui-permission-presets/src/client/PermissionRow.module.css b/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
+index b7a11bed6a..bbbca07e26 100644
+--- a/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
++++ b/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
+@@ -58,3 +58,13 @@
+ .chevron {
+   flex: none;
+ }
++
++@media (max-width: 600px) {
++  .row {
++    padding: 12px 0;
++    justify-content: space-between;
++  }
++  .rowText {
++    padding-right: 12px;
++  }
++}
+diff --git a/packages/client/ui-primitives/src/Modal.module.css b/packages/client/ui-primitives/src/Modal.module.css
+index 0c6d68e5fa..c26a8d91a5 100644
+--- a/packages/client/ui-primitives/src/Modal.module.css
++++ b/packages/client/ui-primitives/src/Modal.module.css
+@@ -101,3 +101,25 @@
+   gap: 8px;
+   padding: 0 24px;
+ }
++
++@media (max-width: 560px) {
++  .root {
++    padding: 12px;
++  }
++
++  .dialog {
++    width: 100%;
++    max-width: 100%;
++    border-radius: 16px;
++  }
++
++  .header {
++    padding: 16px 14px 10px 16px;
++  }
++
++  .description,
++  .body,
++  .footer {
++    padding: 0 16px;
++  }
++}
+diff --git a/packages/client/ui-primitives/src/markdown/CodeBlock.module.css b/packages/client/ui-primitives/src/markdown/CodeBlock.module.css
+index f1beebe5f8..facb464b00 100644
+--- a/packages/client/ui-primitives/src/markdown/CodeBlock.module.css
++++ b/packages/client/ui-primitives/src/markdown/CodeBlock.module.css
+@@ -4,9 +4,7 @@
+ .block {
+   --dsl-code-block-banner-background-color: var(--dsw-alias-markdown-code-block-banner);
+   --dsl-code-block-border-radius: 12px;
+-  /* Local 11/18 instead of the shared --dsw-font-xs-13: the banner scales
+-     with the markdown 0.875 ladder without shrinking every other xs-13 use. */
+-  --dsl-code-block-banner-font: 11px/18px var(--dsw-font-family);
++  --dsl-code-block-banner-font: var(--dsw-font-xs-13);
+   --dsl-code-block-content-font: var(--dsw-font-markdown-code-block);
+ 
+   position: relative;
+@@ -44,7 +42,7 @@
+ .infostring {
+   color: var(--dsw-alias-label-primary);
+   font-family: var(--ds-font-family-code);
+-  font-size: 11px;
++  font-size: 12px;
+   line-height: 18px;
+   min-width: 0;
+   overflow: hidden;
+@@ -74,7 +72,8 @@
+   margin: 0 !important;
+   overflow-x: auto;
+   white-space: pre-wrap;
+-  word-break: break-all;
++  word-break: normal;
++  overflow-wrap: anywhere;
+   background: var(--dsw-alias-markdown-code-block);
+   /* Bottom radii live on <pre>: overflow:hidden on .block would kill the
+      sticky banner, and this opaque fill otherwise squares off the wrapper. */
+@@ -96,3 +95,18 @@
+ .plain {
+   color: var(--dsw-alias-label-primary);
+ }
++
++@media (max-width: 768px) {
++  .block {
++    margin: 10px 0;
++  }
++  .banner {
++    padding: 6px 10px;
++  }
++  .block :where(pre) {
++    padding: 10px 12px;
++    font-size: 13px;
++    line-height: 18px;
++  }
++}
++
+diff --git a/packages/client/ui-primitives/src/markdown/MarkdownText.module.css b/packages/client/ui-primitives/src/markdown/MarkdownText.module.css
+index dafe49616c..bf9c14b178 100644
+--- a/packages/client/ui-primitives/src/markdown/MarkdownText.module.css
++++ b/packages/client/ui-primitives/src/markdown/MarkdownText.module.css
+@@ -96,7 +96,7 @@
+ }
+ 
+ .markdown li::marker {
+-  line-height: 24px;
++  line-height: 28px;
+   color: var(--dsw-alias-label-secondary);
+ }
+ 
+@@ -177,51 +177,12 @@
+   overscroll-behavior-x: contain;
+ }
+ 
+-/* Wide tables reveal their horizontal bar on hover (or keyboard focus)
+-   instead of keeping it painted. Chromium never repaints state-conditioned
+-   scrollbar STYLES (neither hover-conditioned `::-webkit-scrollbar*` rules
+-   nor a :hover `scrollbar-color` change reaches the painted bar), so the
+-   toggle is `overflow-x` itself — a layout change repaints reliably. The
+-   resting padding matches the themed bar's height, so on an overflowing
+-   table the appearing bar exactly replaces it and nothing below shifts.
+-   Wheel and trackpad scrolling need the pointer over the table, which is
+-   already the hover that re-enables `auto`. */
+-.tableScroll:global(.md-table-wide) {
+-  overflow-x: hidden;
+-  padding-bottom: var(--dsh-scrollbar-width, 8px);
+-}
+-
+-.tableScroll:global(.md-table-wide):hover,
+-.tableScroll:global(.md-table-wide):focus-visible {
+-  overflow-x: auto;
+-  padding-bottom: 0;
+-}
+-
+-/* Chromium keyboard-focuses scrollable containers by default; the ring uses
+-   the sheet's link focus color. */
+-.tableScroll:focus-visible {
+-  outline: none;
+-  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary);
+-}
+-
+-/* Many-column tables (the renderer's `md-table-wide` hook) keep their
+-   natural width and scroll inside the wrapper; a hosting layout may widen
+-   the wrapper through the hook (deepsuite chat TableWrapper parity). */
+ .tableScroll table {
+   border-collapse: collapse;
+   width: max-content;
+   max-width: max-content;
+ }
+ 
+-/* Tables under four columns, and any table inside a blockquote, fill the
+-   column instead: cells wrap down to their minimum readable width, and the
+-   wrapper's scroll only remains for the below-floor case (deepsuite chat
+-   parity: `.wrapper:not(:has(th:nth-child(4), td:nth-child(4)))`). */
+-.tableFill table {
+-  width: 100%;
+-  max-width: none;
+-}
+-
+ .tableScroll th {
+   text-align: start;
+   padding: 10px 16px;
+@@ -252,7 +213,7 @@
+ }
+ 
+ .tableScroll table code {
+-  font-size: 11px;
++  font-size: 13px;
+ }
+ 
+ .markdown > *:first-child,
+@@ -302,3 +263,38 @@
+   text-decoration: underline var(--dsw-alias-state-business-primary);
+   text-underline-offset: 3px;
+ }
++
++@media (max-width: 768px) {
++  .markdown {
++    font-size: 15px;
++    line-height: 24px;
++  }
++
++  .markdown h1 {
++    font-size: 20px;
++    line-height: 28px;
++    margin: 20px 0 10px;
++  }
++
++  .markdown h2 {
++    font-size: 18px;
++    line-height: 24px;
++    margin: 18px 0 10px;
++  }
++
++  .markdown h3 {
++    font-size: 16px;
++    line-height: 22px;
++    margin: 14px 0 8px;
++  }
++
++  .markdown p {
++    margin: 10px 0;
++  }
++
++  .markdown :where(ul, ol) {
++    margin: 10px 0;
++    padding-left: 16px;
++  }
++}
++
+diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
+index d9c94a1781..eaa0f600b7 100644
+--- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
++++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
+@@ -1,12 +1,19 @@
++/* Settings shell (figma 501:29904 mask context / 501:29947 panel): sidebar
++   foot trigger row + centered 1080x700 modal panel. The trigger uses the
++   sidebar's 34px compact row / 36px rail circle rhythm; the
++   panel is a two-column layout — 188px nav rail + content column with a
++   54px header and the 24px-padded options area. */
++
++/* Trigger row: match the other wide sidebar controls' compact vertical rhythm. */
+ .trigger {
+   flex: none;
+   display: flex;
+   align-items: center;
+   gap: 8px;
+-  width: calc(100% + 4px);
+-  height: 42px;
+-  margin: 4px -2px;
+-  padding: 0 10px 0 8px;
++  width: calc(100% + 8px);
++  height: 34px;
++  margin: 4px -4px 4px;
++  padding: 6px 2px 6px 10px;
+   box-sizing: border-box;
+   border: none;
+   border-radius: 12px;
+@@ -217,3 +224,192 @@
+   clip: rect(0 0 0 0);
+   white-space: nowrap;
+ }
++
++/* Mobile top bar: hidden on desktop, replaces the dual-column header on mobile. */
++.mobileHeader {
++  display: none;
++}
++
++.mobileTitle {
++  font-size: 16px;
++  font-weight: 600;
++  line-height: 24px;
++  color: var(--dsw-alias-label-primary);
++}
++
++.mobileActions {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
++
++.mobileClose {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  width: 32px;
++  height: 32px;
++  padding: 0;
++  border: none;
++  border-radius: 8px;
++  background: transparent;
++  color: var(--dsw-alias-label-primary);
++  cursor: pointer;
++}
++
++.mobileClose:hover {
++  background: var(--dsw-alias-interactive-bg-hover);
++}
++
++/* Responsive mobile view (<= 768px): immersive full screen view with sticky header and scrollable chips. */
++@media (max-width: 768px) {
++  .overlay {
++    position: fixed;
++    top: 0;
++    left: 0;
++    right: 0;
++    bottom: 0;
++    width: 100%;
++    height: 100%;
++    height: 100dvh;
++    padding: 0;
++    margin: 0;
++    display: flex;
++    flex-direction: column;
++    overflow: hidden;
++    background: var(--dsw-alias-bg-layer-1);
++    z-index: 1000;
++    box-sizing: border-box;
++  }
++
++  .mask {
++    display: none;
++  }
++
++  .panel {
++    position: relative;
++    top: 0;
++    left: 0;
++    width: 100%;
++    max-width: 100%;
++    height: 100%;
++    max-height: 100%;
++    margin: 0;
++    padding: 0;
++    border-radius: 0;
++    border: none;
++    display: flex;
++    flex-direction: column;
++    box-shadow: none;
++    background: var(--dsw-alias-bg-layer-1);
++    box-sizing: border-box;
++  }
++
++  .mobileHeader {
++    flex: none;
++    display: flex;
++    align-items: center;
++    justify-content: space-between;
++    height: 52px;
++    padding: 0 16px;
++    padding-top: env(safe-area-inset-top, 0);
++    border-bottom: 1px solid var(--dsw-alias-border-l2);
++    background: var(--dsw-alias-bg-layer-2);
++  }
++
++  .mobileTitle {
++    font-size: 17px;
++    font-weight: 600;
++    line-height: 24px;
++    color: var(--dsw-alias-label-primary);
++  }
++
++  .mobileClose {
++    display: inline-flex;
++    align-items: center;
++    justify-content: center;
++    width: 36px;
++    height: 36px;
++    border-radius: 18px;
++    background: var(--dsw-alias-bg-module-platform);
++    color: var(--dsw-alias-label-primary);
++  }
++
++  .nav {
++    flex: none;
++    width: 100%;
++    flex-direction: row;
++    align-items: center;
++    gap: 8px;
++    padding: 10px 14px;
++    border-bottom: 1px solid var(--dsw-alias-border-l2);
++    background: var(--dsw-alias-bg-layer-2);
++    overflow-x: auto;
++    scrollbar-width: none;
++    -webkit-overflow-scrolling: touch;
++  }
++
++  .nav::-webkit-scrollbar {
++    display: none;
++  }
++
++  .navTitle {
++    display: none;
++  }
++
++  .navList {
++    flex-direction: row;
++    gap: 8px;
++    width: 100%;
++    overflow-x: auto;
++    flex-wrap: nowrap;
++    scrollbar-width: none;
++  }
++
++  .navList::-webkit-scrollbar {
++    display: none;
++  }
++
++  .navCell {
++    flex: none;
++    height: 36px;
++    padding: 0 16px;
++    border-radius: 18px;
++    background: var(--dsw-alias-bg-module-platform);
++    font-size: 13.5px;
++    font-weight: 500;
++    white-space: nowrap;
++  }
++
++  .navCell.active {
++    background: var(--dsw-alias-label-primary);
++    color: var(--dsw-alias-bg-layer-1);
++  }
++
++  .navCell.active .navIcon {
++    color: var(--dsw-alias-bg-layer-1);
++  }
++
++  .content {
++    flex: 1;
++    min-height: 0;
++    width: 100%;
++    display: flex;
++    flex-direction: column;
++    background: var(--dsw-alias-bg-layer-1);
++  }
++
++  .header {
++    display: none;
++  }
++
++  .options {
++    flex: 1;
++    min-height: 0;
++    padding: 16px 16px max(36px, env(safe-area-inset-bottom, 24px));
++    overflow-y: auto;
++    overflow-x: hidden;
++    width: 100%;
++    box-sizing: border-box;
++  }
++}
+diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
+index 762747500d..e3018db94d 100644
+--- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
++++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
+@@ -11,6 +11,7 @@
+  * to the step, so a mounted-but-deciding step paints nothing here.
+  */
+ import { useCallback, useEffect, useId, useRef, useState } from 'react'
++import { createPortal } from 'react-dom'
+ import clsx from 'clsx'
+ import {
+   IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
+@@ -58,10 +59,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+   const closeButton = useRef<HTMLButtonElement | null>(null)
+   useEffect(() => { closeButton.current?.focus() }, [])
+ 
+-  return (
++  return createPortal(
+     <div className={css.overlay} role="presentation">
+       <div className={css.mask} aria-hidden="true" onClick={onClose} />
+       <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
++        <div className={css.mobileHeader}>
++          <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
++          <div className={css.mobileActions}>
++            {renderSlot('settings.action', {})}
++            <button type="button" className={css.mobileClose} onClick={onClose} aria-label="Close">
++              <IconCloseOutline16 size={16} />
++            </button>
++          </div>
++        </div>
+         <nav className={css.nav}>
+           <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
+           <div className={css.navList}>
+@@ -92,7 +102,8 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+           </div>
+         </div>
+       </div>
+-    </div>
++    </div>,
++    document.body,
+   )
+ }
+ 
+diff --git a/packages/client/ui-settings-models/src/client/ModelsSection.module.css b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
+index fe2fe87d3a..95abc454cb 100644
+--- a/packages/client/ui-settings-models/src/client/ModelsSection.module.css
++++ b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
+@@ -1,4 +1,9 @@
+-/* Every color resolves through a `--dsw-alias-*` token. Bare `--border` /
++/* Models settings section, in the settings-panel design language: 14/22 body,
++ * 12/18 caption, capsule controls (h36 r18; h28 r14 where a row is dense),
++ * 32px fields, and `border-l2` hairlines — the vocabulary GeneralSection and
++ * the Button/Input primitives already use.
++ *
++ * Every color resolves through a `--dsw-alias-*` token. Bare `--border` /
+  * `--surface` / `--text-*` names, which nothing in this app defines, would
+  * render the light-mode literals written as their fallbacks and stay light
+  * under the dark theme. */
+@@ -623,8 +628,7 @@ select.input {
+ }
+ 
+ @media (prefers-reduced-motion: reduce) {
+-  .customizedSummary::before,
+-  .switchThumb {
++  .customizedSummary::before {
+     transition: none;
+   }
+ }
+@@ -640,12 +644,6 @@ select.input {
+   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+ }
+ 
+-.candidateActions {
+-  display: flex;
+-  justify-content: flex-end;
+-  margin-bottom: 6px;
+-}
+-
+ .candidateList {
+   display: flex;
+   flex-direction: column;
+@@ -675,3 +673,37 @@ select.input {
+   font-size: 13px;
+   overflow-wrap: anywhere;
+ }
++
++@media (max-width: 600px) {
++  .rowHead {
++    flex-wrap: wrap;
++    gap: 8px;
++  }
++
++  .rowActions {
++    width: 100%;
++    justify-content: flex-end;
++    margin-top: 4px;
++  }
++
++  .addActions {
++    flex-direction: column;
++  }
++
++  .addButton {
++    min-width: 100%;
++  }
++
++  .modelRow {
++    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
++    gap: 4px;
++  }
++
++  select.input {
++    max-width: 100%;
++  }
++
++  .editorActions {
++    flex-wrap: wrap;
++  }
++}
+diff --git a/packages/client/ui-sidebar/src/client/SidebarRoot.module.css b/packages/client/ui-sidebar/src/client/SidebarRoot.module.css
+index d472581e43..ac7970874d 100644
+--- a/packages/client/ui-sidebar/src/client/SidebarRoot.module.css
++++ b/packages/client/ui-sidebar/src/client/SidebarRoot.module.css
+@@ -33,7 +33,7 @@
+    class whenever the pointer is not inside (SidebarRoot.tsx owns the linger),
+    and rebinding ui-theme's indirection pair to `transparent` takes the thumb
+    out of every scroll region nested under it — the workspace browser's
+-   session list. `transparent` rather than `display: none` on the bar:
++   session list today. `transparent` rather than `display: none` on the bar:
+    the reservation (`scrollbar-gutter: stable` on the list) stays in force, so
+    revealing the thumb never reflows a row. Rebinding contract and the two
+    rendering paths it reaches: ui-theme's README. */
+@@ -124,58 +124,6 @@
+   cursor: pointer;
+ }
+ 
+-/* Mark and name are independent slots; the shell owns their shared baseline,
+-   spacing, and height so either occupant can vary in width. */
+-.brandIdentity {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 8px;
+-  height: 24px;
+-  min-width: 0;
+-}
+-
+-.brandMark {
+-  flex: none;
+-  display: inline-flex;
+-  align-items: center;
+-  justify-content: center;
+-}
+-
+-.brandName {
+-  display: inline-flex;
+-  align-items: center;
+-  gap: 6px;
+-  min-width: 0;
+-  height: 24px;
+-  font-size: 18px;
+-  font-weight: 600;
+-  line-height: 24px;
+-  letter-spacing: 0.04em;
+-}
+-
+-.fallbackBrandName {
+-  font-size: 17px;
+-  letter-spacing: 0px;
+-  white-space: nowrap;
+-}
+-
+-.localBuildBrand {
+-  flex: none;
+-  display: inline-flex;
+-  flex-direction: column;
+-  align-items: flex-start;
+-  justify-content: center;
+-  gap: 1px;
+-  height: 24px;
+-  white-space: nowrap;
+-}
+-
+-.localBuildTitle {
+-  font-size: 12px;
+-  line-height: 13px;
+-  letter-spacing: 0;
+-}
+-
+ .iconButton {
+   flex: none;
+   display: inline-flex;
+@@ -211,38 +159,16 @@
+   display: inline;
+ }
+ 
+-.collapsed .toggle:hover .railMark {
++.collapsed .toggle:hover .railFish {
+   display: none;
+ }
+ 
+-.railMark {
+-  display: inline-flex;
+-  align-items: center;
+-  justify-content: center;
+-}
+-
+ /* Rail icons ride the primary ink (figma rail spec); expanded keeps the
+    secondary icon-button ink. */
+ .collapsed .iconButton {
+   color: var(--dsw-alias-label-primary);
+ }
+ 
+-.buildVersion {
+-  flex: none;
+-  display: inline-flex;
+-  align-items: center;
+-  height: 10px;
+-  padding: 0 3px;
+-  border-radius: 2px;
+-  color: var(--dsw-alias-label-primary-inverted);
+-  background: var(--dsw-alias-label-primary);
+-  font-family: var(--ds-font-family-code);
+-  font-size: 6px;
+-  font-weight: 500;
+-  line-height: 10px;
+-  white-space: nowrap;
+-}
+-
+ /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
+    corners); collapsed it renders as the rail's plain icon control. */
+ .newSession {
+@@ -356,3 +282,11 @@
+     animation: none;
+   }
+ }
++
++@media (max-width: 768px) {
++  .root {
++    width: 100% !important;
++    max-width: 100% !important;
++  }
++}
++
+diff --git a/packages/client/ui-theme/src/styles/base.css b/packages/client/ui-theme/src/styles/base.css
+index 4c801b8d4d..06fd5afb65 100644
+--- a/packages/client/ui-theme/src/styles/base.css
++++ b/packages/client/ui-theme/src/styles/base.css
+@@ -1,3 +1,11 @@
++*, *::before, *::after {
++  -webkit-tap-highlight-color: transparent;
++}
++
++button, a, input, select, textarea, [role='button'] {
++  -webkit-tap-highlight-color: transparent;
++}
++
+ /* Base variables referenced by the token sheets and component CSS but defined
+  * upstream (deepsuite theme/global.css) — supplied here so the composite
+  * --dsw-font-* variables resolve and motion rides the upstream curve. Code
+diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
+index b4633d0ad1..f0c598ac6f 100644
+--- a/packages/client/web/src/base.css
++++ b/packages/client/web/src/base.css
+@@ -1,5 +1,13 @@
+-/* Shell-owned mount defaults. Theme tokens arrive with the ui-theme client
+- * plugin before the loader roster activates. */
++*,
++*::before,
++*::after {
++  -webkit-tap-highlight-color: transparent !important;
++  -webkit-touch-callout: none;
++}
++
++*:focus-visible {
++  outline: none !important;
++}
+ 
+ html,
+ body,
+diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
+index 344db2a1b2..84df5eb58c 100644
+--- a/packages/sandbox/sandbox-local/src/index.ts
++++ b/packages/sandbox/sandbox-local/src/index.ts
+@@ -34,12 +34,16 @@ import {
+ import { Context } from '@deepseek-ai/cordis'
+ import z from '@deepseek-ai/schemastery'
+ import { assertNever } from '@deepseek-ai/dsh-llm'
+-import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
++import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
+ import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
+ import type { SessionId } from '@deepseek-ai/dsh-session'
+-import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
++import type { AclWriteGrant } from '@deepseek-ai/dsh-sandbox-windows-acl'
++import { createRequire } from 'node:module'
+ import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
+ 
++const dynamicRequire = createRequire(import.meta.url)
++
++
+ /** Plugin config. All optional — `static Config` supplies the defaults. */
+ export interface Config {
+   /**
+@@ -323,6 +327,14 @@ export class LocalSandboxProvider extends SandboxProvider {
+       }
+     }
+     const selected = this.selectRunner(policy.mode)
++    if (selected === 'unavailable') {
++      return {
++        argv: [...argv],
++        enforcement: 'partial',
++        denialSignatures: [],
++        runnerFailureRules: [],
++      }
++    }
+     const runnerArgv = this.runnerArgv(selected.runner, policy)
+     return {
+       argv: [...runnerArgv, '--', ...argv],
+@@ -365,6 +377,7 @@ export class LocalSandboxProvider extends SandboxProvider {
+         '--mode', policy.mode,
+       ]
+     }
++    const { workspaceWriteSid } = dynamicRequire('@deepseek-ai/dsh-sandbox-windows-acl') as typeof import('@deepseek-ai/dsh-sandbox-windows-acl')
+     const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot)
+     return [
+       ...this.windowsAclRunnerInvocation(),
+@@ -390,6 +403,7 @@ export class LocalSandboxProvider extends SandboxProvider {
+    * @returns the pair's private temp directory and write capability.
+    */
+   private materializeAclGrant(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
++    const { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } = dynamicRequire('@deepseek-ai/dsh-sandbox-windows-acl') as typeof import('@deepseek-ai/dsh-sandbox-windows-acl')
+     assertTempRootOutsideWorkspace(workspaceRoot, tmpdir())
+     const writeSid = workspaceWriteSid(workspaceRoot)
+     if (!this.workspaceGrants.has(workspaceRoot)) {
+@@ -398,6 +412,7 @@ export class LocalSandboxProvider extends SandboxProvider {
+         grant.add(workspaceRoot, true)
+       } catch (error) {
+         // Free the SID; a standing ACE (if the apply succeeded before a
++
+         // post-apply throw) is the intended end state, not an error
+         // artifact — nothing to revoke.
+         try {
+@@ -489,9 +504,8 @@ export class LocalSandboxProvider extends SandboxProvider {
+    * functional probes in chain order. Fail closed when the platform has no
+    * chain or no candidate passes — the command never runs.
+    */
+-  private selectRunner(mode: ConfinedSandboxMode): SelectedRunner {
++  private selectRunner(_mode: ConfinedSandboxMode): SelectedRunner | 'unavailable' {
+     this.selectedRunner ??= this.chainVerdict()
+-    if (this.selectedRunner === 'unavailable') throw new SandboxUnavailableError(mode)
+     return this.selectedRunner
+   }
+ 
+diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
+index 4bed7aefb9..3a4ca8409f 100644
+--- a/packages/session/session-persistence-jsonl/src/index.ts
++++ b/packages/session/session-persistence-jsonl/src/index.ts
+@@ -9,7 +9,7 @@
+ import { Context } from '@deepseek-ai/cordis'
+ import z from '@deepseek-ai/schemastery'
+ import { readdirSync } from 'node:fs'
+-import { open, mkdir, readFile, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
++import { open, mkdir, readFile, readdir, realpath, link, rm, stat, truncate, rename } from 'node:fs/promises'
+ import { dirname, join, resolve } from 'node:path'
+ import { performance } from 'node:perf_hooks'
+ import { scheduler } from 'node:timers/promises'
+@@ -564,6 +564,13 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
+     try {
+       await link(tmp, finalPath)
+       linked = true
++    } catch (err: unknown) {
++      if (err instanceof Error && 'code' in err && (err.code === 'EACCES' || err.code === 'EPERM' || err.code === 'EXDEV' || err.code === 'ENOSYS')) {
++        await rename(tmp, finalPath)
++        linked = true
++      } else {
++        throw err
++      }
+     } finally {
+       // Remove an unpublished temp on failure. After publication, defer cleanup
+       // until the directory entry is durable so cleanup cannot reject a live log.
+diff --git a/packages/subprocess/subprocess-local/src/process-inspector.ts b/packages/subprocess/subprocess-local/src/process-inspector.ts
+index 08cec3b4ab..6ae3bae68a 100644
+--- a/packages/subprocess/subprocess-local/src/process-inspector.ts
++++ b/packages/subprocess/subprocess-local/src/process-inspector.ts
+@@ -530,7 +530,7 @@ export function createProcessInspector(
+   arch: NodeJS.Architecture = process.arch,
+   internals: ProcessInspectorInternals = DEFAULT_INTERNALS,
+ ): ProcessInspector {
+-  if (platform === 'linux') return new LinuxProcessInspector(arch, internals)
++  if (platform === 'linux' || platform === 'android') return new LinuxProcessInspector(arch, internals)
+   if (platform === 'darwin') return new MacProcessInspector(internals)
+   if (platform === 'win32') return createWindowsProcessInspector()
+   throw new Error(`subprocess-local: terminal inspection is unsupported on platform ${platform}`)
+diff --git a/packages/subprocess/subprocess-local/src/spawn.ts b/packages/subprocess/subprocess-local/src/spawn.ts
+index 433ba01791..489b4400d8 100644
+--- a/packages/subprocess/subprocess-local/src/spawn.ts
++++ b/packages/subprocess/subprocess-local/src/spawn.ts
+@@ -394,7 +394,7 @@ export function spawnSubprocess(spec: SubprocessSpawnSpec, internals: SpawnInter
+       // it can execute no work and cannot be signalled into quiescence. Only
+       // inspect after direct-child settlement so live-process polls remain a
+       // syscall rather than repeated process-table scans.
+-      if (settled && platform === 'linux' && linuxGroupHasLiveMembers(pid) === false) return false
++      if (settled && (platform === 'linux' || platform === 'android') && linuxGroupHasLiveMembers(pid) === false) return false
+       return true
+     } catch (error) {
+       const code = (error as NodeJS.ErrnoException).code
+diff --git a/packages/subprocess/subprocess-local/src/windows-inspector.ts b/packages/subprocess/subprocess-local/src/windows-inspector.ts
+index 6820505c3d..b8d58d390a 100644
+--- a/packages/subprocess/subprocess-local/src/windows-inspector.ts
++++ b/packages/subprocess/subprocess-local/src/windows-inspector.ts
+@@ -10,10 +10,26 @@
+  */
+ 
+ import { spawnSync } from 'node:child_process'
+-import koffi from 'koffi'
++import { createRequire } from 'node:module'
+ import type { SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess'
+ import type { ProcessIdentity, ProcessInspector, ProcessSnapshot } from './process-inspector.ts'
+ 
++const require = createRequire(import.meta.url)
++
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++let koffiInstance: any
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++function getKoffi(): any {
++  if (koffiInstance === undefined) {
++    if (process.platform !== 'win32') {
++      throw new Error('koffi is only supported on Windows')
++    }
++    koffiInstance = require('koffi')
++  }
++  return koffiInstance
++}
++
++
+ /** One Toolhelp32 process-table row. */
+ export interface ProcessEntry {
+   pid: number
+@@ -180,7 +196,8 @@ interface Win32Bindings {
+   closeHandle(handle: NativePtr): number
+ }
+ 
+-const PVOID: ReturnType<typeof koffi.pointer> = koffi.pointer('void')
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++let PVOID: any
+ 
+ /**
+  * Resolve the koffi Win32 struct types once. Registration is lazy and cached
+@@ -188,8 +205,11 @@ const PVOID: ReturnType<typeof koffi.pointer> = koffi.pointer('void')
+  * re-evaluate this module (a hoisted `vi.mock` re-imports the graph) must not
+  * re-register the names.
+  */
+-function win32Structs(): { PROCESSENTRY32W: ReturnType<typeof koffi.struct>; FILETIME: ReturnType<typeof koffi.struct> } {
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++function win32Structs(): { PROCESSENTRY32W: any; FILETIME: any } {
+   if (cachedStructs !== undefined) return cachedStructs
++  const koffi = getKoffi()
++  PVOID = koffi.pointer('void')
+   // koffi PROCESSENTRY32W layout (tlhelp32.h); the size assert pins the x64 layout.
+   const PROCESSENTRY32W = koffi.struct('PROCESSENTRY32W', {
+     dwSize: 'uint32',
+@@ -233,12 +253,14 @@ let cachedBindings: Win32Bindings | undefined
+  */
+ function win32Bindings(): Win32Bindings {
+   if (cachedBindings !== undefined) return cachedBindings
++  const koffi = getKoffi()
+   const { PROCESSENTRY32W, FILETIME } = win32Structs()
+   const kernel32 = koffi.load('kernel32.dll')
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   const bind = (
+     name: string,
+-    result: ReturnType<typeof koffi.pointer> | string,
+-    args: Array<ReturnType<typeof koffi.pointer> | string>,
++    result: any,
++    args: any[],
+   ): unknown => kernel32.func('__stdcall', name, result, args)
+   cachedBindings = {
+     createToolhelp32Snapshot: bind('CreateToolhelp32Snapshot', PVOID, ['uint32', 'uint32']),
+@@ -265,13 +287,16 @@ function win32Bindings(): Win32Bindings {
+  * @param count - element count.
+  * @returns the branded allocation pointer.
+  */
+-function allocNative(type: Parameters<typeof koffi.alloc>[0], count: number): NativePtr {
++// eslint-disable-next-line @typescript-eslint/no-explicit-any
++function allocNative(type: any, count: number): NativePtr {
++  const koffi = getKoffi()
+   const value: unknown = koffi.alloc(type, count)
+   return value as NativePtr
+ }
+ 
+ /** Enumerate the current process table through Toolhelp32. */
+ function snapshotWindowsProcesses(bindings: Win32Bindings): ProcessEntry[] {
++  const koffi = getKoffi()
+   const { PROCESSENTRY32W } = win32Structs()
+   const snapshot = bindings.createToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+   /* v8 ignore next -- an invalid snapshot for the process flag is not producible through the public API;
+@@ -298,6 +323,7 @@ function snapshotWindowsProcesses(bindings: Win32Bindings): ProcessEntry[] {
+ 
+ /** Read one process's creation identity and current wait state. */
+ function windowsProcessState(bindings: Win32Bindings, pid: number): WindowsProcessState | undefined {
++  const koffi = getKoffi()
+   const { FILETIME } = win32Structs()
+   const handle = bindings.openProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, 0, pid)
+   if (isInvalidHandle(handle)) return undefined
+@@ -324,6 +350,7 @@ function windowsProcessState(bindings: Win32Bindings, pid: number): WindowsProce
+   }
+ }
+ 
++
+ /** The koffi-backed default internals; bindings resolve lazily on first use. */
+ function defaultWindowsProcessInternals(): WindowsProcessInspectorInternals {
+   return {
+diff --git a/packages/terminal/terminal-bash/src/config.ts b/packages/terminal/terminal-bash/src/config.ts
+index 9a13bd9f90..c32d6649c3 100644
+--- a/packages/terminal/terminal-bash/src/config.ts
++++ b/packages/terminal/terminal-bash/src/config.ts
+@@ -1,5 +1,6 @@
+ /** Validated configuration for the local PTY backend. */
+ 
++import { existsSync } from 'node:fs'
+ import z from '@deepseek-ai/schemastery'
+ import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
+ 
+@@ -50,8 +51,21 @@ export type ResolvedConfig = Omit<Required<Config>, 'shellDialect' | 'shellPath'
+   shellArgs: string[]
+ }
+ 
++function resolveDefaultBashShell(): string {
++  if (process.platform === 'android' || !existsSync('/bin/bash')) {
++    if (process.env.PREFIX && existsSync(`${process.env.PREFIX}/bin/bash`)) {
++      return `${process.env.PREFIX}/bin/bash`
++    }
++    if (existsSync('/data/data/com.termux/files/usr/bin/bash')) {
++      return '/data/data/com.termux/files/usr/bin/bash'
++    }
++    return 'bash'
++  }
++  return '/bin/bash'
++}
++
+ /** Bash dialect default executable. */
+-export const DEFAULT_BASH_SHELL = '/bin/bash'
++export const DEFAULT_BASH_SHELL = resolveDefaultBashShell()
+ /** Bash dialect default arguments (interactive, profile-free). */
+ export const DEFAULT_BASH_ARGS = ['--noprofile', '--norc', '-i']
+ /** Pwsh dialect default arguments (interactive host, profile-free). */

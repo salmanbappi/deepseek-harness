@@ -10,9 +10,25 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import koffi from 'koffi'
+import { createRequire } from 'node:module'
 import type { SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess'
 import type { ProcessIdentity, ProcessInspector, ProcessSnapshot } from './process-inspector.ts'
+
+const require = createRequire(import.meta.url)
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let koffiInstance: any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getKoffi(): any {
+  if (koffiInstance === undefined) {
+    if (process.platform !== 'win32') {
+      throw new Error('koffi is only supported on Windows')
+    }
+    koffiInstance = require('koffi')
+  }
+  return koffiInstance
+}
+
 
 /** One Toolhelp32 process-table row. */
 export interface ProcessEntry {
@@ -180,7 +196,8 @@ interface Win32Bindings {
   closeHandle(handle: NativePtr): number
 }
 
-const PVOID: ReturnType<typeof koffi.pointer> = koffi.pointer('void')
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let PVOID: any
 
 /**
  * Resolve the koffi Win32 struct types once. Registration is lazy and cached
@@ -188,8 +205,11 @@ const PVOID: ReturnType<typeof koffi.pointer> = koffi.pointer('void')
  * re-evaluate this module (a hoisted `vi.mock` re-imports the graph) must not
  * re-register the names.
  */
-function win32Structs(): { PROCESSENTRY32W: ReturnType<typeof koffi.struct>; FILETIME: ReturnType<typeof koffi.struct> } {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function win32Structs(): { PROCESSENTRY32W: any; FILETIME: any } {
   if (cachedStructs !== undefined) return cachedStructs
+  const koffi = getKoffi()
+  PVOID = koffi.pointer('void')
   // koffi PROCESSENTRY32W layout (tlhelp32.h); the size assert pins the x64 layout.
   const PROCESSENTRY32W = koffi.struct('PROCESSENTRY32W', {
     dwSize: 'uint32',
@@ -233,12 +253,14 @@ let cachedBindings: Win32Bindings | undefined
  */
 function win32Bindings(): Win32Bindings {
   if (cachedBindings !== undefined) return cachedBindings
+  const koffi = getKoffi()
   const { PROCESSENTRY32W, FILETIME } = win32Structs()
   const kernel32 = koffi.load('kernel32.dll')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const bind = (
     name: string,
-    result: ReturnType<typeof koffi.pointer> | string,
-    args: Array<ReturnType<typeof koffi.pointer> | string>,
+    result: any,
+    args: any[],
   ): unknown => kernel32.func('__stdcall', name, result, args)
   cachedBindings = {
     createToolhelp32Snapshot: bind('CreateToolhelp32Snapshot', PVOID, ['uint32', 'uint32']),
@@ -265,13 +287,16 @@ function win32Bindings(): Win32Bindings {
  * @param count - element count.
  * @returns the branded allocation pointer.
  */
-function allocNative(type: Parameters<typeof koffi.alloc>[0], count: number): NativePtr {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function allocNative(type: any, count: number): NativePtr {
+  const koffi = getKoffi()
   const value: unknown = koffi.alloc(type, count)
   return value as NativePtr
 }
 
 /** Enumerate the current process table through Toolhelp32. */
 function snapshotWindowsProcesses(bindings: Win32Bindings): ProcessEntry[] {
+  const koffi = getKoffi()
   const { PROCESSENTRY32W } = win32Structs()
   const snapshot = bindings.createToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
   /* v8 ignore next -- an invalid snapshot for the process flag is not producible through the public API;
@@ -298,6 +323,7 @@ function snapshotWindowsProcesses(bindings: Win32Bindings): ProcessEntry[] {
 
 /** Read one process's creation identity and current wait state. */
 function windowsProcessState(bindings: Win32Bindings, pid: number): WindowsProcessState | undefined {
+  const koffi = getKoffi()
   const { FILETIME } = win32Structs()
   const handle = bindings.openProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, 0, pid)
   if (isInvalidHandle(handle)) return undefined
@@ -323,6 +349,7 @@ function windowsProcessState(bindings: Win32Bindings, pid: number): WindowsProce
     bindings.closeHandle(handle)
   }
 }
+
 
 /** The koffi-backed default internals; bindings resolve lazily on first use. */
 function defaultWindowsProcessInternals(): WindowsProcessInspectorInternals {

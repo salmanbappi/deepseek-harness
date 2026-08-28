@@ -1,5 +1,6 @@
 /** Validated configuration for the local PTY backend. */
 
+import { existsSync } from 'node:fs'
 import z from '@deepseek-ai/schemastery'
 import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
 
@@ -50,8 +51,21 @@ export type ResolvedConfig = Omit<Required<Config>, 'shellDialect' | 'shellPath'
   shellArgs: string[]
 }
 
+function resolveDefaultBashShell(): string {
+  if (process.platform === 'android' || !existsSync('/bin/bash')) {
+    if (process.env.PREFIX && existsSync(`${process.env.PREFIX}/bin/bash`)) {
+      return `${process.env.PREFIX}/bin/bash`
+    }
+    if (existsSync('/data/data/com.termux/files/usr/bin/bash')) {
+      return '/data/data/com.termux/files/usr/bin/bash'
+    }
+    return 'bash'
+  }
+  return '/bin/bash'
+}
+
 /** Bash dialect default executable. */
-export const DEFAULT_BASH_SHELL = '/bin/bash'
+export const DEFAULT_BASH_SHELL = resolveDefaultBashShell()
 /** Bash dialect default arguments (interactive, profile-free). */
 export const DEFAULT_BASH_ARGS = ['--noprofile', '--norc', '-i']
 /** Pwsh dialect default arguments (interactive host, profile-free). */

@@ -1,5 +1,13 @@
-/* Shell-owned mount defaults. Theme tokens arrive with the ui-theme client
- * plugin before the loader roster activates. */
+*,
+*::before,
+*::after {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none;
+}
+
+*:focus-visible {
+  outline: none !important;
+}
 
 html,
 body,

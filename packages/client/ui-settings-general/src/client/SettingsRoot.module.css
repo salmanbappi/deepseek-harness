@@ -1,12 +1,19 @@
+/* Settings shell (figma 501:29904 mask context / 501:29947 panel): sidebar
+   foot trigger row + centered 1080x700 modal panel. The trigger uses the
+   sidebar's 34px compact row / 36px rail circle rhythm; the
+   panel is a two-column layout — 188px nav rail + content column with a
+   54px header and the 24px-padded options area. */
+
+/* Trigger row: match the other wide sidebar controls' compact vertical rhythm. */
 .trigger {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  width: calc(100% + 4px);
-  height: 42px;
-  margin: 4px -2px;
-  padding: 0 10px 0 8px;
+  width: calc(100% + 8px);
+  height: 34px;
+  margin: 4px -4px 4px;
+  padding: 6px 2px 6px 10px;
   box-sizing: border-box;
   border: none;
   border-radius: 12px;
@@ -216,4 +223,193 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Mobile top bar: hidden on desktop, replaces the dual-column header on mobile. */
+.mobileHeader {
+  display: none;
+}
+
+.mobileTitle {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.mobileActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mobileClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+.mobileClose:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* Responsive mobile view (<= 768px): immersive full screen view with sticky header and scrollable chips. */
+@media (max-width: 768px) {
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--dsw-alias-bg-layer-1);
+    z-index: 1000;
+    box-sizing: border-box;
+  }
+
+  .mask {
+    display: none;
+  }
+
+  .panel {
+    position: relative;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    box-shadow: none;
+    background: var(--dsw-alias-bg-layer-1);
+    box-sizing: border-box;
+  }
+
+  .mobileHeader {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    padding: 0 16px;
+    padding-top: env(safe-area-inset-top, 0);
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+    background: var(--dsw-alias-bg-layer-2);
+  }
+
+  .mobileTitle {
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 24px;
+    color: var(--dsw-alias-label-primary);
+  }
+
+  .mobileClose {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+    background: var(--dsw-alias-bg-module-platform);
+    color: var(--dsw-alias-label-primary);
+  }
+
+  .nav {
+    flex: none;
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--dsw-alias-border-l2);
+    background: var(--dsw-alias-bg-layer-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navTitle {
+    display: none;
+  }
+
+  .navList {
+    flex-direction: row;
+    gap: 8px;
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .navList::-webkit-scrollbar {
+    display: none;
+  }
+
+  .navCell {
+    flex: none;
+    height: 36px;
+    padding: 0 16px;
+    border-radius: 18px;
+    background: var(--dsw-alias-bg-module-platform);
+    font-size: 13.5px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .navCell.active {
+    background: var(--dsw-alias-label-primary);
+    color: var(--dsw-alias-bg-layer-1);
+  }
+
+  .navCell.active .navIcon {
+    color: var(--dsw-alias-bg-layer-1);
+  }
+
+  .content {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--dsw-alias-bg-layer-1);
+  }
+
+  .header {
+    display: none;
+  }
+
+  .options {
+    flex: 1;
+    min-height: 0;
+    padding: 16px 16px max(36px, env(safe-area-inset-bottom, 24px));
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
 }

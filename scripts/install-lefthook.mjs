@@ -689,7 +689,7 @@ function probePairingMergeDriver(root) {
 }
 
 async function main() {
-  if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return
+  if (process.platform === 'android' || process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') return
   if (typeof lefthookPackage.bin?.lefthook !== 'string') return
   const probe = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' })
   if (probe.status !== 0) return

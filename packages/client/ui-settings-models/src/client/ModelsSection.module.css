@@ -1,4 +1,9 @@
-/* Every color resolves through a `--dsw-alias-*` token. Bare `--border` /
+/* Models settings section, in the settings-panel design language: 14/22 body,
+ * 12/18 caption, capsule controls (h36 r18; h28 r14 where a row is dense),
+ * 32px fields, and `border-l2` hairlines — the vocabulary GeneralSection and
+ * the Button/Input primitives already use.
+ *
+ * Every color resolves through a `--dsw-alias-*` token. Bare `--border` /
  * `--surface` / `--text-*` names, which nothing in this app defines, would
  * render the light-mode literals written as their fallbacks and stay light
  * under the dark theme. */
@@ -623,8 +628,7 @@ select.input {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .customizedSummary::before,
-  .switchThumb {
+  .customizedSummary::before {
     transition: none;
   }
 }
@@ -638,12 +642,6 @@ select.input {
      ui-theme styles/scrollbar.css for the contract). */
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
-}
-
-.candidateActions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 6px;
 }
 
 .candidateList {
@@ -674,4 +672,38 @@ select.input {
   font-family: var(--ds-font-family-code);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .rowHead {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .rowActions {
+    width: 100%;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+
+  .addActions {
+    flex-direction: column;
+  }
+
+  .addButton {
+    min-width: 100%;
+  }
+
+  .modelRow {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+    gap: 4px;
+  }
+
+  select.input {
+    max-width: 100%;
+  }
+
+  .editorActions {
+    flex-wrap: wrap;
+  }
 }

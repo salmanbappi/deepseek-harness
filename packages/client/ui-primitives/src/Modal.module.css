@@ -101,3 +101,25 @@
   gap: 8px;
   padding: 0 24px;
 }
+
+@media (max-width: 560px) {
+  .root {
+    padding: 12px;
+  }
+
+  .dialog {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px;
+  }
+
+  .header {
+    padding: 16px 14px 10px 16px;
+  }
+
+  .description,
+  .body,
+  .footer {
+    padding: 0 16px;
+  }
+}

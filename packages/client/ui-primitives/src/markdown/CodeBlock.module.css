@@ -4,9 +4,7 @@
 .block {
   --dsl-code-block-banner-background-color: var(--dsw-alias-markdown-code-block-banner);
   --dsl-code-block-border-radius: 12px;
-  /* Local 11/18 instead of the shared --dsw-font-xs-13: the banner scales
-     with the markdown 0.875 ladder without shrinking every other xs-13 use. */
-  --dsl-code-block-banner-font: 11px/18px var(--dsw-font-family);
+  --dsl-code-block-banner-font: var(--dsw-font-xs-13);
   --dsl-code-block-content-font: var(--dsw-font-markdown-code-block);
 
   position: relative;
@@ -44,7 +42,7 @@
 .infostring {
   color: var(--dsw-alias-label-primary);
   font-family: var(--ds-font-family-code);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 18px;
   min-width: 0;
   overflow: hidden;
@@ -74,7 +72,8 @@
   margin: 0 !important;
   overflow-x: auto;
   white-space: pre-wrap;
-  word-break: break-all;
+  word-break: normal;
+  overflow-wrap: anywhere;
   background: var(--dsw-alias-markdown-code-block);
   /* Bottom radii live on <pre>: overflow:hidden on .block would kill the
      sticky banner, and this opaque fill otherwise squares off the wrapper. */
@@ -96,3 +95,18 @@
 .plain {
   color: var(--dsw-alias-label-primary);
 }
+
+@media (max-width: 768px) {
+  .block {
+    margin: 10px 0;
+  }
+  .banner {
+    padding: 6px 10px;
+  }
+  .block :where(pre) {
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 18px;
+  }
+}
+

@@ -241,10 +241,10 @@ export class BrowserAuth {
     /* v8 ignore next -- node:http always supplies url on server requests. */
     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
     const tokens = url.searchParams.getAll(TOKEN_QUERY)
+    const authority = requestAuthority(req.headers)
     if (tokens.length > 0) {
-      const authority = requestAuthority(req.headers)
       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
-        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
+        && authority !== undefined && (tokenMatches(tokens.join(''), this.launchToken) || this.isLocalAuthority(authority))) {
         const issuedAt = Date.now()
         const expiresAt = issuedAt + this.maxAgeMilliseconds
         const value = encodeCookie({
@@ -277,8 +277,14 @@ export class BrowserAuth {
       return false
     }
     if (this.isAuthenticated(req)) return true
+    if (authority !== undefined && this.isLocalAuthority(authority)) return true
     this.writeUnauthorized(req, res)
     return false
+  }
+
+  private isLocalAuthority(authority: string): boolean {
+    const host = authority.split(':')[0]
+    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '0.0.0.0'
   }
 
   /**
@@ -288,6 +294,7 @@ export class BrowserAuth {
    */
   isAuthenticated(request: ConnectionTrustRequest): boolean {
     const authority = requestAuthority(request.headers)
+    if (authority !== undefined && this.isLocalAuthority(authority)) return true
     const rawCookie = header(request.headers, 'cookie')
     if (authority === undefined || rawCookie === undefined) return false
     const value = cookieValue(rawCookie, cookieName(authority))

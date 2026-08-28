@@ -1,0 +1,115 @@
+name: Build & Release Termux Bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. 0.1.1-rc.2)'
+        required: false
+        default: ''
+  push:
+    branches:
+      - master
+    paths:
+      - 'packages/**'
+      - 'apps/**'
+      - 'patches/**'
+      - 'scripts/**'
+      - 'package.json'
+      - '.github/workflows/build-termux.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Package Termux Bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Get Version
+        id: pkg
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Apply Termux Patches
+        run: |
+          python3 scripts/patch_termux.py --apply || true
+
+      - name: Install Dependencies
+        run: |
+          pnpm install --frozen-lockfile=false --ignore-scripts
+
+      - name: Build TypeScript Libraries & Web
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: |
+          pnpm run build:lib
+          pnpm run build:web
+
+      - name: Package Bundle
+        run: |
+          ARCHIVE_NAME="dsh-termux-v${VERSION}.tar.gz"
+          echo "Packaging $ARCHIVE_NAME..."
+          
+          tar -czf "$ARCHIVE_NAME" \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            apps/ \
+            packages/ \
+            patches/ \
+            scripts/ \
+            vendor/ \
+            package.json \
+            pnpm-workspace.yaml \
+            pnpm-lock.yaml \
+            .npmrc
+            
+          echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-termux-bundle
+          path: ${{ env.ARCHIVE_NAME }}
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${VERSION}"
+          echo "Creating Release $TAG..."
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" "$ARCHIVE_NAME" \
+            --title "DeepSeek Harness v${VERSION} (Termux Prebuilt)" \
+            --notes "Automated remote build of DeepSeek Harness with Termux & Mobile UX optimizations for v${VERSION}." \
+            --target "${{ github.sha }}"
