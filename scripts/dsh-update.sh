@@ -245,15 +245,39 @@ pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
 # Re-run patcher for native node-pty and Koffi
 python3 "$PATCHER" --apply
 
-# Step 7: Build Compiled Binaries & Web Assets
+# Step 7: Build or Fetch Pre-compiled Binaries & Web Assets
 if [ "$NO_BUILD" -eq 0 ]; then
     echo ""
-    echo "[*] Compiling application host libraries..."
-    pnpm run build:lib:host
-    echo "[*] Compiling client libraries..."
-    pnpm run build:lib:client
-    echo "[*] Compiling Web UI assets..."
-    pnpm run build:web
+    FETCHED_PREBUILT=0
+    NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "")
+    
+    if [ -n "$NEW_VERSION" ] && command -v curl &>/dev/null && command -v tar &>/dev/null; then
+        echo "[*] Checking for pre-compiled cloud release on GitHub (v$NEW_VERSION)..."
+        RELEASE_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/v$NEW_VERSION"
+        TARBALL_URL=$(curl -sL "$RELEASE_API" | grep -o 'https://github.com/[^"]*dsh-termux-[^"]*\.tar\.gz' | head -n 1 || true)
+        
+        if [ -n "$TARBALL_URL" ]; then
+            echo "[+] Found cloud pre-compiled release! Downloading in seconds..."
+            if curl -sL "$TARBALL_URL" -o "$DSH_DIR/prebuilt.tar.gz" 2>/dev/null; then
+                echo "[+] Extracting pre-compiled binaries and web assets..."
+                tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" apps/ packages/ 2>/dev/null || true
+                rm -f "$DSH_DIR/prebuilt.tar.gz"
+                if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ]; then
+                    FETCHED_PREBUILT=1
+                    echo "[✓] Applied pre-compiled cloud release (skipped local build in 5s)!"
+                fi
+            fi
+        fi
+    fi
+
+    if [ "$FETCHED_PREBUILT" -eq 0 ]; then
+        echo "[*] Compiling application host libraries locally..."
+        pnpm run build:lib:host
+        echo "[*] Compiling client libraries..."
+        pnpm run build:lib:client
+        echo "[*] Compiling Web UI assets..."
+        pnpm run build:web
+    fi
 fi
 
 # Step 8: Sync Changes to Fork (origin)
