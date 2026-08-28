@@ -410,24 +410,24 @@ def apply_git_patch():
 
 
 def export_patch():
-    """Exports current working tree diff to termux-mobile-suite.patch."""
+    """Exports current Termux & Mobile diff to termux-mobile-suite.patch."""
     ensure_patch_dir()
     try:
+        base = "upstream/master"
+        # Verify if upstream/master exists, otherwise fallback to HEAD~1 or HEAD
+        has_upstream = subprocess.run(["git", "rev-parse", "--verify", base], cwd=REPO_DIR, capture_output=True).returncode == 0
+        if not has_upstream:
+            base = "HEAD"
+        
         diff = subprocess.run(
-            ["git", "diff", "origin/master..HEAD"],
+            ["git", "diff", base, "--", "package.json", "packages/", "apps/web/"],
             cwd=REPO_DIR,
             capture_output=True,
             text=True
         )
-        unstaged_diff = subprocess.run(
-            ["git", "diff", "HEAD"],
-            cwd=REPO_DIR,
-            capture_output=True,
-            text=True
-        )
-        full_diff = diff.stdout + ("\n" if diff.stdout and unstaged_diff.stdout else "") + unstaged_diff.stdout
+        full_diff = diff.stdout
         if not full_diff.strip():
-            res = subprocess.run(["git", "diff", "HEAD", "package.json", "packages/"], cwd=REPO_DIR, capture_output=True, text=True)
+            res = subprocess.run(["git", "diff", "HEAD", "--", "package.json", "packages/", "apps/web/"], cwd=REPO_DIR, capture_output=True, text=True)
             full_diff = res.stdout
 
         if full_diff.strip():
@@ -435,11 +435,12 @@ def export_patch():
                 f.write(full_diff)
             with open(LEGACY_PATCH_FILE, "w", encoding="utf-8") as f:
                 f.write(full_diff)
-            print(f"[+] Exported unified patch bundle to {PATCH_FILE}")
+            print(f"[+] Exported unified patch bundle ({len(full_diff)} bytes) to {PATCH_FILE}")
             return True
     except Exception as e:
         print(f"[!] Failed to export patch: {e}")
     return False
+
 
 
 def check_status():
