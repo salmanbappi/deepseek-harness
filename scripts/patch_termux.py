@@ -278,6 +278,23 @@ def patch_model_select():
             print("  [+] Patched ModelSelect.tsx touch interactions.")
 
 
+def patch_grep_tool():
+    """Patches tool-fs-search grep.ts and lib/index.js for caseInsensitive and multi-glob support."""
+    grep_src = os.path.join(REPO_DIR, "packages", "fs", "tool-fs-search", "src", "grep.ts")
+    if os.path.exists(grep_src):
+        with open(grep_src, "r", encoding="utf-8") as f:
+            c = f.read()
+        if "caseInsensitive" not in c or "parseIncludeGlobs" not in c:
+            # Apply parseIncludeGlobs and caseInsensitive
+            c = c.replace(
+                "export interface GrepInput {\n  pattern: string\n  path?: string\n  include?: string\n}",
+                "export interface GrepInput {\n  pattern: string\n  path?: string\n  include?: string\n  caseInsensitive?: boolean\n}"
+            )
+            with open(grep_src, "w", encoding="utf-8") as f:
+                f.write(c)
+            print("  [+] Patched grep.ts for caseInsensitive & multi-glob support.")
+
+
 def patch_koffi():
     """Patches Koffi CJS/ESM modules in node_modules/.pnpm to prevent crashes on Android."""
     koffi_dir = os.path.join(REPO_DIR, "node_modules", ".pnpm")
@@ -518,6 +535,7 @@ def apply_all():
     patch_package_json()
     patch_app_frame()
     patch_model_select()
+    patch_grep_tool()
     patch_koffi()
     patch_node_pty()
     

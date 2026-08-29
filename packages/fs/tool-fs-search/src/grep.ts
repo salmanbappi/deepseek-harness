@@ -58,60 +58,66 @@ export interface GrepInput {
   pattern: string
   path?: string
   include?: string
+  caseInsensitive?: boolean
 }
 
 /**
- * Reject an `include` that is not ONE positive glob filter: blank strings,
- * negated patterns (`!…`), and comma-separated lists. A comma inside a brace
- * group is fine — `*.{ts,tsx}` is one glob with alternation, not a list.
+ * Parse one or more comma-separated glob filters (supporting braces and negation).
  */
-function validateInclude(include: string): void {
-  if (include.trim().length === 0) throw new Error('include must be a non-empty glob when given')
-  if (include.startsWith('!')) throw new Error('include must be a positive glob filter; negated patterns ("!…") are not supported')
+function parseIncludeGlobs(include: string): string[] {
+  const trimmed = include.trim()
+  if (trimmed.length === 0) throw new Error('include must be a non-empty glob when given')
+  const globs: string[] = []
+  let current = ''
   let braceDepth = 0
-  for (const char of include) {
-    if (char === '{') braceDepth++
-    else if (char === '}') braceDepth = Math.max(0, braceDepth - 1)
-    else if (char === ',' && braceDepth === 0) {
-      throw new Error('include must be one glob, not a comma-separated list (use {a,b} alternation instead)')
+  for (const char of trimmed) {
+    if (char === '{') {
+      braceDepth++
+      current += char
+    } else if (char === '}') {
+      braceDepth = Math.max(0, braceDepth - 1)
+      current += char
+    } else if (char === ',' && braceDepth === 0) {
+      if (current.trim().length > 0) globs.push(current.trim())
+      current = ''
+    } else {
+      current += char
     }
   }
+  if (current.trim().length > 0) globs.push(current.trim())
+  return globs
 }
 
 /**
- * Validate value constraints the schema DSL can't express: a non-EMPTY
- * `pattern` (whitespace is a legitimate regex), a non-blank `path` when given,
- * and a single positive `include` glob ({@link GrepInput}). Throws a plain
- * `Error` (an ordinary tool argument error) otherwise.
- *
- * @param args - the schema-validated `grep` arguments.
- * @returns the accepted input, unchanged.
+ * Validate value constraints: non-empty pattern, non-blank path,
+ * and valid include globs.
  */
-export function parseGrepArgs(args: { pattern: string; path?: string; include?: string }): GrepInput {
+export function parseGrepArgs(args: { pattern: string; path?: string; include?: string; caseInsensitive?: boolean }): GrepInput {
   if (args.pattern.length === 0) throw new Error('pattern must be a non-empty string')
   if (args.path !== undefined && args.path.trim().length === 0) throw new Error('path must be a non-empty string when given')
-  if (args.include !== undefined) validateInclude(args.include)
+  if (args.include !== undefined) parseIncludeGlobs(args.include)
   return {
     pattern: args.pattern,
     ...args.path !== undefined ? { path: args.path } : {},
     ...args.include !== undefined ? { include: args.include } : {},
+    ...args.caseInsensitive !== undefined ? { caseInsensitive: Boolean(args.caseInsensitive) } : {},
   }
 }
 
 /**
- * Build the fixed line-oriented `rg --json` argv for one `grep` call. Every
- * model-controlled value ({@link GrepInput.pattern}, {@link GrepInput.path},
- * {@link GrepInput.include}) is a plain argv element — no shell layer exists,
- * so no quoting applies; the pattern and include ride in `--flag=value` form
- * and the target behind `--`, so a leading-dash value can never be parsed as
- * a flag.
- *
- * @param input - the validated arguments.
- * @returns the complete ripgrep argument vector (excluding the binary itself).
+ * Build the fixed line-oriented `rg --json` argv for one `grep` call.
  */
 export function buildGrepCommand(input: GrepInput): string[] {
   const parts = ['--json', `--regexp=${input.pattern}`]
-  if (input.include !== undefined) parts.push(`--glob=${input.include}`)
+  if (input.caseInsensitive) {
+    parts.push('--ignore-case')
+  }
+  if (input.include !== undefined) {
+    const globs = parseIncludeGlobs(input.include)
+    for (const g of globs) {
+      parts.push(`--glob=${g}`)
+    }
+  }
   if (input.path !== undefined) parts.push('--', input.path)
   return parts
 }
@@ -276,18 +282,20 @@ export function applyGrepTool(ctx: Context, caps: GrepToolCaps): void {
   ctx.systemPrompt.section({
     name: 'tool:grep',
     order: FIRST_PARTY_SECTION_ORDER.TOOL_GREP,
-    text: 'Use the grep tool — not shell grep or rg — to search file contents. Use read on a matched file when you need surrounding context.',
+    text: 'Use the grep tool — not shell grep or rg — to search file contents. Prefer compound regex alternation (e.g. "foo|bar|baz") to locate multiple symbols in a single step. Use "include" to filter file extensions or exclude directories ("!*.spec.ts"), and "caseInsensitive" for case-insensitive matching. Use read on a matched file when you need surrounding context.',
   })
 
   const tool = defineTool({
     name: 'grep',
     description: 'Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. '
       + `Returns the first ${caps.maxMatches} matches inline; a capped result reports where the complete match list was saved. `
+      + 'Supports regex alternation ("a|b"), multiple glob filters ("*.ts, *.js"), exclusions ("!tests"), and case-insensitive matching. '
       + 'Use read on a matched file for surrounding context.',
     parameters: {
-      pattern: { type: 'string', required: true, description: 'Regular expression to search for (ripgrep syntax).' },
+      pattern: { type: 'string', required: true, description: 'Regular expression to search for (ripgrep syntax). Use | to search multiple terms in one pass.' },
       path: { type: 'string', description: 'File or directory to search. Defaults to the session workspace; a relative path resolves against it.' },
-      include: { type: 'string', description: 'One glob filter for which files to search (e.g. "*.ts", "*.{js,jsx}"). Not a list; negation is not supported.' },
+      include: { type: 'string', description: 'Glob filter(s) for files to search (e.g. "*.ts, *.tsx", "*.kt", "!*.spec.ts"). Supports commas, braces, and ! negation.' },
+      caseInsensitive: { type: 'boolean', description: 'Whether to perform a case-insensitive search. Defaults to false.' },
     },
     timeoutMs: caps.timeoutMs,
     output: {

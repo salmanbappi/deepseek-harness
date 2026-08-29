@@ -111,6 +111,38 @@ index e5a979aec1..427ec98c6d 100644
      }
      // Windows shares the read-only attribute across hard links and refuses to
      // unlink either name once it is set, so discard the staging name first.
+diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
+index eaa8457e88..0aeebaa49c 100644
+--- a/packages/bundle/base/cordis.patch.yml
++++ b/packages/bundle/base/cordis.patch.yml
+@@ -450,9 +450,14 @@
+     - id: web
+       name: '@deepseek-ai/dsh-web'
+       config:
+-        searchProvider: deepseek-official
++        searchProvider: tavily
+         fetchProvider: http
+ 
++    - id: web-search-tavily
++      name: '@deepseek-ai/dsh-web-search-tavily'
++      config:
++        apiKey: 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
++
+     - id: web-search-deepseek
+       name: '@deepseek-ai/dsh-web-search-deepseek'
+       config:
+diff --git a/packages/bundle/base/package.json b/packages/bundle/base/package.json
+index daef0bab99..c67d497a04 100644
+--- a/packages/bundle/base/package.json
++++ b/packages/bundle/base/package.json
+@@ -122,6 +122,7 @@
+     "@deepseek-ai/dsh-web": "workspace:^",
+     "@deepseek-ai/dsh-web-fetch-http": "workspace:^",
+     "@deepseek-ai/dsh-web-search-deepseek": "workspace:^",
++    "@deepseek-ai/dsh-web-search-tavily": "workspace:^",
+     "@deepseek-ai/dsh-workflow-worker-thread": "workspace:^",
+     "@deepseek-ai/dsh-agent-instructions": "workspace:^"
+   },
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
 index 10353d9a06..60737763b3 100644
 --- a/packages/client/connection/src/browser-auth.ts
@@ -2405,6 +2437,175 @@ index b4633d0ad1..f0c598ac6f 100644
  
  html,
  body,
+diff --git a/packages/fs/tool-fs-search/src/grep.ts b/packages/fs/tool-fs-search/src/grep.ts
+index 0d56c0ae63..fee20a69a5 100644
+--- a/packages/fs/tool-fs-search/src/grep.ts
++++ b/packages/fs/tool-fs-search/src/grep.ts
+@@ -58,60 +58,66 @@ export interface GrepInput {
+   pattern: string
+   path?: string
+   include?: string
++  caseInsensitive?: boolean
+ }
+ 
+ /**
+- * Reject an `include` that is not ONE positive glob filter: blank strings,
+- * negated patterns (`!…`), and comma-separated lists. A comma inside a brace
+- * group is fine — `*.{ts,tsx}` is one glob with alternation, not a list.
++ * Parse one or more comma-separated glob filters (supporting braces and negation).
+  */
+-function validateInclude(include: string): void {
+-  if (include.trim().length === 0) throw new Error('include must be a non-empty glob when given')
+-  if (include.startsWith('!')) throw new Error('include must be a positive glob filter; negated patterns ("!…") are not supported')
++function parseIncludeGlobs(include: string): string[] {
++  const trimmed = include.trim()
++  if (trimmed.length === 0) throw new Error('include must be a non-empty glob when given')
++  const globs: string[] = []
++  let current = ''
+   let braceDepth = 0
+-  for (const char of include) {
+-    if (char === '{') braceDepth++
+-    else if (char === '}') braceDepth = Math.max(0, braceDepth - 1)
+-    else if (char === ',' && braceDepth === 0) {
+-      throw new Error('include must be one glob, not a comma-separated list (use {a,b} alternation instead)')
++  for (const char of trimmed) {
++    if (char === '{') {
++      braceDepth++
++      current += char
++    } else if (char === '}') {
++      braceDepth = Math.max(0, braceDepth - 1)
++      current += char
++    } else if (char === ',' && braceDepth === 0) {
++      if (current.trim().length > 0) globs.push(current.trim())
++      current = ''
++    } else {
++      current += char
+     }
+   }
++  if (current.trim().length > 0) globs.push(current.trim())
++  return globs
+ }
+ 
+ /**
+- * Validate value constraints the schema DSL can't express: a non-EMPTY
+- * `pattern` (whitespace is a legitimate regex), a non-blank `path` when given,
+- * and a single positive `include` glob ({@link GrepInput}). Throws a plain
+- * `Error` (an ordinary tool argument error) otherwise.
+- *
+- * @param args - the schema-validated `grep` arguments.
+- * @returns the accepted input, unchanged.
++ * Validate value constraints: non-empty pattern, non-blank path,
++ * and valid include globs.
+  */
+-export function parseGrepArgs(args: { pattern: string; path?: string; include?: string }): GrepInput {
++export function parseGrepArgs(args: { pattern: string; path?: string; include?: string; caseInsensitive?: boolean }): GrepInput {
+   if (args.pattern.length === 0) throw new Error('pattern must be a non-empty string')
+   if (args.path !== undefined && args.path.trim().length === 0) throw new Error('path must be a non-empty string when given')
+-  if (args.include !== undefined) validateInclude(args.include)
++  if (args.include !== undefined) parseIncludeGlobs(args.include)
+   return {
+     pattern: args.pattern,
+     ...args.path !== undefined ? { path: args.path } : {},
+     ...args.include !== undefined ? { include: args.include } : {},
++    ...args.caseInsensitive !== undefined ? { caseInsensitive: Boolean(args.caseInsensitive) } : {},
+   }
+ }
+ 
+ /**
+- * Build the fixed line-oriented `rg --json` argv for one `grep` call. Every
+- * model-controlled value ({@link GrepInput.pattern}, {@link GrepInput.path},
+- * {@link GrepInput.include}) is a plain argv element — no shell layer exists,
+- * so no quoting applies; the pattern and include ride in `--flag=value` form
+- * and the target behind `--`, so a leading-dash value can never be parsed as
+- * a flag.
+- *
+- * @param input - the validated arguments.
+- * @returns the complete ripgrep argument vector (excluding the binary itself).
++ * Build the fixed line-oriented `rg --json` argv for one `grep` call.
+  */
+ export function buildGrepCommand(input: GrepInput): string[] {
+   const parts = ['--json', `--regexp=${input.pattern}`]
+-  if (input.include !== undefined) parts.push(`--glob=${input.include}`)
++  if (input.caseInsensitive) {
++    parts.push('--ignore-case')
++  }
++  if (input.include !== undefined) {
++    const globs = parseIncludeGlobs(input.include)
++    for (const g of globs) {
++      parts.push(`--glob=${g}`)
++    }
++  }
+   if (input.path !== undefined) parts.push('--', input.path)
+   return parts
+ }
+@@ -276,18 +282,20 @@ export function applyGrepTool(ctx: Context, caps: GrepToolCaps): void {
+   ctx.systemPrompt.section({
+     name: 'tool:grep',
+     order: FIRST_PARTY_SECTION_ORDER.TOOL_GREP,
+-    text: 'Use the grep tool — not shell grep or rg — to search file contents. Use read on a matched file when you need surrounding context.',
++    text: 'Use the grep tool — not shell grep or rg — to search file contents. Prefer compound regex alternation (e.g. "foo|bar|baz") to locate multiple symbols in a single step. Use "include" to filter file extensions or exclude directories ("!*.spec.ts"), and "caseInsensitive" for case-insensitive matching. Use read on a matched file when you need surrounding context.',
+   })
+ 
+   const tool = defineTool({
+     name: 'grep',
+     description: 'Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. '
+       + `Returns the first ${caps.maxMatches} matches inline; a capped result reports where the complete match list was saved. `
++      + 'Supports regex alternation ("a|b"), multiple glob filters ("*.ts, *.js"), exclusions ("!tests"), and case-insensitive matching. '
+       + 'Use read on a matched file for surrounding context.',
+     parameters: {
+-      pattern: { type: 'string', required: true, description: 'Regular expression to search for (ripgrep syntax).' },
++      pattern: { type: 'string', required: true, description: 'Regular expression to search for (ripgrep syntax). Use | to search multiple terms in one pass.' },
+       path: { type: 'string', description: 'File or directory to search. Defaults to the session workspace; a relative path resolves against it.' },
+-      include: { type: 'string', description: 'One glob filter for which files to search (e.g. "*.ts", "*.{js,jsx}"). Not a list; negation is not supported.' },
++      include: { type: 'string', description: 'Glob filter(s) for files to search (e.g. "*.ts, *.tsx", "*.kt", "!*.spec.ts"). Supports commas, braces, and ! negation.' },
++      caseInsensitive: { type: 'boolean', description: 'Whether to perform a case-insensitive search. Defaults to false.' },
+     },
+     timeoutMs: caps.timeoutMs,
+     output: {
+diff --git a/packages/fs/tool-fs-search/src/search-core.ts b/packages/fs/tool-fs-search/src/search-core.ts
+index 60ea042d4f..e8a11066e5 100644
+--- a/packages/fs/tool-fs-search/src/search-core.ts
++++ b/packages/fs/tool-fs-search/src/search-core.ts
+@@ -175,7 +175,11 @@ export function resolveRgPath(): Promise<string> {
+       ? join(executable.dir, `${executable.name}-rg.exe`)
+       : `${process.execPath}-rg`
+     if ('pkg' in process && existsSync(executableSidecar)) return executableSidecar
+-    return (await import('@vscode/ripgrep')).rgPath
++    try {
++      return (await import('@vscode/ripgrep')).rgPath
++    } catch {
++      return 'rg'
++    }
+   })
+   return rgPathPromise
+ }
+diff --git a/packages/fs/tool-fs-search/tests/tools.spec.ts b/packages/fs/tool-fs-search/tests/tools.spec.ts
+index 465000ba37..d9e2c2790a 100644
+--- a/packages/fs/tool-fs-search/tests/tools.spec.ts
++++ b/packages/fs/tool-fs-search/tests/tools.spec.ts
+@@ -1054,19 +1054,17 @@ describe('grep results', () => {
+     expect(text(result)).toBe('Found 1 of 2 matches\n\na.ts\nLine 1: one\n\n(The complete result could not be saved; narrow pattern, path, or include to see more.)')
+   })
+ 
+-  it('validates arguments (empty pattern, blank path, bad include)', async () => {
++  it('validates arguments (empty pattern, blank path, empty include)', async () => {
+     const { ctx } = await setup()
+     expect(text(await call(ctx, 'grep', { pattern: '' }))).toContain('pattern must be a non-empty string')
+     expect(text(await call(ctx, 'grep', { pattern: 'x', path: '  ' }))).toContain('path must be a non-empty string')
+     expect(text(await call(ctx, 'grep', { pattern: 'x', include: '  ' }))).toContain('include must be a non-empty glob')
+-    expect(text(await call(ctx, 'grep', { pattern: 'x', include: '!*.ts' }))).toContain('negated patterns')
+-    expect(text(await call(ctx, 'grep', { pattern: 'x', include: '*.ts,*.js' }))).toContain('comma-separated list')
+   })
+ 
+-  it('accepts a whitespace-only pattern (a legitimate regex) and brace alternation in include', async () => {
++  it('accepts a whitespace-only pattern, negation and multiple globs, and caseInsensitive flag', async () => {
+     const { ctx, subprocess } = await setup()
+     subprocess.handler = () => runResult('', { exitCode: 1 })
+-    const result = await call(ctx, 'grep', { pattern: '  ', include: '*.{ts,tsx}' })
++    const result = await call(ctx, 'grep', { pattern: '  ', include: '*.{ts,tsx}, !*.spec.ts', caseInsensitive: true })
+     expect(result.isError).toBe(false)
+   })
+ })
 diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
 index 344db2a1b2..84df5eb58c 100644
 --- a/packages/sandbox/sandbox-local/src/index.ts

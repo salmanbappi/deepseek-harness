@@ -1054,19 +1054,17 @@ describe('grep results', () => {
     expect(text(result)).toBe('Found 1 of 2 matches\n\na.ts\nLine 1: one\n\n(The complete result could not be saved; narrow pattern, path, or include to see more.)')
   })
 
-  it('validates arguments (empty pattern, blank path, bad include)', async () => {
+  it('validates arguments (empty pattern, blank path, empty include)', async () => {
     const { ctx } = await setup()
     expect(text(await call(ctx, 'grep', { pattern: '' }))).toContain('pattern must be a non-empty string')
     expect(text(await call(ctx, 'grep', { pattern: 'x', path: '  ' }))).toContain('path must be a non-empty string')
     expect(text(await call(ctx, 'grep', { pattern: 'x', include: '  ' }))).toContain('include must be a non-empty glob')
-    expect(text(await call(ctx, 'grep', { pattern: 'x', include: '!*.ts' }))).toContain('negated patterns')
-    expect(text(await call(ctx, 'grep', { pattern: 'x', include: '*.ts,*.js' }))).toContain('comma-separated list')
   })
 
-  it('accepts a whitespace-only pattern (a legitimate regex) and brace alternation in include', async () => {
+  it('accepts a whitespace-only pattern, negation and multiple globs, and caseInsensitive flag', async () => {
     const { ctx, subprocess } = await setup()
     subprocess.handler = () => runResult('', { exitCode: 1 })
-    const result = await call(ctx, 'grep', { pattern: '  ', include: '*.{ts,tsx}' })
+    const result = await call(ctx, 'grep', { pattern: '  ', include: '*.{ts,tsx}, !*.spec.ts', caseInsensitive: true })
     expect(result.isError).toBe(false)
   })
 })
