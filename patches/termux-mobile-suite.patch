@@ -1908,6 +1908,20 @@ index dafe49616c..bf9c14b178 100644
 +  }
 +}
 +
+diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
+index 3f4de05dd4..83df546037 100644
+--- a/packages/client/ui-settings-general/package.json
++++ b/packages/client/ui-settings-general/package.json
+@@ -75,7 +75,9 @@
+     "@deepseek-ai/dsh-invariants": "workspace:^",
+     "@deepseek-ai/cordis": "workspace:^",
+     "@types/react": "~18.3.1",
++    "@types/react-dom": "~18.3.1",
+     "react": "^18.2.0",
++    "react-dom": "^18.2.0",
+     "@deepseek-ai/dsh-settings": "workspace:^",
+     "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
+     "@deepseek-ai/dsh-client-ui-session": "workspace:^"
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 index d9c94a1781..cf42c834f4 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
@@ -2163,10 +2177,18 @@ index d9c94a1781..cf42c834f4 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index 762747500d..34cf7a89a3 100644
+index 762747500d..6dbb0dcd02 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-@@ -37,14 +37,14 @@ type PanelProps = {
+@@ -11,6 +11,7 @@
+  * to the step, so a mounted-but-deciding step paints nothing here.
+  */
+ import { useCallback, useEffect, useId, useRef, useState } from 'react'
++import { createPortal } from 'react-dom'
+ import clsx from 'clsx'
+ import {
+   IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
+@@ -37,14 +38,14 @@ type PanelProps = {
  
  /**
   * The modal layer: full-viewport mask + centered panel. Close paths: the
@@ -2186,7 +2208,12 @@ index 762747500d..34cf7a89a3 100644
  
    useEffect(() => {
      const onKeyDown = (e: KeyboardEvent) => {
-@@ -62,6 +62,15 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -58,10 +59,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+   const closeButton = useRef<HTMLButtonElement | null>(null)
+   useEffect(() => { closeButton.current?.focus() }, [])
+ 
+-  return (
++  const panel = (
      <div className={css.overlay} role="presentation">
        <div className={css.mask} aria-hidden="true" onClick={onClose} />
        <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
@@ -2202,6 +2229,18 @@ index 762747500d..34cf7a89a3 100644
          <nav className={css.nav}>
            <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
            <div className={css.navList}>
+@@ -94,6 +104,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+       </div>
+     </div>
+   )
++
++  if (typeof document !== 'undefined') {
++    return createPortal(panel, document.body)
++  }
++  return panel
+ }
+ 
+ /**
 diff --git a/packages/client/ui-settings-models/src/client/ModelsSection.module.css b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
 index fe2fe87d3a..e908d3dff2 100644
 --- a/packages/client/ui-settings-models/src/client/ModelsSection.module.css
