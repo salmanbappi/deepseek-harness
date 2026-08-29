@@ -450,13 +450,8 @@
     - id: web
       name: '@deepseek-ai/dsh-web'
       config:
-        searchProvider: tavily
+        searchProvider: deepseek-official
         fetchProvider: http
-
-    - id: web-search-tavily
-      name: '@deepseek-ai/dsh-web-search-tavily'
-      config:
-        apiKey: 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
 
     - id: web-search-deepseek
       name: '@deepseek-ai/dsh-web-search-deepseek'
