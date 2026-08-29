@@ -1,0 +1,88 @@
+diff --git a/patches/termux-environment.patch b/patches/termux-environment.patch
+index b38b3f6db2..c6d39ac605 100644
+--- a/patches/termux-environment.patch
++++ b/patches/termux-environment.patch
+@@ -2917,3 +2917,39 @@ index 0000000000..ab792ce0fa
+ +  error?: string
+ +  message?: string
+ +}
++diff --git a/packages/web/web-search-tavily/tsconfig.json b/packages/web/web-search-tavily/tsconfig.json
++new file mode 100644
++index 0000000000..b1cb44f9cc
++--- /dev/null
+++++ b/packages/web/web-search-tavily/tsconfig.json
++@@ -0,0 +1,30 @@
+++{
+++  "extends": "../../../tsconfig.base.json",
+++  "compilerOptions": {
+++    "rootDir": "src",
+++    "outDir": "lib/types"
+++  },
+++  "include": [
+++    "src"
+++  ],
+++  "references": [
+++    {
+++      "path": "../../util/launch-environment"
+++    },
+++    {
+++      "path": "../../../vendor/cosmokit"
+++    },
+++    {
+++      "path": "../../../vendor/cordis"
+++    },
+++    {
+++      "path": "../../../vendor/schemastery"
+++    },
+++    {
+++      "path": "../web"
+++    },
+++    {
+++      "path": "../../runtime-diagnostics/invariants"
+++    }
+++  ]
+++}
+diff --git a/patches/termux-mobile-suite.patch b/patches/termux-mobile-suite.patch
+index b38b3f6db2..c6d39ac605 100644
+--- a/patches/termux-mobile-suite.patch
++++ b/patches/termux-mobile-suite.patch
+@@ -2917,3 +2917,39 @@ index 0000000000..ab792ce0fa
+ +  error?: string
+ +  message?: string
+ +}
++diff --git a/packages/web/web-search-tavily/tsconfig.json b/packages/web/web-search-tavily/tsconfig.json
++new file mode 100644
++index 0000000000..b1cb44f9cc
++--- /dev/null
+++++ b/packages/web/web-search-tavily/tsconfig.json
++@@ -0,0 +1,30 @@
+++{
+++  "extends": "../../../tsconfig.base.json",
+++  "compilerOptions": {
+++    "rootDir": "src",
+++    "outDir": "lib/types"
+++  },
+++  "include": [
+++    "src"
+++  ],
+++  "references": [
+++    {
+++      "path": "../../util/launch-environment"
+++    },
+++    {
+++      "path": "../../../vendor/cosmokit"
+++    },
+++    {
+++      "path": "../../../vendor/cordis"
+++    },
+++    {
+++      "path": "../../../vendor/schemastery"
+++    },
+++    {
+++      "path": "../web"
+++    },
+++    {
+++      "path": "../../runtime-diagnostics/invariants"
+++    }
+++  ]
+++}

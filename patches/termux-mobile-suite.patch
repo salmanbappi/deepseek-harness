@@ -2917,3 +2917,39 @@ index 0000000000..ab792ce0fa
 +  error?: string
 +  message?: string
 +}
+diff --git a/packages/web/web-search-tavily/tsconfig.json b/packages/web/web-search-tavily/tsconfig.json
+new file mode 100644
+index 0000000000..b1cb44f9cc
+--- /dev/null
++++ b/packages/web/web-search-tavily/tsconfig.json
+@@ -0,0 +1,30 @@
++{
++  "extends": "../../../tsconfig.base.json",
++  "compilerOptions": {
++    "rootDir": "src",
++    "outDir": "lib/types"
++  },
++  "include": [
++    "src"
++  ],
++  "references": [
++    {
++      "path": "../../util/launch-environment"
++    },
++    {
++      "path": "../../../vendor/cosmokit"
++    },
++    {
++      "path": "../../../vendor/cordis"
++    },
++    {
++      "path": "../../../vendor/schemastery"
++    },
++    {
++      "path": "../web"
++    },
++    {
++      "path": "../../runtime-diagnostics/invariants"
++    }
++  ]
++}
