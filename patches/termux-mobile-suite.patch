@@ -1909,7 +1909,7 @@ index dafe49616c..bf9c14b178 100644
 +}
 +
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index d9c94a1781..530237f184 100644
+index d9c94a1781..cf42c834f4 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 @@ -1,12 +1,19 @@
@@ -1936,7 +1936,23 @@ index d9c94a1781..530237f184 100644
    box-sizing: border-box;
    border: none;
    border-radius: 12px;
-@@ -204,8 +211,11 @@
+@@ -67,10 +74,11 @@
+   position: relative;
+   z-index: 1;
+   display: flex;
+-  width: 800px;
+-  height: min(800px, calc(100vh - 48px));
+-  max-width: calc(100vw - 48px);
+-  border-radius: 24px;
++  width: min(900px, calc(100vw - 32px));
++  height: min(850px, calc(100vh - 32px));
++  max-width: calc(100vw - 32px);
++  border-radius: 20px;
++  box-sizing: border-box;
+   overflow: hidden;
+   background: var(--dsw-alias-bg-layer-2);
+   box-shadow: var(--dsw-shadow-lv3);
+@@ -204,8 +212,11 @@
  .options {
    flex: 1;
    min-height: 0;
@@ -1948,7 +1964,7 @@ index d9c94a1781..530237f184 100644
  }
  
  /* Visually-hidden text seat (close button accessible name from slot content). */
-@@ -217,3 +227,197 @@
+@@ -217,3 +228,197 @@
    clip: rect(0 0 0 0);
    white-space: nowrap;
  }
@@ -1989,8 +2005,8 @@ index d9c94a1781..530237f184 100644
 +  background: var(--dsw-alias-interactive-bg-hover);
 +}
 +
-+/* Responsive mobile view (<= 1024px): immersive full screen view with sticky header and scrollable chips. */
-+@media (max-width: 1024px) {
++/* Responsive mobile view (<= 1024px or touch): immersive full screen view with sticky header and scrollable chips. */
++@media (max-width: 1024px), (pointer: coarse) {
 +  .overlay {
 +    position: fixed;
 +    top: 0;
@@ -2187,7 +2203,7 @@ index 762747500d..34cf7a89a3 100644
            <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
            <div className={css.navList}>
 diff --git a/packages/client/ui-settings-models/src/client/ModelsSection.module.css b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
-index fe2fe87d3a..f0d2c50c96 100644
+index fe2fe87d3a..e908d3dff2 100644
 --- a/packages/client/ui-settings-models/src/client/ModelsSection.module.css
 +++ b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
 @@ -1,4 +1,9 @@
@@ -2240,7 +2256,7 @@ index fe2fe87d3a..f0d2c50c96 100644
    overflow-wrap: anywhere;
  }
 +
-+@media (max-width: 900px) {
++@media (max-width: 900px), (pointer: coarse) {
 +  .rowHead {
 +    flex-wrap: wrap;
 +    gap: 8px;

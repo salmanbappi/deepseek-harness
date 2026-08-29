@@ -74,10 +74,11 @@
   position: relative;
   z-index: 1;
   display: flex;
-  width: 800px;
-  height: min(800px, calc(100vh - 48px));
-  max-width: calc(100vw - 48px);
-  border-radius: 24px;
+  width: min(900px, calc(100vw - 32px));
+  height: min(850px, calc(100vh - 32px));
+  max-width: calc(100vw - 32px);
+  border-radius: 20px;
+  box-sizing: border-box;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-shadow-lv3);
@@ -264,8 +265,8 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
-/* Responsive mobile view (<= 1024px): immersive full screen view with sticky header and scrollable chips. */
-@media (max-width: 1024px) {
+/* Responsive mobile view (<= 1024px or touch): immersive full screen view with sticky header and scrollable chips. */
+@media (max-width: 1024px), (pointer: coarse) {
   .overlay {
     position: fixed;
     top: 0;
