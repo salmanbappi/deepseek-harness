@@ -2606,6 +2606,14 @@ index 465000ba37..d9e2c2790a 100644
      expect(result.isError).toBe(false)
    })
  })
+diff --git a/packages/mcp/mcp-client/mcp-client b/packages/mcp/mcp-client/mcp-client
+new file mode 120000
+index 0000000000..2131a5c92f
+--- /dev/null
++++ b/packages/mcp/mcp-client/mcp-client
+@@ -0,0 +1 @@
++/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
+\ No newline at end of file
 diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
 index 344db2a1b2..84df5eb58c 100644
 --- a/packages/sandbox/sandbox-local/src/index.ts
@@ -2872,3 +2880,237 @@ index 9a13bd9f90..c32d6649c3 100644
  /** Bash dialect default arguments (interactive, profile-free). */
  export const DEFAULT_BASH_ARGS = ['--noprofile', '--norc', '-i']
  /** Pwsh dialect default arguments (interactive host, profile-free). */
+diff --git a/packages/web/web-search-tavily/package.json b/packages/web/web-search-tavily/package.json
+new file mode 100644
+index 0000000000..b6449b3e50
+--- /dev/null
++++ b/packages/web/web-search-tavily/package.json
+@@ -0,0 +1,32 @@
++{
++  "name": "@deepseek-ai/dsh-web-search-tavily",
++  "description": "Tavily-backed WebSearchProvider plugin",
++  "version": "0.1.2-alpha.1",
++  "publishConfig": {
++    "access": "public"
++  },
++  "type": "module",
++  "main": "lib/index.js",
++  "types": "lib/types/index.d.ts",
++  "exports": {
++    ".": {
++      "types": "./lib/types/index.d.ts",
++      "default": "./lib/index.js"
++    },
++    "./src/*": "./src/*",
++    "./package.json": "./package.json"
++  },
++  "files": [
++    "lib/index.js",
++    "lib/types/**/*.d.ts"
++  ],
++  "license": "MIT",
++  "dependencies": {
++    "@deepseek-ai/schemastery": "workspace:^"
++  },
++  "peerDependencies": {
++    "@deepseek-ai/cordis": "workspace:^",
++    "@deepseek-ai/dsh-launch-environment": "workspace:^",
++    "@deepseek-ai/dsh-web": "workspace:^"
++  }
++}
+\ No newline at end of file
+diff --git a/packages/web/web-search-tavily/src/index.ts b/packages/web/web-search-tavily/src/index.ts
+new file mode 100644
+index 0000000000..a328e44078
+--- /dev/null
++++ b/packages/web/web-search-tavily/src/index.ts
+@@ -0,0 +1,47 @@
++/**
++ * Tavily-backed WebSearchProvider plugin.
++ * @module @deepseek-ai/dsh-web-search-tavily
++ */
++
++import type { Context } from "@deepseek-ai/cordis"
++import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment"
++import z from "@deepseek-ai/schemastery"
++import {
++  TavilySearchProvider,
++  TAVILY_DEFAULT_BASE_URL,
++  TAVILY_PROVIDER_ID,
++} from "./provider.ts"
++
++export {
++  TAVILY_DEFAULT_BASE_URL,
++  TAVILY_PROVIDER_ID,
++  TavilySearchProvider,
++} from "./provider.ts"
++
++export const name = "web-search-tavily"
++export const inject = ["web"]
++
++export interface Config {
++  apiKey?: string
++  baseURL?: string
++  searchDepth?: "basic" | "advanced"
++  numResults?: number
++}
++
++export const Config: z<Config> = z.object({
++  apiKey: z.string(),
++  baseURL: z.string(),
++  searchDepth: z.union(["basic", "advanced"] as const),
++  numResults: z.number().step(1).min(1),
++})
++
++export function apply(ctx: Context, config: Config): void {
++  const envKey = launchEnvironmentOf(ctx).get("TAVILY_API_KEY")?.value || process.env.TAVILY_API_KEY || ""
++  const apiKey = config.apiKey || envKey
++  ctx.web.registerSearchProvider(new TavilySearchProvider({
++    apiKey,
++    baseURL: config.baseURL ?? TAVILY_DEFAULT_BASE_URL,
++    searchDepth: config.searchDepth ?? "basic",
++    ...config.numResults !== undefined ? { numResults: config.numResults } : {},
++  }))
++}
+diff --git a/packages/web/web-search-tavily/src/provider.ts b/packages/web/web-search-tavily/src/provider.ts
+new file mode 100644
+index 0000000000..5333c4720e
+--- /dev/null
++++ b/packages/web/web-search-tavily/src/provider.ts
+@@ -0,0 +1,99 @@
++/**
++ * TavilySearchProvider: a WebSearchProvider backed by the Tavily search API.
++ * @module @deepseek-ai/dsh-web-search-tavily/provider
++ */
++
++import { WebError } from "@deepseek-ai/dsh-web"
++import type {
++  WebSearchProvider,
++  WebSearchRequest,
++  WebSearchResult,
++  WebSearchSource,
++} from "@deepseek-ai/dsh-web"
++import type { TavilyError, TavilyResultItem, TavilySearchResponse } from "./types.ts"
++
++export const TAVILY_PROVIDER_ID = "tavily"
++export const TAVILY_DEFAULT_BASE_URL = "https://api.tavily.com"
++const USER_AGENT = "deepseek-harness/0.0.1"
++
++export interface TavilySearchProviderOptions {
++  apiKey: string
++  baseURL?: string
++  searchDepth?: "basic" | "advanced"
++  numResults?: number
++}
++
++export function mapTavilyResult(result: TavilyResultItem): WebSearchSource | undefined {
++  if (!result.url) return undefined
++  return {
++    url: result.url,
++    ...result.title != null && result.title.length > 0 ? { title: result.title } : {},
++    snippet: result.content?.trim() || "",
++    ...result.published_date != null && result.published_date.length > 0 ? { publishedAt: result.published_date } : {},
++  }
++}
++
++export function mapTavilyResponse(response: TavilySearchResponse): WebSearchResult {
++  const sources = (response.results ?? [])
++    .map(mapTavilyResult)
++    .filter((source): source is WebSearchSource => source !== undefined)
++  return {
++    sources,
++    truncated: false,
++    ...response.answer != null && response.answer.length > 0 ? { content: response.answer } : {},
++  }
++}
++
++export class TavilySearchProvider implements WebSearchProvider {
++  readonly id = TAVILY_PROVIDER_ID
++
++  constructor(private readonly options: TavilySearchProviderOptions) {}
++
++  available(): boolean {
++    return typeof this.options.apiKey === "string" && this.options.apiKey.trim().length > 0
++  }
++
++  async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchResult> {
++    const numResults = request.maxResults ?? this.options.numResults ?? 5
++    const endpoint = (this.options.baseURL || TAVILY_DEFAULT_BASE_URL).replace(/\/+$/, "") + "/search"
++
++    let response: Response
++    try {
++      response = await fetch(endpoint, {
++        method: "POST",
++        headers: {
++          "Content-Type": "application/json",
++          "User-Agent": USER_AGENT,
++        },
++        body: JSON.stringify({
++          api_key: this.options.apiKey,
++          query: request.query,
++          max_results: numResults,
++          search_depth: this.options.searchDepth ?? "basic",
++          include_answer: true,
++        }),
++        signal,
++      })
++    } catch (error: unknown) {
++      if (signal?.aborted) throw new WebError("search aborted", "WEB_ABORTED")
++      throw new WebError(`Tavily search network request failed: ${String(error)}`, "WEB_PROVIDER_ERROR", { cause: error })
++    }
++
++    if (!response.ok) {
++      let message = `Tavily search failed with HTTP status ${response.status}`
++      try {
++        const body = (await response.json()) as TavilyError
++        if (body.error) message = `Tavily: ${body.error}`
++        else if (body.message) message = `Tavily: ${body.message}`
++      } catch {}
++      throw new WebError(message, "WEB_PROVIDER_ERROR")
++    }
++
++    try {
++      const payload = (await response.json()) as TavilySearchResponse
++      return mapTavilyResponse(payload)
++    } catch (error: unknown) {
++      throw new WebError(`Tavily returned invalid response: ${String(error)}`, "WEB_PROVIDER_ERROR", { cause: error })
++    }
++  }
++}
+diff --git a/packages/web/web-search-tavily/src/types.ts b/packages/web/web-search-tavily/src/types.ts
+new file mode 100644
+index 0000000000..ab792ce0fa
+--- /dev/null
++++ b/packages/web/web-search-tavily/src/types.ts
+@@ -0,0 +1,31 @@
++/**
++ * Wire types for Tavily search API (POST https://api.tavily.com/search).
++ * @module @deepseek-ai/dsh-web-search-tavily/types
++ */
++
++export interface TavilySearchRequest {
++  api_key: string
++  query: string
++  max_results?: number
++  search_depth?: "basic" | "advanced"
++  include_answer?: boolean
++}
++
++export interface TavilyResultItem {
++  title?: string | null
++  url: string
++  content?: string | null
++  score?: number
++  published_date?: string | null
++}
++
++export interface TavilySearchResponse {
++  query: string
++  answer?: string | null
++  results?: TavilyResultItem[]
++}
++
++export interface TavilyError {
++  error?: string
++  message?: string
++}
