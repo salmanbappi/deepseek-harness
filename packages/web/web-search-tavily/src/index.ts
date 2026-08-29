@@ -9,7 +9,6 @@ import z from "@deepseek-ai/schemastery"
 import {
   TavilySearchProvider,
   TAVILY_DEFAULT_BASE_URL,
-  TAVILY_PROVIDER_ID,
 } from "./provider.ts"
 
 export {

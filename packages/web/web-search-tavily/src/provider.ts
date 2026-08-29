@@ -72,7 +72,7 @@ export class TavilySearchProvider implements WebSearchProvider {
           search_depth: this.options.searchDepth ?? "basic",
           include_answer: true,
         }),
-        signal,
+        ...signal === undefined ? {} : { signal },
       })
     } catch (error: unknown) {
       if (signal?.aborted) throw new WebError("search aborted", "WEB_ABORTED")

@@ -2725,10 +2725,10 @@ index 0000000000..b6449b3e50
 \ No newline at end of file
 diff --git a/packages/web/web-search-tavily/src/index.ts b/packages/web/web-search-tavily/src/index.ts
 new file mode 100644
-index 0000000000..a328e44078
+index 0000000000..2f75493474
 --- /dev/null
 +++ b/packages/web/web-search-tavily/src/index.ts
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,46 @@
 +/**
 + * Tavily-backed WebSearchProvider plugin.
 + * @module @deepseek-ai/dsh-web-search-tavily
@@ -2740,7 +2740,6 @@ index 0000000000..a328e44078
 +import {
 +  TavilySearchProvider,
 +  TAVILY_DEFAULT_BASE_URL,
-+  TAVILY_PROVIDER_ID,
 +} from "./provider.ts"
 +
 +export {
@@ -2778,7 +2777,7 @@ index 0000000000..a328e44078
 +}
 diff --git a/packages/web/web-search-tavily/src/provider.ts b/packages/web/web-search-tavily/src/provider.ts
 new file mode 100644
-index 0000000000..5333c4720e
+index 0000000000..7647375c40
 --- /dev/null
 +++ b/packages/web/web-search-tavily/src/provider.ts
 @@ -0,0 +1,99 @@
@@ -2856,7 +2855,7 @@ index 0000000000..5333c4720e
 +          search_depth: this.options.searchDepth ?? "basic",
 +          include_answer: true,
 +        }),
-+        signal,
++        ...signal === undefined ? {} : { signal },
 +      })
 +    } catch (error: unknown) {
 +      if (signal?.aborted) throw new WebError("search aborted", "WEB_ABORTED")
