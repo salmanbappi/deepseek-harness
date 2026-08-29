@@ -2488,6 +2488,27 @@ index b4633d0ad1..f0c598ac6f 100644
  
  html,
  body,
+diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
+index e20b8e0072..95736aa8b4 100644
+--- a/packages/llm/llm-pi-ai/src/adapter.ts
++++ b/packages/llm/llm-pi-ai/src/adapter.ts
+@@ -201,13 +201,11 @@ function reasoningInfo(
+   }
+ }
+ 
+-/** Merge deployment headers while removing case-insensitive attribution collisions. */
++/** Merge deployment headers with provider defaults while allowing custom user-agent overrides. */
+ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+-  const attribution = attributionHeaders()
+-  const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
+   return {
+-    ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
+-    ...attribution,
++    ...attributionHeaders(),
++    ...headers,
+   }
+ }
+ 
 diff --git a/packages/mcp/mcp-client/mcp-client b/packages/mcp/mcp-client/mcp-client
 new file mode 120000
 index 0000000000..2131a5c92f
