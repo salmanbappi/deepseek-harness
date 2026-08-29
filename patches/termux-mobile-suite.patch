@@ -1909,7 +1909,7 @@ index dafe49616c..bf9c14b178 100644
 +}
 +
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index d9c94a1781..d92a1cd070 100644
+index d9c94a1781..530237f184 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 @@ -1,12 +1,19 @@
@@ -1936,7 +1936,19 @@ index d9c94a1781..d92a1cd070 100644
    box-sizing: border-box;
    border: none;
    border-radius: 12px;
-@@ -217,3 +224,197 @@
+@@ -204,8 +211,11 @@
+ .options {
+   flex: 1;
+   min-height: 0;
++  width: 100%;
++  box-sizing: border-box;
+   padding: 0 24px 24px;
+   overflow-y: auto;
++  overflow-x: hidden;
+ }
+ 
+ /* Visually-hidden text seat (close button accessible name from slot content). */
+@@ -217,3 +227,197 @@
    clip: rect(0 0 0 0);
    white-space: nowrap;
  }
@@ -2175,7 +2187,7 @@ index 762747500d..34cf7a89a3 100644
            <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
            <div className={css.navList}>
 diff --git a/packages/client/ui-settings-models/src/client/ModelsSection.module.css b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
-index fe2fe87d3a..95abc454cb 100644
+index fe2fe87d3a..f0d2c50c96 100644
 --- a/packages/client/ui-settings-models/src/client/ModelsSection.module.css
 +++ b/packages/client/ui-settings-models/src/client/ModelsSection.module.css
 @@ -1,4 +1,9 @@
@@ -2189,7 +2201,18 @@ index fe2fe87d3a..95abc454cb 100644
   * `--surface` / `--text-*` names, which nothing in this app defines, would
   * render the light-mode literals written as their fallbacks and stay light
   * under the dark theme. */
-@@ -623,8 +628,7 @@ select.input {
+@@ -7,7 +12,9 @@
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+-  max-width: 720px;
++  width: 100%;
++  max-width: 100%;
++  box-sizing: border-box;
+   color: var(--dsw-alias-label-primary);
+ }
+ 
+@@ -623,8 +630,7 @@ select.input {
  }
  
  @media (prefers-reduced-motion: reduce) {
@@ -2199,7 +2222,7 @@ index fe2fe87d3a..95abc454cb 100644
      transition: none;
    }
  }
-@@ -640,12 +644,6 @@ select.input {
+@@ -640,12 +646,6 @@ select.input {
    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
  }
  
@@ -2212,12 +2235,12 @@ index fe2fe87d3a..95abc454cb 100644
  .candidateList {
    display: flex;
    flex-direction: column;
-@@ -675,3 +673,37 @@ select.input {
+@@ -675,3 +675,37 @@ select.input {
    font-size: 13px;
    overflow-wrap: anywhere;
  }
 +
-+@media (max-width: 600px) {
++@media (max-width: 900px) {
 +  .rowHead {
 +    flex-wrap: wrap;
 +    gap: 8px;
