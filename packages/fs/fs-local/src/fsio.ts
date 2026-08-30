@@ -578,6 +578,7 @@ export async function writeFileAtomic(
     if (createIfAbsent !== undefined) {
       try {
         await linkFile(tempPath, absolutePath)
+      } catch (error: unknown) {
         const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
         const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
           error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
