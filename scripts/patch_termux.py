@@ -123,42 +123,34 @@ def patch_fs_local():
             re.DOTALL
         )
         repl = r"""\1
-        let existing: BigIntStats | undefined
-        try {
-          existing = await inspectPublicationTarget(absolutePath)
-        } catch (metadataError: unknown) {
-          if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
-            throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
-          }
-        }
-
-        if (existing !== undefined) {
-          if (!existing.isFile()) {
-            throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
-          }
-          throw new FsError(
-            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
-            'FS_NOT_OBSERVED',
-            { cause: error },
-          )
-        }
-        if (isEEXIST(error)) {
-          throw new FsError(
-            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
-            'FS_NOT_OBSERVED',
-            { cause: error },
-          )
-        }
-
         const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
         const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
           error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
         )
 
         if (isAndroid && isUnsupportedLinkErr) {
+          let existing: BigIntStats | undefined
+          try {
+            existing = await inspectPublicationTarget(absolutePath)
+          } catch (metadataError: unknown) {
+            if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
+              throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
+            }
+          }
+
+          if (existing !== undefined) {
+            if (!existing.isFile()) {
+              throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
+            }
+            throw new FsError(
+              `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
+              'FS_NOT_OBSERVED',
+              { cause: error },
+            )
+          }
           await rename(tempPath, absolutePath)
         } else {
-          throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
+          await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
         }\3"""
         c = pat.sub(repl, c, count=1)
         modified = True

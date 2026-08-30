@@ -139,6 +139,7 @@ export function formatEditOutput(displayPath: string, replaceAll: boolean, editC
  */
 export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void {
   ctx.systemPrompt.section({
+    name: 'tool:edit',
     order: ctx.systemPrompt.getSectionOrder('TOOL_EDIT'),
     text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. To make multiple edits efficiently in a single step, supply an `edits` array of {old_string, new_string, replace_all} instead of making repeated tool calls. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
   })
