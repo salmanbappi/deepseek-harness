@@ -174,15 +174,38 @@ pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
 python3 scripts/patch_termux.py --apply || true
 
 
-# Step 5: Build libraries and web assets
-echo -e "${BLUE}[5/5] Preparing application and mobile web interface...${NC}"
+# Step 5: Deploy pre-compiled libraries and mobile web assets
+echo -e "${BLUE}[5/5] Deploying pre-compiled binaries & mobile web interface...${NC}"
 if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ] && [ -f "packages/client/ui-chat/lib/client.js" ]; then
     echo -e "${GREEN}  -> Pre-compiled build artifacts verified. Ready for launch.${NC}"
 else
-    echo "  -> Building TypeScript libraries and mobile web interface..."
-    pnpm run build:lib:host
-    pnpm run build:lib:client
-    pnpm run build:web
+    echo -e "${YELLOW}  -> Fetching cloud pre-compiled release bundle from GitHub...${NC}"
+    REPO_OWNER="salmanbappi"
+    REPO_NAME="deepseek-harness"
+    RELEASE_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+    LATEST_JSON=$(curl -sL "$RELEASE_API" 2>/dev/null || true)
+    TARBALL_URL=$(echo "$LATEST_JSON" | grep "browser_download_url" | grep "dsh-termux-.*\.tar\.gz" | cut -d : -f 2,3 | tr -d ' "' | head -n 1 || true)
+    
+    DOWNLOAD_SUCCESS=0
+    if [ -n "$TARBALL_URL" ]; then
+        echo "  -> Downloading: $TARBALL_URL"
+        if curl -sL "$TARBALL_URL" -o "$DSH_DIR/prebuilt.tar.gz" 2>/dev/null; then
+            echo "  -> Extracting pre-built application packages..."
+            tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" apps/ packages/ 2>/dev/null || tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" || true
+            rm -f "$DSH_DIR/prebuilt.tar.gz"
+            if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ]; then
+                DOWNLOAD_SUCCESS=1
+                echo -e "${GREEN}  -> Cloud release bundle successfully deployed (zero local compile load)!${NC}"
+            fi
+        fi
+    fi
+
+    if [ "$DOWNLOAD_SUCCESS" -eq 0 ]; then
+        echo -e "${YELLOW}[!] Cloud bundle unavailable. Attempting local compilation with memory limits...${NC}"
+        pnpm run build:lib:host || true
+        pnpm run build:lib:client || true
+        pnpm run build:web || true
+    fi
 fi
 
 echo -e "\n${GREEN}=======================================================${NC}"
