@@ -571,10 +571,45 @@ def check_status():
     return all_ok
 
 
+def ensure_workspace_symlinks():
+    """Ensures all workspace packages (@deepseek-ai/*) are linked into node_modules/@deepseek-ai/."""
+    import json
+    nm = os.path.join(REPO_DIR, "node_modules", "@deepseek-ai")
+    os.makedirs(nm, exist_ok=True)
+    dirs = ["packages", "vendor", "apps", "native"]
+    count = 0
+    for d in dirs:
+        base = os.path.join(REPO_DIR, d)
+        if not os.path.exists(base):
+            continue
+        for root, subdirs, files in os.walk(base):
+            if "node_modules" in root:
+                continue
+            if "package.json" in files:
+                pj = os.path.join(root, "package.json")
+                try:
+                    with open(pj, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    name = data.get("name", "")
+                    if name.startswith("@deepseek-ai/"):
+                        subname = name.split("/", 1)[1]
+                        link_path = os.path.join(nm, subname)
+                        rel_target = os.path.relpath(root, nm)
+                        if not os.path.exists(link_path):
+                            os.symlink(rel_target, link_path)
+                            count += 1
+                except Exception:
+                    pass
+    if count > 0:
+        print(f"  [+] Linked {count} new workspace package(s) in node_modules/@deepseek-ai.")
+    return True
+
+
 def apply_all():
     print("[*] Applying DeepSeek Harness Termux & Mobile Environment Suite...")
     apply_git_patch()
     
+    ensure_workspace_symlinks()
     patch_attachment_store()
     patch_session_persistence()
     patch_fs_local()
