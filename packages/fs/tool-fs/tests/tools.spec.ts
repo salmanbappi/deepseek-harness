@@ -92,7 +92,14 @@ class FakeFs extends FileSystem {
     this.throwIfArmed()
     this.editIntents.push(expected)
     const content = this.files.get(target.targetKey) ?? ''
-    const after = content.split(edit.oldString).join(edit.newString)
+    let after = content
+    if (edit.edits && edit.edits.length > 0) {
+      for (const op of edit.edits) {
+        after = after.split(op.oldString).join(op.newString)
+      }
+    } else if (edit.oldString !== undefined && edit.newString !== undefined) {
+      after = after.split(edit.oldString).join(edit.newString)
+    }
     this.files.set(target.targetKey, after)
     return { version: FsVersion('v3'), before: content, after }
   }
@@ -468,6 +475,40 @@ describe('edit tool', () => {
     expect(result.isError).toBe(true)
     expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
   })
+
+  it('formats a batch-replacement success with count after a read', async () => {
+    const { ctx, fs } = await setup()
+    const session = { header: {} }
+    fs.files.set('key:a.txt', 'one two three')
+    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
+    const result = await call(ctx, 'edit', {
+      file_path: 'a.txt',
+      edits: [
+        { old_string: 'one', new_string: 'ONE' },
+        { old_string: 'two', new_string: 'TWO' },
+      ],
+    }, { session })
+    if (result.isError) throw new Error('expected batch edit success')
+    expect(result.value).toEqual({ path: '/abs/a.txt', before: 'one two three', after: 'ONE TWO three' })
+    expect(text(result)).toBe('The file /abs/a.txt has been updated successfully. 2 edits were applied.')
+  })
+
+  it('rejects invalid edit inside edits array', async () => {
+    const { ctx } = await setup()
+    const result = await call(ctx, 'edit', {
+      file_path: 'a.txt',
+      edits: [{ old_string: 'same', new_string: 'same' }],
+    })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('must differ')
+  })
+
+  it('rejects call when neither old_string/new_string nor edits is provided', async () => {
+    const { ctx } = await setup()
+    const result = await call(ctx, 'edit', { file_path: 'a.txt' })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('Either (old_string and new_string) or a non-empty edits array must be provided')
+  })
 })
 
 describe('tool-owned presentation (pure presentCall)', () => {
@@ -591,6 +632,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
     expect(await presentCall('edit', { file_path: 'a.txt', old_string: '', new_string: 'seed' })).toEqual({
       card: 'diff', title: 'Edit a.txt',
       diffs: [{ path: 'a.txt', oldText: null, newText: 'seed' }],
+      locations: [{ path: 'a.txt' }],
+    })
+  })
+
+  it('edit: presentCall maps batch edits to multiple diffs', async () => {
+    expect(await presentCall('edit', {
+      file_path: 'a.txt',
+      edits: [
+        { old_string: 'foo', new_string: 'bar' },
+        { old_string: 'baz', new_string: 'qux' },
+      ],
+    })).toEqual({
+      card: 'diff',
+      title: 'Edit a.txt',
+      diffs: [
+        { path: 'a.txt', oldText: 'foo', newText: 'bar' },
+        { path: 'a.txt', oldText: 'baz', newText: 'qux' },
+      ],
       locations: [{ path: 'a.txt' }],
     })
   })

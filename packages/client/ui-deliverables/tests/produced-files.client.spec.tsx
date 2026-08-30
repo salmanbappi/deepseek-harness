@@ -200,27 +200,32 @@ describe('produced-file Turn data', () => {
         replace_all: false,
       }),
       result(5, 'edit'),
-      call(6, 'create', 'str_replace_editor', {
+      call(6, 'batch-edit', 'edit', {
+        file_path: 'out/batch.css', edits: [{ old_string: 'red', new_string: 'blue' }],
+      }),
+      result(7, 'batch-edit'),
+      call(8, 'create', 'str_replace_editor', {
         command: 'create', path: 'notes/new.md', file_path: 'wrong-create.txt', file_text: 'new',
       }),
-      result(7, 'create'),
-      call(8, 'replace', 'str_replace_editor', {
+      result(9, 'create'),
+      call(10, 'replace', 'str_replace_editor', {
         command: 'str_replace', path: 'notes/existing.md', old_str: 'old', new_str: 'new',
       }),
-      result(9, 'replace'),
-      call(10, 'delete-text', 'str_replace_editor', {
+      result(11, 'replace'),
+      call(12, 'delete-text', 'str_replace_editor', {
         command: 'str_replace', path: 'notes/deleted-text.md', old_str: 'remove me',
       }),
-      result(11, 'delete-text'),
-      call(12, 'insert', 'str_replace_editor', {
+      result(13, 'delete-text'),
+      call(14, 'insert', 'str_replace_editor', {
         command: 'insert', path: 'notes/inserted.md', insert_line: 1, new_str: 'line',
       }),
-      result(13, 'insert'),
+      result(15, 'insert'),
     ])
 
     expect(producedForClosing(deliverablesOf(value))).toEqual([
       'out/index.html',
       'out/app.css',
+      'out/batch.css',
       'notes/new.md',
       'notes/existing.md',
       'notes/deleted-text.md',
@@ -231,6 +236,10 @@ describe('produced-file Turn data', () => {
   it.each([
     { caseName: 'write omits content', name: 'write', args: { file_path: 'write.txt' } },
     { caseName: 'write has non-string content', name: 'write', args: { file_path: 'write.txt', content: 1 } },
+    {
+      caseName: 'edit has invalid edits array', name: 'edit',
+      args: { file_path: 'edit.txt', edits: [{ old_string: 'same', new_string: 'same' }] },
+    },
     {
       caseName: 'edit omits old_string', name: 'edit',
       args: { file_path: 'edit.txt', new_string: 'new' },

@@ -689,6 +689,32 @@ describe('editText', () => {
     expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('b b b')
   })
 
+  it('applies batch edits atomically in sequence', async () => {
+    await writeFile(join(dir, 'a.txt'), 'hello world foo bar')
+    const target = await fs.resolve('a.txt')
+    const outcome = await fs.editText(target, {
+      edits: [
+        { oldString: 'world', newString: 'earth' },
+        { oldString: 'foo', newString: 'baz' },
+      ],
+    }, { version: await versionOf(target) })
+    expect(outcome.after).toBe('hello earth baz bar')
+    expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello earth baz bar')
+  })
+
+  it('batch edit fails atomically without modifying file if one edit is invalid', async () => {
+    await writeFile(join(dir, 'a.txt'), 'hello world')
+    const target = await fs.resolve('a.txt')
+    await expect(fs.editText(target, {
+      edits: [
+        { oldString: 'world', newString: 'earth' },
+        { oldString: 'missing', newString: 'val' },
+      ],
+    }, { version: await versionOf(target) }))
+      .rejects.toMatchObject({ code: 'FS_EDIT_NOT_FOUND' })
+    expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello world')
+  })
+
   it('rejects invalid UTF-8 without rewriting the file', async () => {
     const path = join(dir, 'bad.txt')
     const bytes = Buffer.from([0x68, 0xff, 0x69])

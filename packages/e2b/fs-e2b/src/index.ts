@@ -146,9 +146,9 @@ function mapError(error: unknown, operation: string, displayPath: string, signal
   return new FsError(`cannot ${operation} "${displayPath}": ${String(error)}`, 'FS_IO_ERROR', { cause: error })
 }
 
-function literalEdit(content: string, request: FsEditRequest, displayPath: string): string {
-  const oldString = normalizeLineEndings(request.oldString)
-  const newString = normalizeLineEndings(request.newString)
+function applySingleLiteralEdit(content: string, oldStr: string, newStr: string, replaceAll: boolean, displayPath: string): string {
+  const oldString = normalizeLineEndings(oldStr)
+  const newString = normalizeLineEndings(newStr)
   if (oldString.length === 0) {
     throw new FsError(`cannot edit "${displayPath}": old_string must be non-empty`, 'FS_EDIT_NOT_FOUND')
   }
@@ -161,10 +161,24 @@ function literalEdit(content: string, request: FsEditRequest, displayPath: strin
     offset = found + oldString.length
   }
   if (matches === 0) throw new FsError(`cannot edit "${displayPath}": old_string was not found`, 'FS_EDIT_NOT_FOUND')
-  if (!request.replaceAll && matches !== 1) {
+  if (!replaceAll && matches !== 1) {
     throw new FsError(`cannot edit "${displayPath}": old_string matched ${matches} times`, 'FS_AMBIGUOUS_EDIT')
   }
-  return request.replaceAll ? content.split(oldString).join(newString) : content.replace(oldString, newString)
+  return replaceAll ? content.split(oldString).join(newString) : content.replace(oldString, newString)
+}
+
+function literalEdit(content: string, request: FsEditRequest, displayPath: string): string {
+  if (Array.isArray(request.edits) && request.edits.length > 0) {
+    let current = content
+    for (const op of request.edits) {
+      current = applySingleLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, displayPath)
+    }
+    return current
+  }
+  if (request.oldString !== undefined && request.newString !== undefined) {
+    return applySingleLiteralEdit(content, request.oldString, request.newString, request.replaceAll ?? false, displayPath)
+  }
+  throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
 }
 
 /** Remote filesystem backend sharing the sandbox owned by `ctx.e2b`. */

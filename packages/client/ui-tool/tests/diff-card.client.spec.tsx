@@ -63,6 +63,50 @@ describe('diffCardModel', () => {
     })
   })
 
+  it('derives a running card from batch edits array', () => {
+    const batchArgs = JSON.stringify({
+      file_path: 'notes/demo.txt',
+      edits: [
+        { old_string: 'first', new_string: 'FIRST' },
+        { old_string: 'second', new_string: 'SECOND' },
+      ],
+    })
+    expect(diffCardModel(running({ argsRaw: batchArgs }))).toEqual({
+      card: {
+        diffs: [
+          { path: 'notes/demo.txt', oldText: 'first', newText: 'FIRST' },
+          { path: 'notes/demo.txt', oldText: 'second', newText: 'SECOND' },
+        ],
+      },
+    })
+  })
+
+  it('derives a settled card from batch edit result metadata', () => {
+    const batchArgs = JSON.stringify({
+      file_path: 'notes/demo.txt',
+      edits: [
+        { old_string: 'first', new_string: 'FIRST' },
+        { old_string: 'second', new_string: 'SECOND' },
+      ],
+    })
+    expect(diffCardModel(settled({
+      call: { name: 'edit', argsRaw: batchArgs },
+      meta: {
+        diffs: [
+          { path: 'notes/demo.txt', oldText: 'first', newText: 'FIRST' },
+          { path: 'notes/demo.txt', oldText: 'second', newText: 'SECOND' },
+        ],
+      },
+    }))).toEqual({
+      card: {
+        diffs: [
+          { path: 'notes/demo.txt', oldText: 'first', newText: 'FIRST' },
+          { path: 'notes/demo.txt', oldText: 'second', newText: 'SECOND' },
+        ],
+      },
+    })
+  })
+
   it.each([
     {
       command: 'create',

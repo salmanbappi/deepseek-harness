@@ -60,6 +60,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
 
 /** Validate the fields that an `edit` execution requires. */
 function validEditArgs(args: Readonly<Record<string, unknown>>): boolean {
+  if (Array.isArray(args.edits) && args.edits.length > 0) {
+    return args.edits.every((op) => {
+      if (typeof op !== 'object' || op === null) return false
+      const { old_string: oldText, new_string: newText, replace_all: replaceAll } = op as Record<string, unknown>
+      return typeof oldText === 'string'
+        && oldText.length > 0
+        && typeof newText === 'string'
+        && oldText !== newText
+        && (replaceAll === undefined || typeof replaceAll === 'boolean')
+    })
+  }
   return typeof args.old_string === 'string'
     && args.old_string.length > 0
     && typeof args.new_string === 'string'

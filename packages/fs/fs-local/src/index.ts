@@ -243,8 +243,19 @@ export class LocalFileSystem extends FileSystem {
       }
 
       const original = await readForEdit(target.targetKey, target.displayPath, signal)
-      const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
-      const content = restoreLineEndings(edited.content, original.lineEndings)
+      let current = original.content
+      if (Array.isArray(edit.edits) && edit.edits.length > 0) {
+        for (const op of edit.edits) {
+          const res = applyLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, target.displayPath)
+          current = res.content
+        }
+      } else if (edit.oldString !== undefined && edit.newString !== undefined) {
+        const res = applyLiteralEdit(current, edit.oldString, edit.newString, edit.replaceAll ?? false, target.displayPath)
+        current = res.content
+      } else {
+        throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
+      }
+      const content = restoreLineEndings(current, original.lineEndings)
       await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
 
       const after = await probe(target.targetKey)
@@ -253,7 +264,7 @@ export class LocalFileSystem extends FileSystem {
         // The LF-normalized before/after text (the applied-hunk diff basis);
         // line-ending restoration is a storage detail the diff ignores.
         before: original.content,
-        after: edited.content,
+        after: current,
       }
     })
   }

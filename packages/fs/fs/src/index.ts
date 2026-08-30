@@ -29,6 +29,7 @@ export {
   FsVersion,
 } from './types.ts'
 export type {
+  FsEditOp,
   FsEditOutcome,
   FsEditRequest,
   FsDirEntry,
