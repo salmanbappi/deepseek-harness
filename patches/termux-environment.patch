@@ -58,10 +58,10 @@ index 20a428fee6..e1d3cdffc7 100644
        "src": "/favicon.svg",
        "sizes": "any",
 diff --git a/package.json b/package.json
-index f5718565aa..f1056c6ed4 100644
+index 768d491cb1..1a3cc75c2b 100644
 --- a/package.json
 +++ b/package.json
-@@ -147,7 +147,7 @@
+@@ -150,7 +150,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -70,7 +70,7 @@ index f5718565aa..f1056c6ed4 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -191,5 +191,8 @@
+@@ -193,5 +193,8 @@
      "typescript": "^6.0.3",
      "vite-tsconfig-paths": "^6.1.1",
      "vitest": "^4.1.8"
@@ -265,10 +265,10 @@ index 3d6043fdfe..c648fbcbea 100644
 +  }
 +}
 diff --git a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
-index c6f6bab161..4ec783f948 100644
+index 2f6ec71c85..ca65321b43 100644
 --- a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
 +++ b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
-@@ -91,3 +91,40 @@
+@@ -92,3 +92,40 @@
    clip: rect(0 0 0 0);
    white-space: nowrap;
  }
@@ -331,10 +331,10 @@ index 29c0bc3aab..78d71928fa 100644
 +}
 +
 diff --git a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css
-index 65d9138b77..d2b9ddb844 100644
+index 831e6e212b..ef10320097 100644
 --- a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css
 +++ b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.module.css
-@@ -14,3 +14,17 @@
+@@ -7,3 +7,17 @@
  .actions {
    margin-left: -6px;
  }
@@ -895,21 +895,19 @@ index 9d8b3d7ceb..cba51e3d4e 100644
 +  }
 +}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index 0451f499c3..4464d67fab 100644
+index 73c5fccb73..2c64bd6cd3 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-@@ -1,5 +1,9 @@
+@@ -1,3 +1,8 @@
 +/* Conversation column skeleton: header (breadcrumb row only for subagents not fork + tabs) over the view
 +   area, composer InputBar at the bottom. Column width/squeeze is layout's;
 +   this fills its cell. Figma: Header 39:27730 (83px two-row), tabs 13px with
 +   a 2px active bar. */
 +
  .root {
--  position: relative; /* width handles are absolute against the column */
+   position: relative; /* positioning context for slot-owned absolute chrome */
    display: flex;
-   flex-direction: column;
-   height: 100%;
-@@ -8,27 +12,14 @@
+@@ -8,27 +13,14 @@
  
    /* Shared width axis for the whole column: one content width W
       (--dsh-chat-content-width) for the transcript, the dock cards
@@ -941,17 +939,7 @@ index 0451f499c3..4464d67fab 100644
    --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
    --dsh-composer-side-clearance: 16px;
    --dsh-composer-dock-inset: 8px;
-@@ -36,9 +27,6 @@
- 
- .header {
-   position: relative;
--  /* Above the width handles (which start at top: 0) so the breadcrumb row and
--     header buttons stay clickable. */
--  z-index: 9;
-   flex: none;
-   padding: 12px 28px 0 20px;
-   border-bottom: 1px solid transparent;
-@@ -115,11 +103,6 @@
+@@ -112,11 +104,6 @@
    cursor: pointer;
  }
  
@@ -963,90 +951,15 @@ index 0451f499c3..4464d67fab 100644
  .crumb:hover:not(:disabled) {
    background: var(--dsw-alias-interactive-bg-hover);
  }
-@@ -201,82 +184,6 @@
-   min-height: 0;
+@@ -275,7 +262,6 @@
+ .root:has([data-conversation-composer-overlay]) .widthHandle {
+   display: none;
  }
- 
--/* Width handles: 40px col-resize strips beside the transcript, absolute in
--   .root (NOT the scrollport: an absolute strip there would extend the
--   scrollable range). Inner edge sits 24px outside the content column — the
--   same offset the glow line paints at — and the strip extends 40px outward
--   from there; the outer edge is clamped to keep a 24px safe zone against the
--   column edges (sidebar side and scrollbar side stay drag-free). When the
--   margin cannot fit inset + strip + safe zone the computed width goes
--   negative and the strip resolves to zero — no mispositioned hit area on
--   narrow columns. Known half-scrollbar (~4px) centering offset vs the
--   gutter-reserved content box is accepted: it stays well inside the strip. */
--.widthHandle {
--  position: absolute;
--  top: 0;
--  bottom: 0;
--  z-index: 8;
--  width: min(
--    40px,
--    calc((100% - var(--dsh-chat-content-width)) / 2 - 24px - 24px)
--  );
--  cursor: col-resize;
--}
--
--.widthHandle[data-side='left'] {
--  right: calc(50% + var(--dsh-chat-content-width) / 2 + 24px);
--}
--
--.widthHandle[data-side='right'] {
--  left: calc(50% + var(--dsh-chat-content-width) / 2 + 24px);
--}
--
--/* The glow: a short 3px bar riding the pointer's Y, inset 16px outward from
--   the strip's inner edge (40px from the content column),
--   not a full-height rule — a 24px solid core centered on the pointer
--   (published by pointermove as --dsh-width-handle-pointer-y), fading to
--   transparent over 40px each side (~104px total). A solid CORE, not a single
--   solid stop: a lone peak washes out over the fade. The scrollbar hover tint,
--   not a border token: this is a draggable bar and the border alphas (4-16%)
--   disappear against the base fill. Before the first move the fallback centers
--   the glow at 50% height. */
--.widthHandle::after {
--  content: '';
--  position: absolute;
--  top: 0;
--  bottom: 0;
--  width: 3px;
--  border-radius: 3px;
--  background: linear-gradient(
--    to bottom,
--    transparent calc(var(--dsh-width-handle-pointer-y, 50%) - 52px),
--    var(--dsw-alias-scrollbar-hover-l1) calc(var(--dsh-width-handle-pointer-y, 50%) - 12px),
--    var(--dsw-alias-scrollbar-hover-l1) calc(var(--dsh-width-handle-pointer-y, 50%) + 12px),
--    transparent calc(var(--dsh-width-handle-pointer-y, 50%) + 52px)
--  );
--  opacity: 0;
--  pointer-events: none;
--}
--
--.widthHandle[data-side='left']::after {
--  right: 16px;
--}
--
--.widthHandle[data-side='right']::after {
--  left: 16px;
--}
--
--.widthHandle:hover::after,
--.widthHandle[data-dragging]::after {
--  opacity: 1;
--}
--
--/* Views that elect a composer overlay (trajectory etc.) own their full-bleed
--   scrollers; the strips would sit over their content and steal clicks. */
--.root:has([data-conversation-composer-overlay]) .widthHandle {
--  display: none;
--}
 -
  /* Composer context stack (Figma 9:937): standalone dock cards share one
     rhythm above the input card. */
  .composerStack {
-@@ -456,3 +363,47 @@
+@@ -450,3 +436,47 @@
  .root[data-phase='settling'] .composerSeat {
    visibility: hidden;
  }
@@ -1095,10 +1008,10 @@ index 0451f499c3..4464d67fab 100644
 +}
 +
 diff --git a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
-index 91dfb4a8a3..eb61063c7f 100644
+index 983c168ec1..99b37094e7 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
-@@ -205,3 +205,27 @@
+@@ -213,3 +213,27 @@
    line-height: 18px;
    color: var(--dsw-alias-state-error-primary);
  }
@@ -1127,7 +1040,7 @@ index 91dfb4a8a3..eb61063c7f 100644
 +}
 +
 diff --git a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
-index 8230af0199..e35c1ded2e 100644
+index 6576608916..0e25978d28 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css
 @@ -1,3 +1,21 @@
@@ -1204,15 +1117,15 @@ index 8230af0199..e35c1ded2e 100644
  /* Floating overlay anchor (menu / popupSelect shell): entries position
     themselves against the card (bottom: 100% + gap); closed entries render null. */
  .overlayAnchor {
-@@ -143,6 +171,7 @@
-    and scrolls it). figma .InputText 34:10434: pl 16 / pr 12 / pt 4. */
+@@ -155,6 +183,7 @@
+    right pad is 8 here plus .scroll's 4px bar inset. */
  .input {
    box-sizing: border-box;
 +  min-height: 24px;
-   padding: 4px 12px 0 16px;
+   padding: 4px 8px 0 16px;
    font-family: var(--dsw-font-family);
    font-size: inherit;
-@@ -198,7 +227,6 @@
+@@ -211,7 +240,6 @@
     (figma Input_Bottom chrome). */
  .row {
    display: flex;
@@ -1220,7 +1133,7 @@ index 8230af0199..e35c1ded2e 100644
    align-items: center;
    justify-content: space-between;
    gap: 12px;
-@@ -235,12 +263,6 @@
+@@ -248,12 +276,6 @@
  
  .trailing {
    flex: none;
@@ -1233,7 +1146,7 @@ index 8230af0199..e35c1ded2e 100644
    gap: 12px;
  }
  
-@@ -341,3 +363,115 @@
+@@ -354,3 +376,115 @@
    font-size: 12px;
    cursor: pointer;
  }
@@ -1372,7 +1285,7 @@ index b7f74f305b..9e9f8a3c53 100644
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
 diff --git a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
-index 5a0043971e..314330c551 100644
+index 56821c7ecd..a2103bf40b 100644
 --- a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
 +++ b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
 @@ -200,27 +200,32 @@ describe('produced-file Turn data', () => {
@@ -1987,48 +1900,24 @@ index dafe49616c..bf9c14b178 100644
 +}
 +
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index 3f4de05dd4..83df546037 100644
+index a601a425fe..5264218a3e 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
-@@ -75,7 +75,9 @@
+@@ -66,7 +66,9 @@
      "@deepseek-ai/dsh-invariants": "workspace:^",
      "@deepseek-ai/cordis": "workspace:^",
      "@types/react": "~18.3.1",
 +    "@types/react-dom": "~18.3.1",
      "react": "^18.2.0",
 +    "react-dom": "^18.2.0",
-     "@deepseek-ai/dsh-settings": "workspace:^",
      "@deepseek-ai/dsh-client-ui-renderer": "workspace:^",
-     "@deepseek-ai/dsh-client-ui-session": "workspace:^"
+     "@deepseek-ai/dsh-client-ui-session": "workspace:^",
+     "@deepseek-ai/dsh-settings": "workspace:^"
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index d9c94a1781..cf42c834f4 100644
+index f68b7a5d4e..686f7dfc78 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-@@ -1,12 +1,19 @@
-+/* Settings shell (figma 501:29904 mask context / 501:29947 panel): sidebar
-+   foot trigger row + centered 1080x700 modal panel. The trigger uses the
-+   sidebar's 34px compact row / 36px rail circle rhythm; the
-+   panel is a two-column layout — 188px nav rail + content column with a
-+   54px header and the 24px-padded options area. */
-+
-+/* Trigger row: match the other wide sidebar controls' compact vertical rhythm. */
- .trigger {
-   flex: none;
-   display: flex;
-   align-items: center;
-   gap: 8px;
--  width: calc(100% + 4px);
--  height: 42px;
--  margin: 4px -2px;
--  padding: 0 10px 0 8px;
-+  width: calc(100% + 8px);
-+  height: 34px;
-+  margin: 4px -4px 4px;
-+  padding: 6px 2px 6px 10px;
-   box-sizing: border-box;
-   border: none;
-   border-radius: 12px;
-@@ -67,10 +74,11 @@
+@@ -83,10 +83,11 @@
    position: relative;
    z-index: 1;
    display: flex;
@@ -2044,7 +1933,7 @@ index d9c94a1781..cf42c834f4 100644
    overflow: hidden;
    background: var(--dsw-alias-bg-layer-2);
    box-shadow: var(--dsw-shadow-lv3);
-@@ -204,8 +212,11 @@
+@@ -220,8 +221,11 @@
  .options {
    flex: 1;
    min-height: 0;
@@ -2056,7 +1945,7 @@ index d9c94a1781..cf42c834f4 100644
  }
  
  /* Visually-hidden text seat (close button accessible name from slot content). */
-@@ -217,3 +228,197 @@
+@@ -233,3 +237,197 @@
    clip: rect(0 0 0 0);
    white-space: nowrap;
  }
@@ -2255,18 +2144,18 @@ index d9c94a1781..cf42c834f4 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index 762747500d..6dbb0dcd02 100644
+index d5b1df190a..3bf43e49bf 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 @@ -11,6 +11,7 @@
   * to the step, so a mounted-but-deciding step paints nothing here.
   */
- import { useCallback, useEffect, useId, useRef, useState } from 'react'
+ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 +import { createPortal } from 'react-dom'
  import clsx from 'clsx'
  import {
-   IconAgentPresetOutline16, IconCloseOutline16, IconDataOutline16,
-@@ -37,14 +38,14 @@ type PanelProps = {
+   ConnectionIndicator,
+@@ -41,14 +42,14 @@ type PanelProps = {
  
  /**
   * The modal layer: full-viewport mask + centered panel. Close paths: the
@@ -2286,7 +2175,7 @@ index 762747500d..6dbb0dcd02 100644
  
    useEffect(() => {
      const onKeyDown = (e: KeyboardEvent) => {
-@@ -58,10 +59,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -62,10 +63,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
    const closeButton = useRef<HTMLButtonElement | null>(null)
    useEffect(() => { closeButton.current?.focus() }, [])
  
@@ -2307,7 +2196,7 @@ index 762747500d..6dbb0dcd02 100644
          <nav className={css.nav}>
            <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
            <div className={css.navList}>
-@@ -94,6 +104,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -98,6 +108,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
        </div>
      </div>
    )
@@ -2621,7 +2510,7 @@ index 03eaf04a3a..1cdc6c28f2 100644
    return { card: { diffs: applied } }
  }
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index 8a263f2983..b8a2522d26 100644
+index ebe2b10351..91a7c9a17d 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 @@ -63,6 +63,50 @@ describe('diffCardModel', () => {
@@ -2947,10 +2836,10 @@ index 6fbe1268af..acb3568a31 100644
  }
  
 diff --git a/packages/fs/tool-fs/src/edit.ts b/packages/fs/tool-fs/src/edit.ts
-index 60f3913866..0c8a272772 100644
+index 0660e40621..92493ad527 100644
 --- a/packages/fs/tool-fs/src/edit.ts
 +++ b/packages/fs/tool-fs/src/edit.ts
-@@ -15,12 +15,26 @@ import { remediateFsError } from './error.ts'
+@@ -14,12 +14,26 @@ import { remediateFsError } from './error.ts'
  import { sessionResolveOptions } from './session-cwd.ts'
  import type { FsSandboxController } from './sandbox.ts'
  
@@ -2978,7 +2867,7 @@ index 60f3913866..0c8a272772 100644
  }
  
  /**
-@@ -30,9 +44,10 @@ interface EditInput {
+@@ -29,9 +43,10 @@ interface EditInput {
   */
  interface EditToolArgs {
    file_path: string
@@ -2991,7 +2880,7 @@ index 60f3913866..0c8a272772 100644
    sandbox_permissions?: string
    justification?: string
  }
-@@ -40,29 +55,79 @@ interface EditToolArgs {
+@@ -39,29 +54,79 @@ interface EditToolArgs {
  /**
   * Validate value constraints the schema DSL can't express: a non-blank
   * `file_path`, a non-empty `old_string`, and `old_string !== new_string`
@@ -3077,10 +2966,12 @@ index 60f3913866..0c8a272772 100644
    return replaceAll
      ? `The file ${displayPath} has been updated. All occurrences were successfully replaced.`
      : `The file ${displayPath} has been updated successfully.`
-@@ -77,17 +142,30 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -74,19 +139,31 @@ export function formatEditOutput(displayPath: string, replaceAll: boolean): stri
+  */
+ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void {
    ctx.systemPrompt.section({
-     name: 'tool:edit',
-     order: FIRST_PARTY_SECTION_ORDER.TOOL_EDIT,
+-    name: 'tool:edit',
+     order: ctx.systemPrompt.getSectionOrder('TOOL_EDIT'),
 -    text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
 +    text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. To make multiple edits efficiently in a single step, supply an `edits` array of {old_string, new_string, replace_all} instead of making repeated tool calls. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
    })
@@ -3112,7 +3003,7 @@ index 60f3913866..0c8a272772 100644
        ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
      },
      output: {
-@@ -102,7 +180,11 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -101,7 +178,11 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
        },
        render: (args, value) => [{
          type: 'text',
@@ -3125,7 +3016,7 @@ index 60f3913866..0c8a272772 100644
        }],
        presentationMeta: (args, value) => ({
          diffs: computeHunkDiffs(args.file_path, value.before, value.after)
-@@ -126,7 +208,12 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -125,7 +206,12 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
          const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
          outcome = await ctx.fs.editText(
            target,
@@ -3139,7 +3030,7 @@ index 60f3913866..0c8a272772 100644
            intent,
            exec.signal,
            sandboxPolicy,
-@@ -145,13 +232,15 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -144,13 +230,15 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
        }
      },
      // Pure display: a diff card of the literal replacement (old_string → new_string), derived
@@ -3159,10 +3050,10 @@ index 60f3913866..0c8a272772 100644
        }
      },
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 6a1fc07bba..d1e5ef2d60 100644
+index 5e50e7fc4e..982510e62e 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
-@@ -92,7 +92,14 @@ class FakeFs extends FileSystem {
+@@ -94,7 +94,14 @@ class FakeFs extends FileSystem {
      this.throwIfArmed()
      this.editIntents.push(expected)
      const content = this.files.get(target.targetKey) ?? ''
@@ -3178,7 +3069,7 @@ index 6a1fc07bba..d1e5ef2d60 100644
      this.files.set(target.targetKey, after)
      return { version: FsVersion('v3'), before: content, after }
    }
-@@ -468,6 +475,40 @@ describe('edit tool', () => {
+@@ -470,6 +477,40 @@ describe('edit tool', () => {
      expect(result.isError).toBe(true)
      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
    })
@@ -3219,7 +3110,7 @@ index 6a1fc07bba..d1e5ef2d60 100644
  })
  
  describe('tool-owned presentation (pure presentCall)', () => {
-@@ -594,6 +635,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -596,6 +637,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
        locations: [{ path: 'a.txt' }],
      })
    })
@@ -3274,20 +3165,19 @@ index 0000000000..2131a5c92f
 +/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
 \ No newline at end of file
 diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
-index 344db2a1b2..84df5eb58c 100644
+index f9415d59d4..53b50cd9bf 100644
 --- a/packages/sandbox/sandbox-local/src/index.ts
 +++ b/packages/sandbox/sandbox-local/src/index.ts
-@@ -34,12 +34,16 @@ import {
+@@ -33,6 +33,7 @@ import {
+ } from '@deepseek-ai/node-addon-landlock-run'
  import { Context } from '@deepseek-ai/cordis'
  import z from '@deepseek-ai/schemastery'
- import { assertNever } from '@deepseek-ai/dsh-llm'
--import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
-+import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
++import { createRequire } from 'node:module'
+ import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
  import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
  import type { SessionId } from '@deepseek-ai/dsh-session'
--import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
-+import type { AclWriteGrant } from '@deepseek-ai/dsh-sandbox-windows-acl'
-+import { createRequire } from 'node:module'
+@@ -40,6 +41,9 @@ import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceW
+ import { assertNever } from '@deepseek-ai/dsh-util-values'
  import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
  
 +const dynamicRequire = createRequire(import.meta.url)
@@ -3347,7 +3237,7 @@ index 344db2a1b2..84df5eb58c 100644
    }
  
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
-index 4bed7aefb9..3a4ca8409f 100644
+index 111af6dc08..f18e43b613 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
 +++ b/packages/session/session-persistence-jsonl/src/index.ts
 @@ -9,7 +9,7 @@
