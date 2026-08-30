@@ -1349,6 +1349,84 @@ index 8230af0199..e35c1ded2e 100644
 +  }
 +}
 +
+diff --git a/packages/client/ui-deliverables/src/client/turn-deliverables.ts b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
+index b7f74f305b..9e9f8a3c53 100644
+--- a/packages/client/ui-deliverables/src/client/turn-deliverables.ts
++++ b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
+@@ -60,6 +60,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
+ 
+ /** Validate the fields that an `edit` execution requires. */
+ function validEditArgs(args: Readonly<Record<string, unknown>>): boolean {
++  if (Array.isArray(args.edits) && args.edits.length > 0) {
++    return args.edits.every((op) => {
++      if (typeof op !== 'object' || op === null) return false
++      const { old_string: oldText, new_string: newText, replace_all: replaceAll } = op as Record<string, unknown>
++      return typeof oldText === 'string'
++        && oldText.length > 0
++        && typeof newText === 'string'
++        && oldText !== newText
++        && (replaceAll === undefined || typeof replaceAll === 'boolean')
++    })
++  }
+   return typeof args.old_string === 'string'
+     && args.old_string.length > 0
+     && typeof args.new_string === 'string'
+diff --git a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
+index 5a0043971e..314330c551 100644
+--- a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
++++ b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
+@@ -200,27 +200,32 @@ describe('produced-file Turn data', () => {
+         replace_all: false,
+       }),
+       result(5, 'edit'),
+-      call(6, 'create', 'str_replace_editor', {
++      call(6, 'batch-edit', 'edit', {
++        file_path: 'out/batch.css', edits: [{ old_string: 'red', new_string: 'blue' }],
++      }),
++      result(7, 'batch-edit'),
++      call(8, 'create', 'str_replace_editor', {
+         command: 'create', path: 'notes/new.md', file_path: 'wrong-create.txt', file_text: 'new',
+       }),
+-      result(7, 'create'),
+-      call(8, 'replace', 'str_replace_editor', {
++      result(9, 'create'),
++      call(10, 'replace', 'str_replace_editor', {
+         command: 'str_replace', path: 'notes/existing.md', old_str: 'old', new_str: 'new',
+       }),
+-      result(9, 'replace'),
+-      call(10, 'delete-text', 'str_replace_editor', {
++      result(11, 'replace'),
++      call(12, 'delete-text', 'str_replace_editor', {
+         command: 'str_replace', path: 'notes/deleted-text.md', old_str: 'remove me',
+       }),
+-      result(11, 'delete-text'),
+-      call(12, 'insert', 'str_replace_editor', {
++      result(13, 'delete-text'),
++      call(14, 'insert', 'str_replace_editor', {
+         command: 'insert', path: 'notes/inserted.md', insert_line: 1, new_str: 'line',
+       }),
+-      result(13, 'insert'),
++      result(15, 'insert'),
+     ])
+ 
+     expect(producedForClosing(deliverablesOf(value))).toEqual([
+       'out/index.html',
+       'out/app.css',
++      'out/batch.css',
+       'notes/new.md',
+       'notes/existing.md',
+       'notes/deleted-text.md',
+@@ -231,6 +236,10 @@ describe('produced-file Turn data', () => {
+   it.each([
+     { caseName: 'write omits content', name: 'write', args: { file_path: 'write.txt' } },
+     { caseName: 'write has non-string content', name: 'write', args: { file_path: 'write.txt', content: 1 } },
++    {
++      caseName: 'edit has invalid edits array', name: 'edit',
++      args: { file_path: 'edit.txt', edits: [{ old_string: 'same', new_string: 'same' }] },
++    },
+     {
+       caseName: 'edit omits old_string', name: 'edit',
+       args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
 index ae56780133..b99b8af46c 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
@@ -2468,6 +2546,135 @@ index 4c801b8d4d..06fd5afb65 100644
  /* Base variables referenced by the token sheets and component CSS but defined
   * upstream (deepsuite theme/global.css) — supplied here so the composite
   * --dsw-font-* variables resolve and motion rides the upstream curve. Code
+diff --git a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
+index 03eaf04a3a..1cdc6c28f2 100644
+--- a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
++++ b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
+@@ -47,7 +47,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
+   return out
+ }
+ 
+-type IntendedDiff = { tool: 'write' | 'edit' | 'str_replace_editor'; diff: DiffHunk }
++type IntendedDiff = { tool: 'write' | 'edit' | 'str_replace_editor'; diffs: DiffHunk[] }
+ 
+ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+   const parsed = parsedToolCall(block)
+@@ -59,7 +59,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+       if (fileText !== undefined && typeof fileText !== 'string') return null
+       return {
+         tool: 'str_replace_editor',
+-        diff: { path, oldText: null, newText: fileText ?? '' },
++        diffs: [{ path, oldText: null, newText: fileText ?? '' }],
+       }
+     }
+     if (command === 'str_replace') {
+@@ -67,7 +67,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+       if (newText !== undefined && typeof newText !== 'string') return null
+       return {
+         tool: 'str_replace_editor',
+-        diff: { path, oldText: oldText ?? null, newText: newText ?? '' },
++        diffs: [{ path, oldText: oldText ?? null, newText: newText ?? '' }],
+       }
+     }
+     return null
+@@ -78,14 +78,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+   if (parsed.name === 'write') {
+     const { content } = parsed.args
+     return typeof content === 'string'
+-      ? { tool: 'write', diff: { path, oldText: null, newText: content } }
++      ? { tool: 'write', diffs: [{ path, oldText: null, newText: content }] }
+       : null
+   }
+   if (parsed.name !== 'edit') return null
++  if (Array.isArray(parsed.args.edits) && parsed.args.edits.length > 0) {
++    const diffs: DiffHunk[] = []
++    for (const edit of parsed.args.edits) {
++      if (typeof edit !== 'object' || edit === null) return null
++      const { old_string: oldText, new_string: newText, replace_all: replaceAll } = edit as Record<string, unknown>
++      if (typeof oldText !== 'string' || typeof newText !== 'string') return null
++      if (replaceAll !== undefined && typeof replaceAll !== 'boolean') return null
++      diffs.push({ path, oldText: oldText || null, newText })
++    }
++    return { tool: 'edit', diffs }
++  }
+   const { old_string: oldText, new_string: newText, replace_all: replaceAll } = parsed.args
+   if (typeof oldText !== 'string' || typeof newText !== 'string') return null
+   if (replaceAll !== undefined && typeof replaceAll !== 'boolean') return null
+-  return { tool: 'edit', diff: { path, oldText: oldText || null, newText } }
++  return { tool: 'edit', diffs: [{ path, oldText: oldText || null, newText }] }
+ }
+ 
+ function appliedDiffs(meta: unknown): DiffHunk[] | 'empty' | null {
+@@ -109,12 +120,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
+   if (block.parentCallId !== undefined) return null
+   const intended = intendedDiff(block)
+   if (intended === null) return null
+-  if (!('kind' in block)) return { card: { diffs: [intended.diff] } }
++  if (!('kind' in block)) return { card: { diffs: intended.diffs } }
+   if (intended.tool === 'str_replace_editor') return null
+   if (block.isError) return null
+   const applied = appliedDiffs(block.meta)
+   if (applied === null || applied === 'empty') {
+-    return intended.tool === 'write' ? { card: { diffs: [intended.diff] } } : null
++    return intended.tool === 'write' ? { card: { diffs: intended.diffs } } : null
+   }
+   return { card: { diffs: applied } }
+ }
+diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
+index 8a263f2983..b8a2522d26 100644
+--- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
++++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
+@@ -63,6 +63,50 @@ describe('diffCardModel', () => {
+     })
+   })
+ 
++  it('derives a running card from batch edits array', () => {
++    const batchArgs = JSON.stringify({
++      file_path: 'notes/demo.txt',
++      edits: [
++        { old_string: 'first', new_string: 'FIRST' },
++        { old_string: 'second', new_string: 'SECOND' },
++      ],
++    })
++    expect(diffCardModel(running({ argsRaw: batchArgs }))).toEqual({
++      card: {
++        diffs: [
++          { path: 'notes/demo.txt', oldText: 'first', newText: 'FIRST' },
++          { path: 'notes/demo.txt', oldText: 'second', newText: 'SECOND' },
++        ],
++      },
++    })
++  })
++
++  it('derives a settled card from batch edit result metadata', () => {
++    const batchArgs = JSON.stringify({
++      file_path: 'notes/demo.txt',
++      edits: [
++        { old_string: 'first', new_string: 'FIRST' },
++        { old_string: 'second', new_string: 'SECOND' },
++      ],
++    })
++    expect(diffCardModel(settled({
++      call: { name: 'edit', argsRaw: batchArgs },
++      meta: {
++        diffs: [
++          { path: 'notes/demo.txt', oldText: 'first', newText: 'FIRST' },
++          { path: 'notes/demo.txt', oldText: 'second', newText: 'SECOND' },
++        ],
++      },
++    }))).toEqual({
++      card: {
++        diffs: [
++          { path: 'notes/demo.txt', oldText: 'first', newText: 'FIRST' },
++          { path: 'notes/demo.txt', oldText: 'second', newText: 'SECOND' },
++        ],
++      },
++    })
++  })
++
+   it.each([
+     {
+       command: 'create',
 diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
 index b4633d0ad1..f0c598ac6f 100644
 --- a/packages/client/web/src/base.css
@@ -2488,6 +2695,555 @@ index b4633d0ad1..f0c598ac6f 100644
  
  html,
  body,
+diff --git a/packages/e2b/fs-e2b/src/index.ts b/packages/e2b/fs-e2b/src/index.ts
+index f78a382495..b497b1b852 100644
+--- a/packages/e2b/fs-e2b/src/index.ts
++++ b/packages/e2b/fs-e2b/src/index.ts
+@@ -146,9 +146,9 @@ function mapError(error: unknown, operation: string, displayPath: string, signal
+   return new FsError(`cannot ${operation} "${displayPath}": ${String(error)}`, 'FS_IO_ERROR', { cause: error })
+ }
+ 
+-function literalEdit(content: string, request: FsEditRequest, displayPath: string): string {
+-  const oldString = normalizeLineEndings(request.oldString)
+-  const newString = normalizeLineEndings(request.newString)
++function applySingleLiteralEdit(content: string, oldStr: string, newStr: string, replaceAll: boolean, displayPath: string): string {
++  const oldString = normalizeLineEndings(oldStr)
++  const newString = normalizeLineEndings(newStr)
+   if (oldString.length === 0) {
+     throw new FsError(`cannot edit "${displayPath}": old_string must be non-empty`, 'FS_EDIT_NOT_FOUND')
+   }
+@@ -161,10 +161,24 @@ function literalEdit(content: string, request: FsEditRequest, displayPath: strin
+     offset = found + oldString.length
+   }
+   if (matches === 0) throw new FsError(`cannot edit "${displayPath}": old_string was not found`, 'FS_EDIT_NOT_FOUND')
+-  if (!request.replaceAll && matches !== 1) {
++  if (!replaceAll && matches !== 1) {
+     throw new FsError(`cannot edit "${displayPath}": old_string matched ${matches} times`, 'FS_AMBIGUOUS_EDIT')
+   }
+-  return request.replaceAll ? content.split(oldString).join(newString) : content.replace(oldString, newString)
++  return replaceAll ? content.split(oldString).join(newString) : content.replace(oldString, newString)
++}
++
++function literalEdit(content: string, request: FsEditRequest, displayPath: string): string {
++  if (Array.isArray(request.edits) && request.edits.length > 0) {
++    let current = content
++    for (const op of request.edits) {
++      current = applySingleLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, displayPath)
++    }
++    return current
++  }
++  if (request.oldString !== undefined && request.newString !== undefined) {
++    return applySingleLiteralEdit(content, request.oldString, request.newString, request.replaceAll ?? false, displayPath)
++  }
++  throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
+ }
+ 
+ /** Remote filesystem backend sharing the sandbox owned by `ctx.e2b`. */
+diff --git a/packages/fs/fs-local/src/fsio.ts b/packages/fs/fs-local/src/fsio.ts
+index 17bfb6115b..e3391fb8f9 100644
+--- a/packages/fs/fs-local/src/fsio.ts
++++ b/packages/fs/fs-local/src/fsio.ts
+@@ -579,7 +579,45 @@ export async function writeFileAtomic(
+       try {
+         await linkFile(tempPath, absolutePath)
+       } catch (error: unknown) {
+-        await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
++        let existing: BigIntStats | undefined
++        try {
++          existing = await inspectPublicationTarget(absolutePath)
++        } catch (metadataError: unknown) {
++          if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
++            throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
++          }
++        }
++
++        if (existing !== undefined) {
++          if (!existing.isFile()) {
++            throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
++          }
++          throw new FsError(
++            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
++            'FS_NOT_OBSERVED',
++            { cause: error },
++          )
++        }
++        if (isEEXIST(error)) {
++          throw new FsError(
++            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
++            'FS_NOT_OBSERVED',
++            { cause: error },
++          )
++        }
++
++        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
++        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
++          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
++        )
++
++        if (isAndroid && isUnsupportedLinkErr) {
++          // On Android / Termux where hard links are prohibited or denied by SELinux (EACCES/EPERM/EXDEV/ENOSYS),
++          // fall back to atomic rename when the target entry does not exist.
++          await rename(tempPath, absolutePath)
++        } else {
++          throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
++        }
+       }
+     } else if (platform === 'win32' && mode !== undefined) {
+       try {
+diff --git a/packages/fs/fs-local/src/index.ts b/packages/fs/fs-local/src/index.ts
+index 7c50532a0e..45829db636 100644
+--- a/packages/fs/fs-local/src/index.ts
++++ b/packages/fs/fs-local/src/index.ts
+@@ -243,8 +243,19 @@ export class LocalFileSystem extends FileSystem {
+       }
+ 
+       const original = await readForEdit(target.targetKey, target.displayPath, signal)
+-      const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
+-      const content = restoreLineEndings(edited.content, original.lineEndings)
++      let current = original.content
++      if (Array.isArray(edit.edits) && edit.edits.length > 0) {
++        for (const op of edit.edits) {
++          const res = applyLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, target.displayPath)
++          current = res.content
++        }
++      } else if (edit.oldString !== undefined && edit.newString !== undefined) {
++        const res = applyLiteralEdit(current, edit.oldString, edit.newString, edit.replaceAll ?? false, target.displayPath)
++        current = res.content
++      } else {
++        throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
++      }
++      const content = restoreLineEndings(current, original.lineEndings)
+       await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
+ 
+       const after = await probe(target.targetKey)
+@@ -253,7 +264,7 @@ export class LocalFileSystem extends FileSystem {
+         // The LF-normalized before/after text (the applied-hunk diff basis);
+         // line-ending restoration is a storage detail the diff ignores.
+         before: original.content,
+-        after: edited.content,
++        after: current,
+       }
+     })
+   }
+diff --git a/packages/fs/fs-local/tests/filesystem.spec.ts b/packages/fs/fs-local/tests/filesystem.spec.ts
+index b791b424fb..3e6f7a386b 100644
+--- a/packages/fs/fs-local/tests/filesystem.spec.ts
++++ b/packages/fs/fs-local/tests/filesystem.spec.ts
+@@ -689,6 +689,32 @@ describe('editText', () => {
+     expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('b b b')
+   })
+ 
++  it('applies batch edits atomically in sequence', async () => {
++    await writeFile(join(dir, 'a.txt'), 'hello world foo bar')
++    const target = await fs.resolve('a.txt')
++    const outcome = await fs.editText(target, {
++      edits: [
++        { oldString: 'world', newString: 'earth' },
++        { oldString: 'foo', newString: 'baz' },
++      ],
++    }, { version: await versionOf(target) })
++    expect(outcome.after).toBe('hello earth baz bar')
++    expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello earth baz bar')
++  })
++
++  it('batch edit fails atomically without modifying file if one edit is invalid', async () => {
++    await writeFile(join(dir, 'a.txt'), 'hello world')
++    const target = await fs.resolve('a.txt')
++    await expect(fs.editText(target, {
++      edits: [
++        { oldString: 'world', newString: 'earth' },
++        { oldString: 'missing', newString: 'val' },
++      ],
++    }, { version: await versionOf(target) }))
++      .rejects.toMatchObject({ code: 'FS_EDIT_NOT_FOUND' })
++    expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello world')
++  })
++
+   it('rejects invalid UTF-8 without rewriting the file', async () => {
+     const path = join(dir, 'bad.txt')
+     const bytes = Buffer.from([0x68, 0xff, 0x69])
+diff --git a/packages/fs/fs-local/tests/fsio.spec.ts b/packages/fs/fs-local/tests/fsio.spec.ts
+index 5cf5ffd5d3..8eba5f3b1e 100644
+--- a/packages/fs/fs-local/tests/fsio.spec.ts
++++ b/packages/fs/fs-local/tests/fsio.spec.ts
+@@ -766,6 +766,7 @@ describe('writeFileAtomic — temp-file safety', () => {
+     const denied = Object.assign(new Error('link denied'), { code: 'EACCES' })
+ 
+     await expect(writeFileAtomic(file, 'ours', undefined, undefined, {
++      platform: 'linux',
+       linkFile: async () => { throw denied },
+     }, { displayPath: file })).rejects.toMatchObject({ code: 'FS_IO_ERROR', cause: denied })
+     await expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' })
+diff --git a/packages/fs/fs/src/index.ts b/packages/fs/fs/src/index.ts
+index e32890d732..15d2b25750 100644
+--- a/packages/fs/fs/src/index.ts
++++ b/packages/fs/fs/src/index.ts
+@@ -29,6 +29,7 @@ export {
+   FsVersion,
+ } from './types.ts'
+ export type {
++  FsEditOp,
+   FsEditOutcome,
+   FsEditRequest,
+   FsDirEntry,
+diff --git a/packages/fs/fs/src/types.ts b/packages/fs/fs/src/types.ts
+index a3464f197c..f68bd6ebe5 100644
+--- a/packages/fs/fs/src/types.ts
++++ b/packages/fs/fs/src/types.ts
+@@ -143,14 +143,26 @@ export interface FsWriteOutcome {
+   after: string
+ }
+ 
+-/** A literal-replacement edit request. */
+-export interface FsEditRequest {
++/** A single literal-replacement edit operation. */
++export interface FsEditOp {
+   /** Literal non-empty text to replace. Must match exactly (after line-ending normalization). */
+   oldString: string
+   /** Literal replacement text. An empty string deletes the matched text. */
+   newString: string
+   /** Replace every match instead of requiring exactly one. */
+-  replaceAll: boolean
++  replaceAll?: boolean
++}
++
++/** A literal-replacement edit request: either a single edit operation or a batch of edit operations. */
++export interface FsEditRequest {
++  /** Literal non-empty text to replace. Must match exactly (after line-ending normalization). */
++  oldString?: string
++  /** Literal replacement text. An empty string deletes the matched text. */
++  newString?: string
++  /** Replace every match instead of requiring exactly one. */
++  replaceAll?: boolean
++  /** List of edit operations to apply sequentially in an atomic transaction. */
++  edits?: FsEditOp[]
+ }
+ 
+ /** Outcome of a literal edit. */
+diff --git a/packages/fs/fs/tests/service.spec.ts b/packages/fs/fs/tests/service.spec.ts
+index 6fbe1268af..acb3568a31 100644
+--- a/packages/fs/fs/tests/service.spec.ts
++++ b/packages/fs/fs/tests/service.spec.ts
+@@ -75,10 +75,17 @@ class FakeFileSystem extends FileSystem {
+     return { operation: before !== null ? 'update' : 'create', version: FsVersion('v2'), before, after: content }
+   }
+   override async editText(target: FsTarget, edit: FsEditRequest): Promise<FsEditOutcome> {
+-    const content = this.files.get(target.targetKey) ?? ''
+-    const after = content.split(edit.oldString).join(edit.newString)
+-    this.files.set(target.targetKey, after)
+-    return { version: FsVersion('v3'), before: content, after }
++    let content = this.files.get(target.targetKey) ?? ''
++    const before = content
++    if (Array.isArray(edit.edits) && edit.edits.length > 0) {
++      for (const op of edit.edits) {
++        content = content.split(op.oldString).join(op.newString)
++      }
++    } else if (edit.oldString !== undefined && edit.newString !== undefined) {
++      content = content.split(edit.oldString).join(edit.newString)
++    }
++    this.files.set(target.targetKey, content)
++    return { version: FsVersion('v3'), before, after: content }
+   }
+ }
+ 
+diff --git a/packages/fs/tool-fs/src/edit.ts b/packages/fs/tool-fs/src/edit.ts
+index 60f3913866..0c8a272772 100644
+--- a/packages/fs/tool-fs/src/edit.ts
++++ b/packages/fs/tool-fs/src/edit.ts
+@@ -15,12 +15,26 @@ import { remediateFsError } from './error.ts'
+ import { sessionResolveOptions } from './session-cwd.ts'
+ import type { FsSandboxController } from './sandbox.ts'
+ 
++/** Validated edit operation. */
++export interface EditOpInput {
++  oldString: string
++  newString: string
++  replaceAll: boolean
++}
++
+ /** Validated `edit` arguments after defaulting. */
+-interface EditInput {
++export interface EditInput {
+   filePath: string
+   oldString: string
+   newString: string
+   replaceAll: boolean
++  edits: EditOpInput[]
++}
++
++export interface EditOpArg {
++  old_string: string
++  new_string: string
++  replace_all?: boolean
+ }
+ 
+ /**
+@@ -30,9 +44,10 @@ interface EditInput {
+  */
+ interface EditToolArgs {
+   file_path: string
+-  old_string: string
+-  new_string: string
++  old_string?: string
++  new_string?: string
+   replace_all?: boolean
++  edits?: EditOpArg[]
+   sandbox_permissions?: string
+   justification?: string
+ }
+@@ -40,29 +55,79 @@ interface EditToolArgs {
+ /**
+  * Validate value constraints the schema DSL can't express: a non-blank
+  * `file_path`, a non-empty `old_string`, and `old_string !== new_string`
+- * (an equal pair would be a guaranteed no-op edit).
++ * (an equal pair would be a guaranteed no-op edit). Also accepts a batch
++ * `edits` list.
+  * @param args - the schema-validated raw tool arguments.
+  * @returns the camelCased input with `replace_all` defaulted to false.
+  */
+-export function parseEditArgs(args: { file_path: string; old_string: string; new_string: string; replace_all?: boolean }): EditInput {
++export function parseEditArgs(args: {
++  file_path: string
++  old_string?: string
++  new_string?: string
++  replace_all?: boolean
++  edits?: EditOpArg[]
++}): EditInput {
+   if (args.file_path.trim().length === 0) throw new Error('file_path must be a non-empty string')
++
++  if (Array.isArray(args.edits) && args.edits.length > 0) {
++    const edits: EditOpInput[] = args.edits.map((op, idx) => {
++      if (!op || typeof op.old_string !== 'string' || op.old_string.length === 0) {
++        throw new Error(`edits[${idx}].old_string must be a non-empty string`)
++      }
++      if (typeof op.new_string !== 'string') {
++        throw new Error(`edits[${idx}].new_string must be a string`)
++      }
++      if (op.old_string === op.new_string) {
++        throw new Error(`edits[${idx}].old_string and new_string must differ`)
++      }
++      return {
++        oldString: op.old_string,
++        newString: op.new_string,
++        replaceAll: op.replace_all ?? false,
++      }
++    })
++    const first = edits[0]!
++    return {
++      filePath: args.file_path,
++      oldString: first.oldString,
++      newString: first.newString,
++      replaceAll: first.replaceAll,
++      edits,
++    }
++  }
++
++  if (args.old_string === undefined || args.new_string === undefined) {
++    throw new Error('Either (old_string and new_string) or a non-empty edits array must be provided')
++  }
+   if (args.old_string.length === 0) throw new Error('old_string must be a non-empty string')
+   if (args.old_string === args.new_string) throw new Error('old_string and new_string must differ')
+-  return {
+-    filePath: args.file_path,
++
++  const single: EditOpInput = {
+     oldString: args.old_string,
+     newString: args.new_string,
+     replaceAll: args.replace_all ?? false,
+   }
++
++  return {
++    filePath: args.file_path,
++    oldString: single.oldString,
++    newString: single.newString,
++    replaceAll: single.replaceAll,
++    edits: [single],
++  }
+ }
+ 
+ /**
+- * Format an edit success (single-match or replace-all) as a Claude-style model-facing message.
++ * Format an edit success (single-match, replace-all, or batch) as a Claude-style model-facing message.
+  * @param displayPath - the backend-resolved path shown to the model.
+  * @param replaceAll - selects the all-occurrences wording over the single-replacement one.
++ * @param editCount - number of edits applied in this call.
+  * @returns the confirmation sentence the model sees as the tool result.
+  */
+-export function formatEditOutput(displayPath: string, replaceAll: boolean): string {
++export function formatEditOutput(displayPath: string, replaceAll: boolean, editCount: number = 1): string {
++  if (editCount > 1) {
++    return `The file ${displayPath} has been updated successfully. ${editCount} edits were applied.`
++  }
+   return replaceAll
+     ? `The file ${displayPath} has been updated. All occurrences were successfully replaced.`
+     : `The file ${displayPath} has been updated successfully.`
+@@ -77,17 +142,30 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+   ctx.systemPrompt.section({
+     name: 'tool:edit',
+     order: FIRST_PARTY_SECTION_ORDER.TOOL_EDIT,
+-    text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
++    text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. To make multiple edits efficiently in a single step, supply an `edits` array of {old_string, new_string, replace_all} instead of making repeated tool calls. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
+   })
+ 
+   ctx.tools.register(defineTool({
+     name: 'edit',
+-    description: 'Edit an existing UTF-8 text file by replacing literal text.',
++    description: 'Edit an existing UTF-8 text file by replacing literal text or applying multiple edits in batch.',
+     parameters: {
+       file_path: { type: 'string', required: true, description: 'Path to edit, resolved by the filesystem backend.' },
+-      old_string: { type: 'string', required: true, description: 'Literal text to replace. Must match exactly.' },
+-      new_string: { type: 'string', required: true, description: 'Literal replacement text. Use an empty string to delete the match.' },
++      old_string: { type: 'string', description: 'Literal text to replace. Must match exactly. Required unless edits is provided.' },
++      new_string: { type: 'string', description: 'Literal replacement text. Use an empty string to delete the match. Required unless edits is provided.' },
+       replace_all: { type: 'boolean', description: 'Replace all matches. Defaults to false; when false, old_string must appear exactly once.' },
++      edits: {
++        type: 'array',
++        description: 'Optional list of {old_string, new_string, replace_all} edits to apply atomically in sequence in a single call.',
++        items: {
++          type: 'object',
++          additionalProperties: false,
++          properties: {
++            old_string: { type: 'string', required: true, description: 'Literal text to replace.' },
++            new_string: { type: 'string', required: true, description: 'Literal replacement text.' },
++            replace_all: { type: 'boolean', description: 'Replace all matches. Defaults to false.' },
++          },
++        },
++      },
+       ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
+     },
+     output: {
+@@ -102,7 +180,11 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+       },
+       render: (args, value) => [{
+         type: 'text',
+-        text: formatEditOutput(value.path, args.replace_all ?? false),
++        text: formatEditOutput(
++          value.path,
++          args.replace_all ?? false,
++          Array.isArray(args.edits) && args.edits.length > 0 ? args.edits.length : 1,
++        ),
+       }],
+       presentationMeta: (args, value) => ({
+         diffs: computeHunkDiffs(args.file_path, value.before, value.after)
+@@ -126,7 +208,12 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+         const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+         outcome = await ctx.fs.editText(
+           target,
+-          { oldString: input.oldString, newString: input.newString, replaceAll: input.replaceAll },
++          {
++            oldString: input.oldString,
++            newString: input.newString,
++            replaceAll: input.replaceAll,
++            edits: input.edits,
++          },
+           intent,
+           exec.signal,
+           sandboxPolicy,
+@@ -145,13 +232,15 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+       }
+     },
+     // Pure display: a diff card of the literal replacement (old_string → new_string), derived
+-    // from the call args. `oldText: old_string || null` matches claude-agent-acp's Edit arm;
+-    // new_string is a required arg here, so it maps straight to newText.
++    // from the call args.
+     presentCall(args): DiffCallView {
++      const diffs = Array.isArray(args.edits) && args.edits.length > 0
++        ? args.edits.map(op => ({ path: args.file_path, oldText: op.old_string || null, newText: op.new_string }))
++        : [{ path: args.file_path, oldText: args.old_string || null, newText: args.new_string ?? '' }]
+       return {
+         card: 'diff',
+         title: `Edit ${args.file_path}`,
+-        diffs: [{ path: args.file_path, oldText: args.old_string || null, newText: args.new_string }],
++        diffs,
+         locations: [{ path: args.file_path }],
+       }
+     },
+diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
+index 6a1fc07bba..d1e5ef2d60 100644
+--- a/packages/fs/tool-fs/tests/tools.spec.ts
++++ b/packages/fs/tool-fs/tests/tools.spec.ts
+@@ -92,7 +92,14 @@ class FakeFs extends FileSystem {
+     this.throwIfArmed()
+     this.editIntents.push(expected)
+     const content = this.files.get(target.targetKey) ?? ''
+-    const after = content.split(edit.oldString).join(edit.newString)
++    let after = content
++    if (edit.edits && edit.edits.length > 0) {
++      for (const op of edit.edits) {
++        after = after.split(op.oldString).join(op.newString)
++      }
++    } else if (edit.oldString !== undefined && edit.newString !== undefined) {
++      after = after.split(edit.oldString).join(edit.newString)
++    }
+     this.files.set(target.targetKey, after)
+     return { version: FsVersion('v3'), before: content, after }
+   }
+@@ -468,6 +475,40 @@ describe('edit tool', () => {
+     expect(result.isError).toBe(true)
+     expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
+   })
++
++  it('formats a batch-replacement success with count after a read', async () => {
++    const { ctx, fs } = await setup()
++    const session = { header: {} }
++    fs.files.set('key:a.txt', 'one two three')
++    await call(ctx, 'read', { file_path: 'a.txt' }, { session })
++    const result = await call(ctx, 'edit', {
++      file_path: 'a.txt',
++      edits: [
++        { old_string: 'one', new_string: 'ONE' },
++        { old_string: 'two', new_string: 'TWO' },
++      ],
++    }, { session })
++    if (result.isError) throw new Error('expected batch edit success')
++    expect(result.value).toEqual({ path: '/abs/a.txt', before: 'one two three', after: 'ONE TWO three' })
++    expect(text(result)).toBe('The file /abs/a.txt has been updated successfully. 2 edits were applied.')
++  })
++
++  it('rejects invalid edit inside edits array', async () => {
++    const { ctx } = await setup()
++    const result = await call(ctx, 'edit', {
++      file_path: 'a.txt',
++      edits: [{ old_string: 'same', new_string: 'same' }],
++    })
++    expect(result.isError).toBe(true)
++    expect(text(result)).toContain('must differ')
++  })
++
++  it('rejects call when neither old_string/new_string nor edits is provided', async () => {
++    const { ctx } = await setup()
++    const result = await call(ctx, 'edit', { file_path: 'a.txt' })
++    expect(result.isError).toBe(true)
++    expect(text(result)).toContain('Either (old_string and new_string) or a non-empty edits array must be provided')
++  })
+ })
+ 
+ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -594,6 +635,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+       locations: [{ path: 'a.txt' }],
+     })
+   })
++
++  it('edit: presentCall maps batch edits to multiple diffs', async () => {
++    expect(await presentCall('edit', {
++      file_path: 'a.txt',
++      edits: [
++        { old_string: 'foo', new_string: 'bar' },
++        { old_string: 'baz', new_string: 'qux' },
++      ],
++    })).toEqual({
++      card: 'diff',
++      title: 'Edit a.txt',
++      diffs: [
++        { path: 'a.txt', oldText: 'foo', newText: 'bar' },
++        { path: 'a.txt', oldText: 'baz', newText: 'qux' },
++      ],
++      locations: [{ path: 'a.txt' }],
++    })
++  })
+ })
+ 
+ describe('result-time contextual diff (meta + presentResult)', () => {
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
 index e20b8e0072..95736aa8b4 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts

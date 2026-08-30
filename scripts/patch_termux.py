@@ -108,6 +108,68 @@ def patch_session_persistence():
     return True
 
 
+def patch_fs_local():
+    """Patches packages/fs/fs-local/src/fsio.ts for Android link fallback in writeFileAtomic."""
+    path = os.path.join(REPO_DIR, "packages", "fs", "fs-local", "src", "fsio.ts")
+    if not os.path.exists(path):
+        return False
+    with open(path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    modified = False
+    if "isAndroid" not in c or "isUnsupportedLinkErr" not in c:
+        pat = re.compile(
+            r"(\s*if \(createIfAbsent !== undefined\) \{\s*try \{\s*await linkFile\(tempPath, absolutePath\)\s*\} catch \(error: unknown\) \{)(.*?)(\s*\}\s*\} else if \(platform === 'win32')",
+            re.DOTALL
+        )
+        repl = r"""\1
+        let existing: BigIntStats | undefined
+        try {
+          existing = await inspectPublicationTarget(absolutePath)
+        } catch (metadataError: unknown) {
+          if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
+            throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
+          }
+        }
+
+        if (existing !== undefined) {
+          if (!existing.isFile()) {
+            throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
+          }
+          throw new FsError(
+            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
+            'FS_NOT_OBSERVED',
+            { cause: error },
+          )
+        }
+        if (isEEXIST(error)) {
+          throw new FsError(
+            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
+            'FS_NOT_OBSERVED',
+            { cause: error },
+          )
+        }
+
+        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
+        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
+          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
+        )
+
+        if (isAndroid && isUnsupportedLinkErr) {
+          await rename(tempPath, absolutePath)
+        } else {
+          throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
+        }\3"""
+        c = pat.sub(repl, c, count=1)
+        modified = True
+
+    if modified:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(c)
+        print("  [+] Patched fs-local writeFileAtomic link fallback.")
+    return True
+
+
 def patch_browser_auth():
     """Patches packages/client/connection/src/browser-auth.ts for local mobile web access."""
     path = os.path.join(REPO_DIR, "packages", "client", "connection", "src", "browser-auth.ts")
@@ -494,7 +556,16 @@ def check_status():
         ms_ok = "pointerdown" in c
     print(f"[*] Touch & Dropdown Handling:         {'[PASS]' if ms_ok else '[FAIL]'}")
 
-    # 6. package.json internals
+    # 6. fs-local writeFileAtomic link fallback
+    fs_path = os.path.join(REPO_DIR, "packages", "fs", "fs-local", "src", "fsio.ts")
+    fs_ok = False
+    if os.path.exists(fs_path):
+        with open(fs_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        fs_ok = "isAndroid" in c and "rename" in c
+    print(f"[*] Android fs-local Atomic Write:     {'[PASS]' if fs_ok else '[FAIL]'}")
+
+    # 7. package.json internals
     pkg_path = os.path.join(REPO_DIR, "package.json")
     pkg_ok = False
     if os.path.exists(pkg_path):
@@ -504,7 +575,7 @@ def check_status():
     print(f"[*] Runtime Engine Flags & Wasm:       {'[PASS]' if pkg_ok else '[FAIL]'}")
 
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and pkg_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok
     return all_ok
 
 
@@ -514,6 +585,7 @@ def apply_all():
     
     patch_attachment_store()
     patch_session_persistence()
+    patch_fs_local()
     patch_browser_auth()
     patch_package_json()
     patch_app_frame()

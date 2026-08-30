@@ -579,7 +579,45 @@ export async function writeFileAtomic(
       try {
         await linkFile(tempPath, absolutePath)
       } catch (error: unknown) {
-        await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
+        let existing: BigIntStats | undefined
+        try {
+          existing = await inspectPublicationTarget(absolutePath)
+        } catch (metadataError: unknown) {
+          if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
+            throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
+          }
+        }
+
+        if (existing !== undefined) {
+          if (!existing.isFile()) {
+            throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
+          }
+          throw new FsError(
+            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
+            'FS_NOT_OBSERVED',
+            { cause: error },
+          )
+        }
+        if (isEEXIST(error)) {
+          throw new FsError(
+            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
+            'FS_NOT_OBSERVED',
+            { cause: error },
+          )
+        }
+
+        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
+        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
+          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
+        )
+
+        if (isAndroid && isUnsupportedLinkErr) {
+          // On Android / Termux where hard links are prohibited or denied by SELinux (EACCES/EPERM/EXDEV/ENOSYS),
+          // fall back to atomic rename when the target entry does not exist.
+          await rename(tempPath, absolutePath)
+        } else {
+          throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
+        }
       }
     } else if (platform === 'win32' && mode !== undefined) {
       try {
