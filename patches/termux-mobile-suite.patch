@@ -58,7 +58,7 @@ index 20a428fee6..e1d3cdffc7 100644
        "src": "/favicon.svg",
        "sizes": "any",
 diff --git a/package.json b/package.json
-index 768d491cb1..1a3cc75c2b 100644
+index d947add909..ec189eb194 100644
 --- a/package.json
 +++ b/package.json
 @@ -150,7 +150,7 @@
@@ -1285,7 +1285,7 @@ index b7f74f305b..9e9f8a3c53 100644
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
 diff --git a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
-index 56821c7ecd..a2103bf40b 100644
+index 3922c22a68..3b889e84b8 100644
 --- a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
 +++ b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
 @@ -200,27 +200,32 @@ describe('produced-file Turn data', () => {
@@ -1900,7 +1900,7 @@ index dafe49616c..bf9c14b178 100644
 +}
 +
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index a601a425fe..5264218a3e 100644
+index 33dda0fa3e..620acf61a6 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -66,7 +66,9 @@
