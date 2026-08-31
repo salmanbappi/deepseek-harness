@@ -2629,52 +2629,42 @@ index f78a382495..b497b1b852 100644
  
  /** Remote filesystem backend sharing the sandbox owned by `ctx.e2b`. */
 diff --git a/packages/fs/fs-local/src/fsio.ts b/packages/fs/fs-local/src/fsio.ts
-index 17bfb6115b..e3391fb8f9 100644
+index 17bfb6115b..7b4ad1a7c1 100644
 --- a/packages/fs/fs-local/src/fsio.ts
 +++ b/packages/fs/fs-local/src/fsio.ts
-@@ -579,7 +579,45 @@ export async function writeFileAtomic(
+@@ -579,7 +579,35 @@ export async function writeFileAtomic(
        try {
          await linkFile(tempPath, absolutePath)
        } catch (error: unknown) {
 -        await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
-+        let existing: BigIntStats | undefined
-+        try {
-+          existing = await inspectPublicationTarget(absolutePath)
-+        } catch (metadataError: unknown) {
-+          if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
-+            throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
-+          }
-+        }
-+
-+        if (existing !== undefined) {
-+          if (!existing.isFile()) {
-+            throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
-+          }
-+          throw new FsError(
-+            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
-+            'FS_NOT_OBSERVED',
-+            { cause: error },
-+          )
-+        }
-+        if (isEEXIST(error)) {
-+          throw new FsError(
-+            `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
-+            'FS_NOT_OBSERVED',
-+            { cause: error },
-+          )
-+        }
-+
 +        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
 +        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
 +          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
 +        )
 +
 +        if (isAndroid && isUnsupportedLinkErr) {
-+          // On Android / Termux where hard links are prohibited or denied by SELinux (EACCES/EPERM/EXDEV/ENOSYS),
-+          // fall back to atomic rename when the target entry does not exist.
++          let existing: BigIntStats | undefined
++          try {
++            existing = await inspectPublicationTarget(absolutePath)
++          } catch (metadataError: unknown) {
++            if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
++              throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
++            }
++          }
++
++          if (existing !== undefined) {
++            if (!existing.isFile()) {
++              throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
++            }
++            throw new FsError(
++              `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
++              'FS_NOT_OBSERVED',
++              { cause: error },
++            )
++          }
 +          await rename(tempPath, absolutePath)
 +        } else {
-+          throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(error)}`, 'FS_IO_ERROR', { cause: error })
++          await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
 +        }
        }
      } else if (platform === 'win32' && mode !== undefined) {
@@ -2836,7 +2826,7 @@ index 6fbe1268af..acb3568a31 100644
  }
  
 diff --git a/packages/fs/tool-fs/src/edit.ts b/packages/fs/tool-fs/src/edit.ts
-index 0660e40621..92493ad527 100644
+index 0660e40621..810b6c90c6 100644
 --- a/packages/fs/tool-fs/src/edit.ts
 +++ b/packages/fs/tool-fs/src/edit.ts
 @@ -14,12 +14,26 @@ import { remediateFsError } from './error.ts'
@@ -2966,11 +2956,9 @@ index 0660e40621..92493ad527 100644
    return replaceAll
      ? `The file ${displayPath} has been updated. All occurrences were successfully replaced.`
      : `The file ${displayPath} has been updated successfully.`
-@@ -74,19 +139,31 @@ export function formatEditOutput(displayPath: string, replaceAll: boolean): stri
-  */
- export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void {
+@@ -76,17 +141,30 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
    ctx.systemPrompt.section({
--    name: 'tool:edit',
+     name: 'tool:edit',
      order: ctx.systemPrompt.getSectionOrder('TOOL_EDIT'),
 -    text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
 +    text: 'Use the edit tool for targeted changes to existing UTF-8 text files. It replaces literal old_string with new_string; by default old_string must appear exactly once. If old_string appears multiple times, provide a more specific old_string or set replace_all to true. To make multiple edits efficiently in a single step, supply an `edits` array of {old_string, new_string, replace_all} instead of making repeated tool calls. Read the file first (the default fs-observation-policy requires it), unless you just created or edited it in this session.',
@@ -3003,7 +2991,7 @@ index 0660e40621..92493ad527 100644
        ...sandbox.escalationModes.length > 0 ? sandbox.schemaFields() : {},
      },
      output: {
-@@ -101,7 +178,11 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -101,7 +179,11 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
        },
        render: (args, value) => [{
          type: 'text',
@@ -3016,7 +3004,7 @@ index 0660e40621..92493ad527 100644
        }],
        presentationMeta: (args, value) => ({
          diffs: computeHunkDiffs(args.file_path, value.before, value.after)
-@@ -125,7 +206,12 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -125,7 +207,12 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
          const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
          outcome = await ctx.fs.editText(
            target,
@@ -3030,7 +3018,7 @@ index 0660e40621..92493ad527 100644
            intent,
            exec.signal,
            sandboxPolicy,
-@@ -144,13 +230,15 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
+@@ -144,13 +231,15 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void
        }
      },
      // Pure display: a diff card of the literal replacement (old_string → new_string), derived
@@ -3165,18 +3153,20 @@ index 0000000000..2131a5c92f
 +/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
 \ No newline at end of file
 diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
-index f9415d59d4..53b50cd9bf 100644
+index f9415d59d4..1dac051fca 100644
 --- a/packages/sandbox/sandbox-local/src/index.ts
 +++ b/packages/sandbox/sandbox-local/src/index.ts
-@@ -33,6 +33,7 @@ import {
+@@ -33,13 +33,17 @@ import {
  } from '@deepseek-ai/node-addon-landlock-run'
  import { Context } from '@deepseek-ai/cordis'
  import z from '@deepseek-ai/schemastery'
+-import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
 +import { createRequire } from 'node:module'
- import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
++import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
  import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
  import type { SessionId } from '@deepseek-ai/dsh-session'
-@@ -40,6 +41,9 @@ import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceW
+-import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
++import type { AclWriteGrant } from '@deepseek-ai/dsh-sandbox-windows-acl'
  import { assertNever } from '@deepseek-ai/dsh-util-values'
  import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
  
