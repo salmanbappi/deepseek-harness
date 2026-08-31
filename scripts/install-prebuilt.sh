@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# install-prebuilt.sh — Download and apply the latest prebuilt Termux bundle
+# install-prebuilt.sh — Download and apply the latest prebuilt Termux lib/ bundle
 # Usage: bash install-prebuilt.sh [version]
 set -euo pipefail
 
@@ -9,8 +9,7 @@ DSH_DIR="$HOME/deepseek-harness"
 if [ -n "${1:-}" ]; then
   TAG="v$1"
 else
-  TAG=$(gh release view --repo "$REPO" --json tagName -q .tagName 2>/dev/null || echo "latest")
-  [ "$TAG" = "latest" ] && TAG=$(gh release list --repo "$REPO" --limit 1 --json tagName -q '.[0].tagName')
+  TAG=$(gh release list --repo "$REPO" --limit 1 --json tagName -q '.[0].tagName')
 fi
 
 echo "=== DeepSeek Harness Termux Prebuilt Installer ==="
@@ -22,24 +21,27 @@ echo ""
 TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
-echo "[1/3] Downloading release assets..."
+echo "[1/4] Downloading prebuilt lib/ bundle..."
 gh release download "$TAG" \
   --repo "$REPO" \
   --pattern "dsh-termux-prebuilt-*.tar.gz" \
   --dir "$TMPDIR_WORK"
 
-ARCHIVE=$(ls "$TMPDIR_WORK"/*.tar.gz | head -1)
+ARCHIVE=$(ls "$TMPDIR_WORK"/dsh-termux-prebuilt-*.tar.gz | head -1)
 echo "       Downloaded: $(basename "$ARCHIVE") ($(du -sh "$ARCHIVE" | cut -f1))"
 
-# Extract
-echo "[2/3] Extracting into $DSH_DIR ..."
-mkdir -p "$DSH_DIR"
-tar --dereference -xzf "$ARCHIVE" -C "$DSH_DIR"
+# Extract compiled lib/ dirs into existing deepseek-harness tree
+echo "[2/4] Extracting compiled lib/ dirs into $DSH_DIR ..."
+tar -xzf "$ARCHIVE" -C "$DSH_DIR"
 
-# Restore profile node_modules symlinks (lightweight — no compilation)
-echo "[3/3] Refreshing ~/.dsh profile symlinks..."
+# Re-link node_modules (instant — no network, just symlinks)
+echo "[3/4] Re-linking workspace node_modules (pnpm install --frozen-lockfile)..."
+pnpm install --dir "$DSH_DIR" --frozen-lockfile --ignore-scripts 2>&1 | tail -5
+
+# Refresh .dsh profile symlinks
+echo "[4/4] Refreshing ~/.dsh/profiles node_modules symlinks..."
 if [ -f "$HOME/.dsh/profiles/web/package.json" ]; then
-  (cd "$HOME/.dsh/profiles" && pnpm install --ignore-scripts 2>/dev/null) || true
+  (cd "$HOME/.dsh/profiles" && pnpm install --frozen-lockfile --ignore-scripts 2>/dev/null) || true
 fi
 
 echo ""

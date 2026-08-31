@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag (e.g. 0.1.2-alpha.3) — leave empty to use package.json'
+        description: 'Version tag (leave empty to use package.json)'
         required: false
         default: ''
   push:
@@ -26,35 +26,32 @@ concurrency:
 
 jobs:
   build:
-    name: Compile & Package Fat Termux Bundle
+    name: Compile & Package Termux Prebuilt Bundle
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      # ── Checkout ──────────────────────────────────────────────────────────
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ── Toolchain ─────────────────────────────────────────────────────────
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           dest: ${{ runner.temp }}/setup-pnpm
 
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Setup Python
+      - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      # ── Version ───────────────────────────────────────────────────────────
       - name: Resolve Version
         id: pkg
         run: |
@@ -66,148 +63,88 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # ── Patches ───────────────────────────────────────────────────────────
       - name: Apply Termux Patches
-        run: |
-          python3 scripts/patch_termux.py --apply || true
+        run: python3 scripts/patch_termux.py --apply || true
 
-      # ── Dependencies ──────────────────────────────────────────────────────
       - name: Install Dependencies
-        run: |
-          pnpm install --frozen-lockfile=false --ignore-scripts
+        run: pnpm install --frozen-lockfile=false --ignore-scripts
 
-      # ── Build ─────────────────────────────────────────────────────────────
-      - name: Build TypeScript Host Libraries
+      - name: Build — Host TypeScript
         env:
           NODE_OPTIONS: "--max-old-space-size=7168"
-        run: |
-          pnpm run build:lib:host
+        run: pnpm run build:lib:host
 
-      - name: Build TypeScript Client Libraries
+      - name: Build — Client TypeScript
         env:
           NODE_OPTIONS: "--max-old-space-size=7168"
-        run: |
-          pnpm run build:lib:client
+        run: pnpm run build:lib:client
 
-      - name: Build Web Frontend
+      - name: Build — Web Frontend
         env:
           NODE_OPTIONS: "--max-old-space-size=7168"
+        run: pnpm run build:web
+
+      # ── Package ───────────────────────────────────────────────────────────
+      # Strategy: only bundle compiled lib/ dirs + essential config.
+      # node_modules are NOT included — Termux already has them as symlinks
+      # pointing into ~/deepseek-harness, and `pnpm install --frozen-lockfile`
+      # is instant (no downloads) and will re-create any missing symlinks.
+      - name: Package Prebuilt lib/ Bundle
         run: |
-          pnpm run build:web
+          set -euo pipefail
+          ARCHIVE="dsh-termux-prebuilt-v${VERSION}.tar.gz"
+          echo "ARCHIVE_NAME=$ARCHIVE" >> $GITHUB_ENV
 
-      # ── Fat bundle ────────────────────────────────────────────────────────
-      # Strategy: include every workspace package's compiled lib/ dir.
-      # Symlinks inside node_modules are resolved to real paths, so the
-      # Termux node_modules symlink forest still works after extraction.
-      # node_modules themselves are NOT included (they remain symlinks on
-      # the device). Only the *targets* of those symlinks — the compiled
-      # lib/ dirs inside each workspace package — are bundled.
-      - name: Collect Compiled lib/ Outputs
-        run: |
-          ARCHIVE_NAME="dsh-termux-prebuilt-v${VERSION}.tar.gz"
-          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+          echo "=== Collecting compiled lib/ dirs ==="
+          # Find every compiled lib/ directory across the workspace
+          # (excludes anything inside node_modules to avoid recursion)
+          LIB_DIRS=$(find apps packages vendor \
+            -type d -name 'lib' \
+            ! -path '*/node_modules/*' \
+            ! -path '*/.git/*' \
+            2>/dev/null | sort)
 
-          echo "=== Building fat prebuilt bundle ==="
+          echo "Found lib/ directories:"
+          echo "$LIB_DIRS" | head -40
 
-          # Collect all lib/ dirs from workspace packages + apps + vendor
-          # We dereference symlinks so Termux can extract without pnpm
-          tar --dereference \
-            -czf "$ARCHIVE_NAME" \
-            --exclude='node_modules' \
-            --exclude='.git' \
+          # Build the tar: lib/ dirs + root config files (no node_modules, no .git)
+          tar -czf "$ARCHIVE" \
             --exclude='*.ts' \
-            --exclude='src/' \
-            --exclude='tests/' \
-            --exclude='__tests__/' \
-            --exclude='*.spec.js' \
-            --exclude='*.test.js' \
-            $(find apps packages vendor -maxdepth 4 -name 'lib' -type d \
-                ! -path '*/node_modules/*' \
-                ! -path '*/.git/*' \
-              | sed 's|^|--|' | tr '\n' ' ' | sed 's|--||g' | tr ' ' '\n' \
-              | grep -v '^$' | head -500) \
-            apps/cli/lib/ \
-            packages/ \
-            apps/ \
-            vendor/ \
-            patches/ \
-            scripts/ \
-            package.json \
-            pnpm-workspace.yaml \
-            pnpm-lock.yaml \
-            .npmrc \
-            2>/dev/null || true
-
-          echo "Archive size: $(du -sh "$ARCHIVE_NAME" | cut -f1)"
-
-      # ── Simpler fallback if the above find approach is too complex ────────
-      - name: Repackage (Canonical Fat Bundle)
-        run: |
-          ARCHIVE_NAME="dsh-termux-prebuilt-v${VERSION}.tar.gz"
-
-          # Straightforward: include everything needed, dereference symlinks,
-          # exclude source-only files and git history.
-          tar --dereference \
-            -czf "$ARCHIVE_NAME" \
-            --exclude='.git' \
-            --exclude='*.orig' \
-            --exclude='node_modules/.cache' \
-            --exclude='node_modules/.pnpm' \
-            apps/cli/lib \
-            apps/cli/package.json \
-            apps/cli/node_modules \
-            packages \
-            vendor \
-            patches \
-            scripts/patch_termux.py \
+            --exclude='*.tsx' \
+            --exclude='*.map' \
+            $LIB_DIRS \
             package.json \
             pnpm-workspace.yaml \
             pnpm-lock.yaml \
             .npmrc
 
-          echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> $GITHUB_ENV
-          echo "Final archive size: $(du -sh "$ARCHIVE_NAME" | cut -f1)"
+          echo ""
+          echo "Archive: $ARCHIVE  ($(du -sh "$ARCHIVE" | cut -f1))"
 
-      # ── Upload ────────────────────────────────────────────────────────────
-      - name: Upload Build Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: dsh-termux-prebuilt-v${{ env.VERSION }}
           path: ${{ env.ARCHIVE_NAME }}
           retention-days: 30
 
-      # ── Release ───────────────────────────────────────────────────────────
-      - name: Create / Update GitHub Release
+      - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${VERSION}"
-          echo "Publishing release $TAG..."
-
-          # Delete any pre-existing release for this tag so we can replace it
           gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-
           gh release create "$TAG" "$ARCHIVE_NAME" \
             --title "DeepSeek Harness v${VERSION} — Termux Prebuilt" \
-            --notes "## Termux Prebuilt Bundle v${VERSION}
+            --notes "## Termux Prebuilt — v${VERSION}
 
-          This release is automatically built by GitHub Actions and contains **pre-compiled \`lib/\` outputs** for every workspace package. No local \`tsc\` or \`pnpm install\` needed on Termux.
+          Pre-compiled \`lib/\` outputs for every workspace package. Built on GitHub Actions — no local \`tsc\` needed on Termux.
 
-          ### Installation on Termux
+          ### Apply on Termux
           \`\`\`bash
-          # Download
-          gh release download $TAG -R salmanbappi/deepseek-harness --pattern '*.tar.gz' -D ~/
-
-          # Extract into place (replaces existing deepseek-harness/)
-          tar --dereference -xzf ~/dsh-termux-prebuilt-v${VERSION}.tar.gz -C ~/deepseek-harness --strip-components=0
-
-          # Restore profile node_modules symlinks
-          cd ~/.dsh/profiles && pnpm install --ignore-scripts 2>/dev/null || true
-
-          # Launch
+          bash ~/deepseek-harness/scripts/install-prebuilt.sh
           dsh-web
           \`\`\`
 
-          **Built from commit:** \`${{ github.sha }}\`
-          " \
+          > Built from commit: \`${{ github.sha }}\`" \
             --target "${{ github.sha }}"
