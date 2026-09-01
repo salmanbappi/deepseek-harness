@@ -8,6 +8,7 @@ Maintains and applies:
 4. package.json --expose-internals runtime flag and @img/sharp-wasm32
 5. Koffi Android fallback stubs in node_modules
 6. node-pty arm64 native binary recompilation
+7. @vscode/ripgrep android-arm64 shim linking Termux's ripgrep (glob and grep tools)
 """
 
 import os
@@ -464,6 +465,46 @@ def patch_node_pty():
                 print("      Fix: bash scripts/install-pty-prebuild.sh  (fetches the CI-built binary)")
 
 
+def patch_ripgrep():
+    """Links Termux's ripgrep in as @vscode/ripgrep-android-arm64, which npm does not publish."""
+    node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
+    if not os.path.exists(node_modules):
+        return
+    prefix = os.environ.get("PREFIX", "/data/data/com.termux/files/usr")
+    system_rg = os.path.join(prefix, "bin", "rg")
+    if not os.path.exists(system_rg):
+        print("  [!] ripgrep missing — the glob and grep tools need it: pkg install ripgrep")
+        return
+    manifest = (
+        '{\n'
+        '  "name": "@vscode/ripgrep-android-arm64",\n'
+        '  "version": "1.18.0",\n'
+        '  "description": "Termux shim: npm publishes no Android platform package, so bin/rg links to the system ripgrep.",\n'
+        '  "os": ["android"],\n'
+        '  "cpu": ["arm64"]\n'
+        '}\n'
+    )
+    count = 0
+    for entry in os.listdir(node_modules):
+        # Only the dispatcher package; the platform packages share its prefix.
+        if not entry.startswith("@vscode+ripgrep@"):
+            continue
+        shim = os.path.join(node_modules, entry, "node_modules", "@vscode", "ripgrep-android-arm64")
+        binary = os.path.join(shim, "bin", "rg")
+        if os.path.islink(binary) or os.path.exists(binary):
+            continue
+        try:
+            os.makedirs(os.path.join(shim, "bin"), exist_ok=True)
+            os.symlink(system_rg, binary)
+            with open(os.path.join(shim, "package.json"), "w", encoding="utf-8") as f:
+                f.write(manifest)
+            count += 1
+        except Exception as e:
+            print(f"  [!] ripgrep shim notice: {e}")
+    if count > 0:
+        print(f"  [+] Linked Termux ripgrep into {count} @vscode/ripgrep copy(ies).")
+
+
 def apply_git_patch():
     """Attempts git apply using the master patch bundle."""
     target_patch = PATCH_FILE if os.path.exists(PATCH_FILE) else LEGACY_PATCH_FILE
@@ -636,6 +677,7 @@ def apply_all():
     patch_model_select()
     patch_koffi()
     patch_node_pty()
+    patch_ripgrep()
     
     print("[+] All Termux & Mobile UX patches verified and active.")
     export_patch()
