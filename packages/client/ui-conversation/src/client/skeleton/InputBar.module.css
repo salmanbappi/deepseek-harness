@@ -1,21 +1,3 @@
-/* One-glyph font: maps ONLY U+FFFC to a blank 4em-advance glyph (every other
-   codepoint falls through to the next family). Loaded first in the composer
-   font stack, it gives the placeholder a real cell width INSIDE the textarea,
-   so the backdrop chip (same char, same stack) matches it by construction —
-   the two layers cannot drift and the chip gets a usable label cell. */
-@font-face {
-  font-family: 'DshChipCell';
-  src: url('data:font/ttf;base64,AAEAAAAKAIAAAwAgT1MvMkT8SmIAAAEoAAAAYGNtYXAADQBPAAABkAAAADRnbHlmAAAAAAAAAcwAAAABaGVhZCwtPGoAAACsAAAANmhoZWEDIg7bAAAA5AAAACRobXR4EZQAAAAAAYgAAAAIbG9jYQAAAAAAAAHEAAAABm1heHAAAwACAAABCAAAACBuYW1lvljk2gAAAdAAAABscG9zdNNweNQAAAI8AAAALQABAAAAAQAAdia1tV8PPPUAAwPoAAAAAOaLfcUAAAAA5ot9xQAAAAAAAAAAAAAAAwACAAAAAAAAAAEAAAMg/zgAAA+gAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAACAAEAAAACAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAwjKAZAABQAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAPz8/PwAA//z//AMg/zgAAAMgAMgAAAAAAAAAAAAAAAAAAAAgAAAB9AAAD6AAAAAAAAIAAAADAAAAFAADAAEAAAAUAAQAIAAAAAQABAABAAD//P//AAD//P//AAUAAQAAAAAAAAAAAAAAAAAAAAAAAAAEADYAAQAAAAAAAQALAAAAAQAAAAAAAgAHAAsAAwABBAkAAQAWABIAAwABBAkAAgAOAChEc2hDaGlwQ2VsbFJlZ3VsYXIARABzAGgAQwBoAGkAcABDAGUAbABsAFIAZQBnAHUAbABhAHIAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAABAgZvYmpyZXAAAAA=') format('truetype');
-}
-
-/* Floating capsule input (figma Input_Bottom 75:8208): card floats above the
-   viewport bottom inside the centered message column; textarea on top, action
-   row below, primary action controls bottom-right. Input width rides the
-   column (--dsh-composer-card-max-width = chat content + 32px, 16px per side,
-   is a cap, not a fixed size — layout rule: the box shrinks with the center
-   column keeping its clearance). Hero variant = the same card centered in the
-   empty state; the transition between the two is a position move of one
-   component. */
 
 .root {
   display: flex;
@@ -24,7 +6,7 @@
   /* Side pads ride the shared clearance (figma Input_Bottom drew L32/R32/B8;
      the sides narrow with the shared width axis); the bottom gradient mask
      is owned by the chat scroller. No top pad: the composer stack's gap owns
-     the space above; error/status strips still carry their own margin. */
+     the space above; the status strip still carries its own margin. */
   padding: 0 var(--dsh-composer-side-clearance) 8px;
 }
 
@@ -47,11 +29,6 @@
   line-height: 18px;
 }
 
-.noticeError {
-  background: var(--dsw-alias-interactive-bg-hover-danger);
-  color: var(--dsw-alias-state-error-primary);
-}
-
 .card {
   box-sizing: border-box;
   position: relative; /* overlay anchor positioning context */
@@ -63,15 +40,20 @@
   width: 100%;
   max-width: var(--dsh-composer-card-max-width);
   padding-top: 10px;
-  /* Input stroke: black/0.10 light, white/0.06 dark (figma darkmode note says
-     the input border is one notch weaker than buttons) — exactly the
-     l2-darkmode-thin pair. Fill: the input surface token (elevated in dark). */
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
+  /* Input stroke: the light neutral (l2, one step above the menus' l1),
+     drawn as the elevation hairline so it costs no layout; the shadow is the
+     soft elevation tier. Fill: the input surface token (elevated in dark). */
+  border: 0;
+  --dsw-elevation-stroke-color: var(--dsw-alias-border-l2);
   border-radius: 22px;
   background: var(--dsw-specific-input-major);
-  box-shadow: var(--dsw-shadow-lv2);
-  font-size: 16px;
-  line-height: 24px;
+  box-shadow: var(--dsw-elevation-soft);
+  /* The draft text follows the Settings font-size preference (the textarea,
+     mirror, and backdrop all inherit from here, so the three layers stay in
+     step); the line height keeps the default 10px leading via the shared px
+     delta. */
+  font-size: var(--dsh-content-font-size, 14px);
+  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
   /* Elevated surface in dark, same as the menus: the draft scrollport inside
      scrolls once the composer hits its height cap, so the thumb takes the l2
      pair. Declared on the card because the elevation belongs to the surface,
@@ -88,7 +70,7 @@
    by an SVG dash ring (stroke-width 2 centered on the box edge = 1px visible
    inside), which keeps the 22px radius and both themes. */
 .cardWorkspaceTrigger {
-  border-color: transparent;
+  --dsw-elevation-stroke-color: transparent;
   cursor: pointer;
 }
 
@@ -120,15 +102,6 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px 0;
-}
-
-/* Rail seat: the card's top padding (10px) plus this 4px matches DeepSeek
-   Chat's spacing above the thumbnails; the card's 12px flex gap owns the space
-   below. The rail itself (arrows, hidden scrollbar, card geometry) is the
-   ui-attachment atom's. */
-.attachments {
-  min-width: 0;
-  padding: 4px 12px 0;
 }
 
 /* Floating overlay anchor (menu / popupSelect shell): entries position
@@ -169,6 +142,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  corner-shape: round;
   background: var(--dsw-alias-state-business-primary);
   animation: input-pending 1s ease-in-out infinite alternate;
 }
@@ -183,7 +157,6 @@
    right pad is 8 here plus .scroll's 4px bar inset. */
 .input {
   box-sizing: border-box;
-  min-height: 24px;
   padding: 4px 8px 0 16px;
   font-family: var(--dsw-font-family);
   font-size: inherit;
@@ -240,6 +213,7 @@
    (figma Input_Bottom chrome). */
 .row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -276,6 +250,12 @@
 
 .trailing {
   flex: none;
+  /* Wrap keeps the left mode chips and the right controls apart when the card
+     runs out of row width: the trailing group (model + send) moves to its own
+     line instead of the left group shrinking until its chip overlaps the
+     model trigger (external:107). The auto margin re-anchors it right on the
+     wrapped line; on a single line space-between already pins it right. */
+  margin-left: auto;
   gap: 12px;
 }
 
@@ -288,6 +268,7 @@
   height: 28px;
   border: none;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--dsw-specific-selector);
   color: var(--dsw-alias-label-primary);
   cursor: pointer;
@@ -345,6 +326,7 @@
   height: 34px;
   border: none;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--dsw-alias-button-info-fill);
   /* Static white, not the foreground token: the arrow stays white on the blue
      fill in both themes (design 34:10465). */
@@ -376,115 +358,3 @@
   font-size: 12px;
   cursor: pointer;
 }
-
-/* Plain-text reference highlight: a pure range mark over the
-   draft's own glyphs — advance untouched, so the two layers cannot drift.
-   Chip family colors; clone keeps rounded ends on soft-wrap fragments. */
-.textRef {
-  background-color: transparent;
-  color: var(--dsw-alias-state-business-primary);
-  box-decoration-break: clone;
-  -webkit-box-decoration-break: clone;
-}
-.textRef:after {
-  display: none;
-}
-
-/* Reference chip: rendered in the backdrop at the placeholder offset. Hard
-   alignment constraint: the chip's advance must equal the textarea's U+FFFC
-   advance EXACTLY or every glyph after it drifts (caret/selection follow the
-   textarea character stream). The ::before renders the same U+FFFC through
-   the same font stack (DshChipCell 4em cell), so both layers agree by
-   construction — no measured widths. The label overlays the cell, clipped
-   with an ellipsis; the full name rides the title tooltip. */
-.chip {
-  position: relative;
-  border-radius: 6px;
-  background: rgba(97, 135, 216, 0.22);
-}
-
-.chip::before {
-  content: '\FFFC';
-  color: transparent;
-}
-
-.chipLabel {
-  /* Compensated-scale centering: overflow clipping happens BEFORE transform,
-     so the box is laid out at 1/0.72 of the cell and scaled back down — the
-     clip edge then lands on the visual cell edge, not mid-glyph. */
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: calc(100% / 0.72 - 10px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  color: var(--dsw-alias-label-primary);
-  white-space: nowrap;
-  transform: translate(-50%, -50%) scale(0.72);
-}
-
-.chipInvalid {
-  background: rgba(216, 97, 97, 0.2);
-  text-decoration: line-through;
-  opacity: 0.7;
-}
-
-@media (max-width: 768px) {
-  .root {
-    padding: 0 8px 8px;
-  }
-
-  .card {
-    border-radius: 16px;
-    gap: 8px;
-    padding-top: 8px;
-  }
-
-  .row {
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 2px 6px 6px;
-  }
-
-  .tools {
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .modes {
-    gap: 6px;
-  }
-
-  .trailing {
-    gap: 8px;
-    margin-left: auto;
-  }
-
-  .select {
-    max-width: 130px;
-    height: 26px;
-    font-size: 12px;
-    padding: 0 16px 0 6px;
-  }
-
-  .add {
-    width: 26px;
-    height: 26px;
-  }
-
-  .primary {
-    width: 30px;
-    height: 30px;
-  }
-
-  .input,
-  .mirror,
-  .backdrop {
-    padding: 4px 10px 0 12px;
-    font-size: 16px;
-    line-height: 22px;
-  }
-}
-
