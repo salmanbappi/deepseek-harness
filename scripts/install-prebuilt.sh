@@ -32,11 +32,29 @@ echo "       Downloaded: $(basename "$ARCHIVE") ($(du -sh "$ARCHIVE" | cut -f1))
 
 # Extract compiled lib/ dirs into existing deepseek-harness tree
 echo "[2/4] Extracting compiled lib/ dirs into $DSH_DIR ..."
+# vite names assets by content hash, so a stale dist/ would keep serving old
+# chunks alongside the new index.html. Clear it only when the archive ships one.
+if tar -tzf "$ARCHIVE" | grep -q '^apps/web/dist/'; then
+  rm -rf "$DSH_DIR/apps/web/dist"
+fi
 tar -xzf "$ARCHIVE" -C "$DSH_DIR"
 
 # Re-link node_modules (instant — no network, just symlinks)
 echo "[3/4] Re-linking workspace node_modules (pnpm install --frozen-lockfile)..."
 pnpm install --dir "$DSH_DIR" --frozen-lockfile --ignore-scripts 2>&1 | tail -5
+
+# That re-extract drops node-pty's android-arm64 binary, which the harness needs
+# to load dsh-subprocess-local at all. Put the CI-built one back.
+PTY_CACHE="$HOME/.dsh/native/android-arm64/pty.node"
+if [ -f "$PTY_CACHE" ]; then
+  echo "       Restoring android-arm64 pty.node from cache..."
+  while IFS= read -r pkg; do
+    mkdir -p "$pkg/prebuilds/android-arm64"
+    install -m 0644 "$PTY_CACHE" "$pkg/prebuilds/android-arm64/pty.node"
+  done < <(find "$DSH_DIR/node_modules" -type d -name node-pty -not -path '*/node-pty/*' 2>/dev/null)
+else
+  echo "       No cached pty.node — run: bash $DSH_DIR/scripts/install-pty-prebuild.sh"
+fi
 
 # Refresh .dsh profile symlinks
 echo "[4/4] Refreshing ~/.dsh/profiles node_modules symlinks..."

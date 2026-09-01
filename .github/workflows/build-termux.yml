@@ -107,12 +107,20 @@ jobs:
           echo "Found lib/ directories:"
           echo "$LIB_DIRS" | head -40
 
-          # Build the tar: lib/ dirs + root config files (no node_modules, no .git)
+          # The browser bundle is the one build output that is not a lib/ dir.
+          # Without it the phone serves a stale client against the new server,
+          # which breaks screens like Settings.
+          test -d apps/web/dist || { echo "::error::apps/web/dist missing — did build:web run?"; exit 1; }
+          echo "Browser bundle: apps/web/dist ($(du -sh apps/web/dist | cut -f1))"
+
+          # Build the tar: lib/ dirs + browser bundle + root config files
+          # (no node_modules, no .git)
           tar -czf "$ARCHIVE" \
             --exclude='*.ts' \
             --exclude='*.tsx' \
             --exclude='*.map' \
             $LIB_DIRS \
+            apps/web/dist \
             package.json \
             pnpm-workspace.yaml \
             pnpm-lock.yaml \

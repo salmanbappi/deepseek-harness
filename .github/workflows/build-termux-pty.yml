@@ -107,6 +107,8 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs: [ndk]
     if: ${{ !cancelled() }}
+    # A cross-check, not a gate: the NDK binary still publishes if this fails.
+    continue-on-error: true
     steps:
       - name: Fetch the NDK build for cross-checking
         continue-on-error: true
@@ -120,7 +122,13 @@ jobs:
           set -euxo pipefail
           mkdir -p out ndk ctr
           chmod 777 out
-          cat > ctr/build.sh <<'EOS'
+          # The image entrypoint rebuilds the environment from scratch, so
+          # `docker run -e VAR` never reaches the script — bake the values in.
+          cat > ctr/build.sh <<EOP
+          export NODE_PTY_VERSION='${NODE_PTY_VERSION}'
+          export NODE_TARGET='${NODE_TARGET}'
+          EOP
+          cat >> ctr/build.sh <<'EOS'
           set -euxo pipefail
           export PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
           export HOME="${HOME:-/data/data/com.termux/files/home}"
@@ -171,7 +179,6 @@ jobs:
           chmod 755 ctr/build.sh
           docker run --rm \
             --security-opt seccomp=unconfined \
-            -e NODE_PTY_VERSION -e NODE_TARGET \
             -v "$PWD/ctr:/ctr:ro" -v "$PWD/ndk:/ndk:ro" -v "$PWD/out:/out" \
             termux/termux-docker:aarch64 bash /ctr/build.sh
 
