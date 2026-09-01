@@ -1,0 +1,254 @@
+name: node-pty prebuild (Termux android-arm64)
+
+# The Termux prebuilt-bundle workflow only ships compiled lib/ TypeScript, so a
+# `pnpm install --force` on the phone leaves node-pty with no android-arm64
+# binary and dsh dies at plugin load with:
+#   Failed to load native module: pty.node, checked: build/Release, build/Debug,
+#   prebuilds/android-arm64
+# This workflow compiles that binary against bionic/aarch64 two independent
+# ways, load-tests them inside a real Termux aarch64 userland, and publishes the
+# winner as an artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      node_pty_version:
+        description: node-pty version from npm to compile
+        required: false
+        default: 1.2.0-beta.15
+      node_target:
+        description: Node.js version whose headers to build against
+        required: false
+        default: 24.18.0
+  push:
+    branches:
+      - master
+      - 'termux/**'
+    paths:
+      - '.github/workflows/build-termux-pty.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_PTY_VERSION: ${{ inputs.node_pty_version || '1.2.0-beta.15' }}
+  NODE_TARGET: ${{ inputs.node_target || '24.18.0' }}
+  ANDROID_API: '24'
+
+jobs:
+  ndk:
+    name: NDK cross-compile (x64 host to aarch64/bionic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Unpack node-pty from npm
+        run: |
+          set -euxo pipefail
+          mkdir -p work && cd work
+          npm pack "node-pty@${NODE_PTY_VERSION}"
+          tar -xzf node-pty-*.tgz
+          cd package
+          npm install --ignore-scripts --omit=dev --no-audit --no-fund
+
+      - name: Compile pty.node
+        working-directory: work/package
+        run: |
+          set -euxo pipefail
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
+          [ -n "$NDK" ] && [ -d "$NDK" ] || { echo "::error::Android NDK not found on runner"; exit 1; }
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC="$TC/aarch64-linux-android${ANDROID_API}-clang"
+          export CXX="$TC/aarch64-linux-android${ANDROID_API}-clang++"
+          export LINK="$CXX"
+          export AR="$TC/llvm-ar" NM="$TC/llvm-nm" RANLIB="$TC/llvm-ranlib" STRIP="$TC/llvm-strip"
+          # bionic keeps forkpty()/openpty() in libc and ships no libutil. Termux
+          # satisfies binding.gyp's -lutil with an "INPUT(-lc)" linker script; an
+          # empty archive is enough to make the flag resolve against the NDK sysroot.
+          mkdir -p stub && "$AR" crs stub/libutil.a
+          export LDFLAGS="-L$PWD/stub"
+          npx --yes node-gyp@11 rebuild --arch=arm64 --target="$NODE_TARGET" --verbose
+          test -f build/Release/pty.node
+
+      - name: Verify ELF targets bionic/aarch64
+        working-directory: work/package
+        run: |
+          set -euo pipefail
+          file build/Release/pty.node
+          readelf -h build/Release/pty.node | grep -E 'Class|Machine|Type'
+          readelf -d build/Release/pty.node | grep -E 'NEEDED|SONAME' || true
+          if readelf -W --dyn-syms build/Release/pty.node | grep -q 'GLIBC_'; then
+            echo "::error::binary imports glibc symbols; it cannot load under bionic"
+            exit 1
+          fi
+
+      - name: Stage artifact
+        run: |
+          set -euo pipefail
+          mkdir -p out/prebuilds/android-arm64
+          cp work/package/build/Release/pty.node out/prebuilds/android-arm64/pty.node
+          cd out && sha256sum prebuilds/android-arm64/pty.node | tee pty.node.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pty-android-arm64-ndk
+          path: out
+          retention-days: 90
+          if-no-files-found: error
+
+  termux:
+    name: Termux aarch64 build + load test
+    runs-on: ubuntu-24.04-arm
+    needs: [ndk]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Fetch the NDK build for cross-checking
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: pty-android-arm64-ndk
+          path: ndk
+
+      - name: Build and load-test inside termux/termux-docker:aarch64
+        run: |
+          set -euxo pipefail
+          mkdir -p out ndk ctr
+          chmod 777 out
+          cat > ctr/build.sh <<'EOS'
+          set -euxo pipefail
+          export PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+          export HOME="${HOME:-/data/data/com.termux/files/home}"
+          export TMPDIR="${TMPDIR:-$PREFIX/tmp}"
+          export PATH="$PREFIX/bin:$PATH"
+          mkdir -p "$TMPDIR"
+
+          for i in 1 2 3; do apt update -y && break; sleep 5; done
+          apt install -yq nodejs python clang make binutils
+          node -v && python3 -V && uname -m
+
+          rm -rf "$HOME/work" && mkdir -p "$HOME/work" && cd "$HOME/work"
+          npm pack "node-pty@${NODE_PTY_VERSION}"
+          tar -xzf node-pty-*.tgz
+          cd package
+          npm install --ignore-scripts --omit=dev --no-audit --no-fund
+          npx --yes node-gyp@11 rebuild --target="${NODE_TARGET}" --verbose
+          test -f build/Release/pty.node
+          mkdir -p prebuilds/android-arm64
+
+          # Load + fork a real pty, in a real Termux userland on real aarch64.
+          test_binary() {
+            cp -f "$1" prebuilds/android-arm64/pty.node
+            node -e 'const m = require("./prebuilds/android-arm64/pty.node"); console.log("[load ok]", Object.keys(m).sort().join(","));'
+            node -e 'const pty = require("./lib/index.js");
+              const t = pty.spawn("sh", ["-c", "echo PTY_OK"], { cols: 80, rows: 24 });
+              let out = "";
+              t.onData(d => { out += d; });
+              t.onExit(({ exitCode }) => {
+                console.log("[spawn]", JSON.stringify(out), "exit", exitCode);
+                process.exit(out.includes("PTY_OK") ? 0 : 1);
+              });
+              setTimeout(() => { console.log("[spawn] timed out"); process.exit(1); }, 15000);'
+            echo "[verified] $2"
+          }
+
+          test_binary build/Release/pty.node termux-native
+          cp -f build/Release/pty.node /out/pty.node.termux
+
+          if [ -f /ndk/prebuilds/android-arm64/pty.node ]; then
+            if test_binary /ndk/prebuilds/android-arm64/pty.node ndk-cross; then
+              cp -f /ndk/prebuilds/android-arm64/pty.node /out/pty.node.ndk-verified
+            else
+              echo "::warning::the NDK cross-compiled binary failed the Termux load test"
+            fi
+          fi
+          EOS
+          chmod 755 ctr/build.sh
+          docker run --rm \
+            --security-opt seccomp=unconfined \
+            -e NODE_PTY_VERSION -e NODE_TARGET \
+            -v "$PWD/ctr:/ctr:ro" -v "$PWD/ndk:/ndk:ro" -v "$PWD/out:/out" \
+            termux/termux-docker:aarch64 bash /ctr/build.sh
+
+      - name: Stage artifact
+        run: |
+          set -euo pipefail
+          mkdir -p final/prebuilds/android-arm64
+          cp out/pty.node.termux final/prebuilds/android-arm64/pty.node
+          cd final && sha256sum prebuilds/android-arm64/pty.node | tee pty.node.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pty-android-arm64-termux
+          path: final
+          retention-days: 90
+          if-no-files-found: error
+
+  publish:
+    name: Publish the verified prebuild
+    runs-on: ubuntu-latest
+    needs: [ndk, termux]
+    if: ${{ !cancelled() }}
+    steps:
+      - name: Collect build outputs
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pty-android-arm64-*
+          path: dl
+
+      - name: Pick the best binary and write a manifest
+        run: |
+          set -euo pipefail
+          T=dl/pty-android-arm64-termux/prebuilds/android-arm64/pty.node
+          N=dl/pty-android-arm64-ndk/prebuilds/android-arm64/pty.node
+          if [ -f "$T" ]; then
+            SRC="$T"; ORIGIN=termux-docker-aarch64-native
+          elif [ -f "$N" ]; then
+            SRC="$N"; ORIGIN=android-ndk-cross-compile
+          else
+            echo "::error::no build job produced a pty.node"; exit 1
+          fi
+          mkdir -p out/prebuilds/android-arm64
+          cp "$SRC" out/prebuilds/android-arm64/pty.node
+          SHA=$(sha256sum out/prebuilds/android-arm64/pty.node | cut -d' ' -f1)
+          echo "$SHA  prebuilds/android-arm64/pty.node" > out/pty.node.sha256
+          cat > out/manifest.json <<JSON
+          {
+            "platform": "android-arm64",
+            "node_pty_version": "${NODE_PTY_VERSION}",
+            "node_target": "${NODE_TARGET}",
+            "min_android_api": ${ANDROID_API},
+            "built_by": "${ORIGIN}",
+            "commit": "${GITHUB_SHA}",
+            "run_id": "${GITHUB_RUN_ID}",
+            "sha256": "${SHA}"
+          }
+          JSON
+          {
+            echo "### node-pty prebuild — android-arm64"
+            echo
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| node-pty | \`${NODE_PTY_VERSION}\` |"
+            echo "| built by | \`${ORIGIN}\` |"
+            echo "| sha256 | \`${SHA}\` |"
+            echo
+            echo "Install on the phone:"
+            echo
+            echo '```bash'
+            echo "bash ~/deepseek-harness/scripts/install-pty-prebuild.sh --run-id ${GITHUB_RUN_ID}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pty-android-arm64
+          path: out
+          retention-days: 90
+          if-no-files-found: error

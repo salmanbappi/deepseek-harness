@@ -20,6 +20,10 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATCH_DIR = os.path.join(REPO_DIR, "patches")
 PATCH_FILE = os.path.join(PATCH_DIR, "termux-mobile-suite.patch")
 LEGACY_PATCH_FILE = os.path.join(PATCH_DIR, "termux-environment.patch")
+# Where install-pty-prebuild.sh keeps the CI-built pty.node. pnpm re-extracts
+# node-pty on every install, so the binary has to be restored from outside the
+# workspace rather than rebuilt on the phone.
+NATIVE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "native", "android-arm64")
 
 
 def ensure_patch_dir():
@@ -426,25 +430,38 @@ def patch_koffi():
 
 
 def patch_node_pty():
-    """Ensures node-pty native binary is compiled for android-arm64."""
+    """Ensures node-pty has an android-arm64 native binary: cached CI build first, local compile second."""
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
     if not os.path.exists(node_modules):
         return
+    cached_bin = os.path.join(NATIVE_CACHE_DIR, "pty.node")
     for root, dirs, files in os.walk(node_modules):
         if "node-pty" in root and "binding.gyp" in files:
             pty_bin = os.path.join(root, "build", "Release", "pty.node")
             prebuild_dir = os.path.join(root, "prebuilds", "android-arm64")
             prebuild_bin = os.path.join(prebuild_dir, "pty.node")
-            if not os.path.exists(pty_bin) or not os.path.exists(prebuild_bin):
-                print("  [*] Building native node-pty for android-arm64...")
+            if os.path.exists(prebuild_bin):
+                continue
+            if os.path.exists(cached_bin):
                 try:
-                    subprocess.run(["npx", "node-gyp", "rebuild"], cwd=root, check=True, capture_output=True)
                     os.makedirs(prebuild_dir, exist_ok=True)
-                    if os.path.exists(pty_bin):
-                        subprocess.run(["cp", "-f", pty_bin, prebuild_bin], check=True)
-                        print("  [+] Compiled & installed android-arm64 pty.node.")
+                    subprocess.run(["cp", "-f", cached_bin, prebuild_bin], check=True)
+                    print("  [+] Restored android-arm64 pty.node from ~/.dsh/native cache.")
+                    continue
                 except Exception as e:
-                    print(f"  [!] node-pty compile notice: {e}")
+                    print(f"  [!] pty.node restore notice: {e}")
+            print("  [*] Building native node-pty for android-arm64...")
+            try:
+                subprocess.run(["npx", "node-gyp", "rebuild"], cwd=root, check=True, capture_output=True)
+                os.makedirs(prebuild_dir, exist_ok=True)
+                if os.path.exists(pty_bin):
+                    subprocess.run(["cp", "-f", pty_bin, prebuild_bin], check=True)
+                    os.makedirs(NATIVE_CACHE_DIR, exist_ok=True)
+                    subprocess.run(["cp", "-f", pty_bin, cached_bin], check=True)
+                    print("  [+] Compiled & installed android-arm64 pty.node (cached for next update).")
+            except Exception as e:
+                print(f"  [!] node-pty compile notice: {e}")
+                print("      Fix: bash scripts/install-pty-prebuild.sh  (fetches the CI-built binary)")
 
 
 def apply_git_patch():
