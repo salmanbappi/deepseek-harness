@@ -133,7 +133,17 @@ async function syncDirectory(path: string): Promise<void> {
   /* v8 ignore next -- Windows cannot open directory handles; NTFS metadata journaling owns entry durability there. */
   if (process.platform === 'win32') return
   /* v8 ignore start -- Windows cannot exercise directory fsync; POSIX behavior tests enforce this peer. */
-  const handle = await open(path, constants.O_RDONLY)
+  let handle
+  try {
+    handle = await open(path, constants.O_RDONLY)
+  } catch (error) {
+    // Android's app sandbox refuses to open /data/data and every ancestor above
+    // it, which the DSH_HOME walk reaches three levels above the harness tree. A
+    // directory this process cannot open is one it cannot have created, so its
+    // entry was already durable before the walk started.
+    if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM')) return
+    throw error
+  }
   try {
     await handle.sync()
   } finally {

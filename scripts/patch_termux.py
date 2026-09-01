@@ -66,6 +66,31 @@ def patch_attachment_store():
         c = pat.sub(repl, c, count=1)
         modified = True
 
+    # The DSH_HOME durability walk fsyncs every ancestor up to the filesystem
+    # root. Android denies opening /data/data and above, so read_image died with
+    # "EACCES: permission denied, open '/data/data'" three levels above the tree.
+    if "Android's app sandbox refuses to open /data/data" not in c:
+        pat = re.compile(
+            r"  const handle = await open\(path, constants\.O_RDONLY\)\n(  try \{\n    await handle\.sync\(\))"
+        )
+        repl = r"""  let handle
+  try {
+    handle = await open(path, constants.O_RDONLY)
+  } catch (error) {
+    // Android's app sandbox refuses to open /data/data and every ancestor above
+    // it, which the DSH_HOME walk reaches three levels above the harness tree. A
+    // directory this process cannot open is one it cannot have created, so its
+    // entry was already durable before the walk started.
+    if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM')) return
+    throw error
+  }
+\1"""
+        if pat.search(c):
+            c = pat.sub(repl, c, count=1)
+            modified = True
+        else:
+            print("  [!] attachment store: directory-fsync guard did not match — check store.ts syncDirectory")
+
     if modified:
         with open(path, "w", encoding="utf-8") as f:
             f.write(c)
