@@ -48,8 +48,9 @@ type PanelProps = {
  */
 function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelProps) {
   const titleId = useId()
-  // Default to the first section if caller didn't specify one.
-  const active = activeId ?? rows[0]?.id
+  // Entries can unmount underneath the requested id, so the render-time
+  // projection falls back to the first row when the id is gone.
+  const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

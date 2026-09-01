@@ -34,7 +34,9 @@ echo "       Downloaded: $(basename "$ARCHIVE") ($(du -sh "$ARCHIVE" | cut -f1))
 echo "[2/4] Extracting compiled lib/ dirs into $DSH_DIR ..."
 # vite names assets by content hash, so a stale dist/ would keep serving old
 # chunks alongside the new index.html. Clear it only when the archive ships one.
-if tar -tzf "$ARCHIVE" | grep -q '^apps/web/dist/'; then
+# grep -c consumes the whole listing: grep -q would close the pipe early and
+# tar's SIGPIPE would fail the test under `set -o pipefail`.
+if [ "$(tar -tzf "$ARCHIVE" | grep -c '^apps/web/dist/' || true)" -gt 0 ]; then
   rm -rf "$DSH_DIR/apps/web/dist"
 fi
 tar -xzf "$ARCHIVE" -C "$DSH_DIR"

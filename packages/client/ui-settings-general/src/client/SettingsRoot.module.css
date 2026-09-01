@@ -234,3 +234,94 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Mobile header row (Termux/mobile suite), rendered as the panel's first
+   child. `.panel` is a horizontal flex row, so this row must stay out of the
+   layout above the phone breakpoint: unstyled it becomes a third flex item
+   and pushes the nav rail and content sideways in every viewport. */
+.mobileHeader {
+  display: none;
+}
+
+.mobileTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.mobileActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* Matches `.close`: 28x28 seat, r28, transparent until pressed. */
+.mobileClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 28px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Phone sheet: the panel goes full-bleed and stacks, the nav rail becomes a
+   scrolling strip under the header, and the desktop title row and header are
+   dropped because the mobile header already carries the title and both slots.
+   768px matches the AppFrame drawer breakpoint. */
+@media (max-width: 768px) {
+  .panel {
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    border-radius: 0;
+  }
+
+  .mobileHeader {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px 8px 16px;
+    box-sizing: border-box;
+  }
+
+  .navTitle,
+  .header {
+    display: none;
+  }
+
+  .nav {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 0 8px 8px;
+    overflow-x: auto;
+  }
+
+  .navList {
+    flex-direction: row;
+    gap: 4px;
+  }
+
+  .navCell {
+    flex: none;
+  }
+
+  .options {
+    padding: 0 16px 16px;
+  }
+}
