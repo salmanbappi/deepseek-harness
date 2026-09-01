@@ -32,7 +32,12 @@ def ensure_patch_dir():
 
 
 def patch_attachment_store():
-    """Patches packages/attachment/attachment-local/src/store.ts for Android link fallback."""
+    """Applies the Android edits to packages/attachment/attachment-local/src/store.ts.
+
+    Each edit pairs the exact upstream text with its replacement, so a merge that
+    reshapes the file reports an unmatched anchor instead of silently leaving the
+    tree unpatched.
+    """
     path = os.path.join(REPO_DIR, "packages", "attachment", "attachment-local", "src", "store.ts")
     if not os.path.exists(path):
         return False
@@ -40,40 +45,56 @@ def patch_attachment_store():
         c = f.read()
 
     modified = False
-    if "rename" not in c or "import { chmod, link, mkdir, open, readFile, unlink, rename }" not in c:
-        c = re.sub(
+    if "import { chmod, link, mkdir, open, readFile, unlink, rename }" not in c:
+        c, count = re.subn(
             r"import\s*\{\s*chmod,\s*link,\s*mkdir,\s*open,\s*readFile,\s*unlink\s*\}\s*from\s*'node:fs/promises'",
             "import { chmod, link, mkdir, open, readFile, unlink, rename } from 'node:fs/promises'",
             c
         )
-        modified = True
+        if count == 0:
+            print("  [!] attachment store: fs/promises import not found — rename() cannot be added")
+        else:
+            modified = True
 
-    if "error.code === 'EACCES'" not in c and "error.code === 'ENOSYS'" not in c:
-        pat = re.compile(
-            r"(\s*try\s*\{\s*await link\(temporary,\s*target\)\s*\}\s*catch\s*\(error\)\s*\{)(.*?)(\}\s*\n\s*// Persist the target entry)",
-            re.DOTALL
-        )
-        repl = r"""\1
+    # link() is denied inside the Android app sandbox, so the publish path falls
+    # back to rename() — which moves the staging name instead of copying it.
+    link_upstream = """    try {
+      await link(temporary, target)
+    } catch (error) {
+      /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
+      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+      const existing = new Uint8Array(await readFile(target))
+      if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+    }
+"""
+    link_android = """    let renamed = false
+    try {
+      await link(temporary, target)
+    } catch (error) {
       if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
         await rename(temporary, target)
+        renamed = true
       } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
         const existing = new Uint8Array(await readFile(target))
         if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
       } else {
         throw error
       }
-    \3"""
-        c = pat.sub(repl, c, count=1)
-        modified = True
-
-    # The DSH_HOME durability walk fsyncs every ancestor up to the filesystem
-    # root. Android denies opening /data/data and above, so read_image died with
-    # "EACCES: permission denied, open '/data/data'" three levels above the tree.
-    if "Android's app sandbox refuses to open /data/data" not in c:
-        pat = re.compile(
-            r"  const handle = await open\(path, constants\.O_RDONLY\)\n(  try \{\n    await handle\.sync\(\))"
-        )
-        repl = r"""  let handle
+    }
+"""
+    unlink_upstream = """    // Windows shares the read-only attribute across hard links and refuses to
+    // unlink either name once it is set, so discard the staging name first.
+    await unlink(temporary)
+"""
+    unlink_android = """    // Windows shares the read-only attribute across hard links and refuses to
+    // unlink either name once it is set, so discard the staging name first.
+    // The rename fallback moved that name onto the target, so only a link or a
+    // deduplicated observation leaves a staging entry to discard.
+    if (!renamed) await unlink(temporary)
+"""
+    sync_upstream = """  const handle = await open(path, constants.O_RDONLY)
+"""
+    sync_android = """  let handle
   try {
     handle = await open(path, constants.O_RDONLY)
   } catch (error) {
@@ -84,17 +105,25 @@ def patch_attachment_store():
     if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM')) return
     throw error
   }
-\1"""
-        if pat.search(c):
-            c = pat.sub(repl, c, count=1)
-            modified = True
-        else:
-            print("  [!] attachment store: directory-fsync guard did not match — check store.ts syncDirectory")
+"""
+
+    for marker, upstream, android, label in (
+        ("renamed = true", link_upstream, link_android, "link/rename fallback"),
+        ("if (!renamed) await unlink(temporary)", unlink_upstream, unlink_android, "guarded staging unlink"),
+        ("Android's app sandbox refuses to open /data/data", sync_upstream, sync_android, "ancestor fsync guard"),
+    ):
+        if marker in c:
+            continue
+        if upstream not in c:
+            print(f"  [!] attachment store: {label} anchor did not match — reapply by hand against store.ts")
+            continue
+        c = c.replace(upstream, android, 1)
+        modified = True
 
     if modified:
         with open(path, "w", encoding="utf-8") as f:
             f.write(c)
-        print("  [+] Patched attachment store link fallback.")
+        print("  [+] Patched attachment store for Android (link fallback, staging unlink, ancestor fsync).")
     return True
 
 

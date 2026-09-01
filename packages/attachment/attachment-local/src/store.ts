@@ -224,11 +224,13 @@ export async function commitPreparedImageFile(
     await handle.sync()
     await handle.close()
     handle = undefined
+    let renamed = false
     try {
       await link(temporary, target)
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
         await rename(temporary, target)
+        renamed = true
       } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
         const existing = new Uint8Array(await readFile(target))
         if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
@@ -238,7 +240,9 @@ export async function commitPreparedImageFile(
     }
     // Windows shares the read-only attribute across hard links and refuses to
     // unlink either name once it is set, so discard the staging name first.
-    await unlink(temporary)
+    // The rename fallback moved that name onto the target, so only a link or a
+    // deduplicated observation leaves a staging entry to discard.
+    if (!renamed) await unlink(temporary)
     // The target remains the sole link for a new object; this also restores
     // read-only mode when the deduplication path observes an existing object.
     await chmod(target, 0o400)

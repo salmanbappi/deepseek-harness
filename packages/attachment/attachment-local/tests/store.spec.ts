@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { constants } from 'node:fs'
-import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, parse, resolve } from 'node:path'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -13,6 +13,7 @@ import { commitPreparedImageFile, prepareImageFile, readImageFile, saveImageFile
 const fsControl = vi.hoisted(() => ({
   readSignals: [] as AbortSignal[],
   syncedDirectories: [] as string[],
+  linkErrorCode: undefined as string | undefined,
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -26,6 +27,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         if (signal !== undefined) fsControl.readSignals.push(signal)
       }
       return actual.readFile(...args)
+    },
+    async link(...args: Parameters<typeof actual.link>): ReturnType<typeof actual.link> {
+      if (fsControl.linkErrorCode !== undefined) {
+        throw Object.assign(new Error(`link refused: ${fsControl.linkErrorCode}`), { code: fsControl.linkErrorCode })
+      }
+      return actual.link(...args)
     },
     async open(...args: Parameters<typeof actual.open>): ReturnType<typeof actual.open> {
       if (args[1] === constants.O_RDONLY) fsControl.syncedDirectories.push(String(args[0]))
@@ -70,6 +77,7 @@ function parentChainToRoot(path: string): string[] {
 }
 
 afterEach(async () => {
+  fsControl.linkErrorCode = undefined
   await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true })))
 })
 
@@ -280,5 +288,15 @@ describe('local attachment store', () => {
       ...prepared,
       data: Uint8Array.of(...prepared.data, 0),
     })).rejects.toMatchObject({ code: 'ATTACHMENT_CORRUPT' })
+  })
+
+  it.each(['EACCES', 'EPERM', 'EXDEV', 'ENOSYS'])('publishes through the rename fallback when link reports %s and leaves no staging entry', async (code) => {
+    const storageRoot = await root()
+    fsControl.linkErrorCode = code
+
+    const ref = await saveImageFile(storageRoot, { data: PNG, mediaType: 'image/png' }, LIMITS, POLICY)
+
+    await expect(readImageFile(storageRoot, ref)).resolves.toEqual({ ref, data: PNG })
+    expect(await readdir(join(storageRoot, 'tmp'))).toEqual([])
   })
 })
