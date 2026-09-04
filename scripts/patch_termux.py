@@ -9,6 +9,7 @@ Maintains and applies:
 5. Koffi Android fallback stubs in node_modules
 6. node-pty arm64 native binary recompilation
 7. @vscode/ripgrep android-arm64 shim linking Termux's ripgrep (glob and grep tools)
+8. fs-ext android-arm64 addon for the session write lease (cached, else compiled)
 """
 
 import os
@@ -558,6 +559,44 @@ def patch_node_pty():
                 print("      Fix: bash scripts/install-pty-prebuild.sh  (fetches the CI-built binary)")
 
 
+def patch_fs_ext():
+    """Ensures fs-ext has its android-arm64 addon: cached build first, local compile second.
+
+    Upstream 0.1.3 took fs-ext for the cross-process write lease. It builds from
+    source in an install script, which every Termux install skips with
+    --ignore-scripts, so session-persistence-jsonl cannot load without this.
+    """
+    node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
+    if not os.path.exists(node_modules):
+        return
+    cached = os.path.join(NATIVE_CACHE_DIR, "fs_ext.node")
+    for entry in os.listdir(node_modules):
+        if not entry.startswith("fs-ext@"):
+            continue
+        pkg = os.path.join(node_modules, entry, "node_modules", "fs-ext")
+        built = os.path.join(pkg, "build", "Release", "fs_ext.node")
+        if os.path.exists(built) or not os.path.exists(os.path.join(pkg, "binding.gyp")):
+            continue
+        if os.path.exists(cached):
+            try:
+                os.makedirs(os.path.dirname(built), exist_ok=True)
+                subprocess.run(["cp", "-f", cached, built], check=True)
+                print("  [+] Restored android-arm64 fs_ext.node from ~/.dsh/native cache.")
+                continue
+            except Exception as e:
+                print(f"  [!] fs_ext.node restore notice: {e}")
+        print("  [*] Building fs-ext for android-arm64...")
+        try:
+            subprocess.run(["npx", "node-gyp", "rebuild"], cwd=pkg, check=True, capture_output=True)
+            if os.path.exists(built):
+                os.makedirs(NATIVE_CACHE_DIR, exist_ok=True)
+                subprocess.run(["cp", "-f", built, cached], check=True)
+                print("  [+] Compiled & cached android-arm64 fs_ext.node.")
+        except Exception as e:
+            print(f"  [!] fs-ext compile notice: {e}")
+            print("      The session write lease needs it: cd into the package and run `npx node-gyp rebuild`")
+
+
 def patch_ripgrep():
     """Links Termux's ripgrep in as @vscode/ripgrep-android-arm64, which npm does not publish."""
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
@@ -1021,6 +1060,7 @@ def apply_all():
     patch_model_select()
     patch_koffi()
     patch_node_pty()
+    patch_fs_ext()
     patch_ripgrep()
     patch_settings_mobile()
     patch_llm_pi_ai_gateway()
