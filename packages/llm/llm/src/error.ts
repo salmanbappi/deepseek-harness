@@ -93,9 +93,9 @@ export function isContextWindowExceededError(detail: string): boolean {
  */
 export function isQuotaExceededError(detail: string): boolean {
   return /\binsufficient[\s_-]+(?:quota|balance|credits?)\b/i.test(detail)
-    || /\b(?:quota|usage[\s_-]+limit)[\s_-]+(?:exceeded|exhausted|reached)\b/i.test(detail)
+    || /\b(?:quota|usage[\s_-]+limit)(?:[\s_-]+(?:has|have|is|are|was|were)(?:[\s_-]+been)?)?[\s_-]+(?:exceeded|exhausted|reached)\b/i.test(detail)
     || /\bexceed(?:ed|s)?[\s_-]+(?:(?:your|the)[\s_-]+)?(?:current[\s_-]+)?quota\b/i.test(detail)
-    || /\b(?:balance|credits?)[\s_-]+(?:exhausted|depleted)\b/i.test(detail)
+    || /\b(?:balance|credits?)(?:[\s_-]+(?:has|have|is|are|was|were)(?:[\s_-]+been)?)?[\s_-]+(?:exhausted|depleted)\b/i.test(detail)
     || /\bout[\s_-]+of[\s_-]+(?:credits?|budget)\b/i.test(detail)
 }
 

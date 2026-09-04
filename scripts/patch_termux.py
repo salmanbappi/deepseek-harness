@@ -45,38 +45,68 @@ def patch_attachment_store():
         c = f.read()
 
     modified = False
-    if "import { chmod, link, mkdir, open, readFile, unlink, rename }" not in c:
-        c, count = re.subn(
-            r"import\s*\{\s*chmod,\s*link,\s*mkdir,\s*open,\s*readFile,\s*unlink\s*\}\s*from\s*'node:fs/promises'",
-            "import { chmod, link, mkdir, open, readFile, unlink, rename } from 'node:fs/promises'",
-            c
-        )
-        if count == 0:
-            print("  [!] attachment store: fs/promises import not found — rename() cannot be added")
-        else:
+    # Keep whatever upstream imports and add the two Android fallbacks need.
+    imports = re.search(r"import \{([^}]*)\} from 'node:fs/promises'", c)
+    if imports is None:
+        print("  [!] attachment store: fs/promises import not found — symlink/rename cannot be added")
+    else:
+        present = {name.strip() for name in imports.group(1).split(",") if name.strip()}
+        wanted = present | {"symlink", "rename"}
+        if wanted != present:
+            c = c.replace(imports.group(0), "import { " + ", ".join(sorted(wanted)) + " } from 'node:fs/promises'", 1)
             modified = True
 
     # link() is denied inside the Android app sandbox, so the publish path falls
-    # back to rename() — which moves the staging name instead of copying it.
-    link_upstream = """    try {
-      await link(temporary, target)
+    # back to rename() for a staged object and to copyFile() for an alias, whose
+    # source must survive.
+    alias_upstream = """    try {
+      await link(source, target)
     } catch (error) {
       /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
       if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-      const existing = new Uint8Array(await readFile(target))
-      if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+      if (await digestFile(target) !== sha256) {
+        throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+      }
+    }
+"""
+    alias_android = """    try {
+      await link(source, target)
+    } catch (error) {
+      if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
+        // An alias is a second name for one object: Android denies link(), so
+        // the fallback shares the bytes through a symlink rather than doubling
+        // them with a copy, which would also break the store's dedup accounting.
+        await symlink(source, target)
+      } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+        if (await digestFile(target) !== sha256) {
+          throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+        }
+      } else {
+        throw error
+      }
+    }
+"""
+    link_upstream = """    try {
+      await link(staged.path, target)
+    } catch (error) {
+      /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
+      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+      if (await digestFile(target) !== staged.sha256) {
+        throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+      }
     }
 """
     link_android = """    let renamed = false
     try {
-      await link(temporary, target)
+      await link(staged.path, target)
     } catch (error) {
       if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
-        await rename(temporary, target)
+        await rename(staged.path, target)
         renamed = true
       } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
-        const existing = new Uint8Array(await readFile(target))
-        if (digest(existing) !== sha256) throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+        if (await digestFile(target) !== staged.sha256) {
+          throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+        }
       } else {
         throw error
       }
@@ -84,13 +114,13 @@ def patch_attachment_store():
 """
     unlink_upstream = """    // Windows shares the read-only attribute across hard links and refuses to
     // unlink either name once it is set, so discard the staging name first.
-    await unlink(temporary)
+    await unlink(staged.path)
 """
     unlink_android = """    // Windows shares the read-only attribute across hard links and refuses to
     // unlink either name once it is set, so discard the staging name first.
     // The rename fallback moved that name onto the target, so only a link or a
     // deduplicated observation leaves a staging entry to discard.
-    if (!renamed) await unlink(temporary)
+    if (!renamed) await unlink(staged.path)
 """
     sync_upstream = """  const handle = await open(path, constants.O_RDONLY)
 """
@@ -108,8 +138,9 @@ def patch_attachment_store():
 """
 
     for marker, upstream, android, label in (
-        ("renamed = true", link_upstream, link_android, "link/rename fallback"),
-        ("if (!renamed) await unlink(temporary)", unlink_upstream, unlink_android, "guarded staging unlink"),
+        ("symlink(source, target)", alias_upstream, alias_android, "alias copy fallback"),
+        ("renamed = true", link_upstream, link_android, "staged rename fallback"),
+        ("if (!renamed) await unlink(staged.path)", unlink_upstream, unlink_android, "guarded staging unlink"),
         ("Android's app sandbox refuses to open /data/data", sync_upstream, sync_android, "ancestor fsync guard"),
     ):
         if marker in c:
@@ -683,6 +714,36 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
     ...attribution,
   }
 }
+""",            """/**
+ * Merge Harness attribution with a route's deployment headers, letting the
+ * route win per header name. HTTP field names are case-insensitive, so an
+ * attribution header a route restates under different capitalization is
+ * dropped rather than merged: a gateway that admits only a recognized client
+ * rejects both a comma-joined `User-Agent` and whichever single value a
+ * downstream normalizer happened to keep.
+ * @param headers - the route's configured headers, when it declares any.
+ * @returns headers for the provider request, each name present once.
+ */
+function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const configured = new Set(Object.keys(headers ?? {}).map(name => name.toLowerCase()))
+  return {
+    ...Object.fromEntries(Object.entries(attributionHeaders()).filter(([name]) => !configured.has(name.toLowerCase()))),
+    ...headers,
+  }
+}
+""",
+            "request header precedence",
+        ), (
+            "const configured = new Set(",
+            # The fork reached route-wins precedence first, in a form that still
+            # emits two entries when a route restates a name in another case.
+            """/** Merge deployment headers with provider defaults while allowing custom user-agent overrides. */
+function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  return {
+    ...attributionHeaders(),
+    ...headers,
+  }
+}
 """,
             """/**
  * Merge Harness attribution with a route's deployment headers, letting the
@@ -702,7 +763,7 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
   }
 }
 """,
-            "request header precedence",
+            "request header precedence (fork base)",
         )],
         "discovery": [
             (
@@ -754,17 +815,23 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
         with open(path, "r", encoding="utf-8") as f:
             c = f.read()
         changed = False
+        pending = {}
         for marker, upstream, patched, label in edits[key]:
             # A removal is done when its upstream line is gone; every other edit
             # is done when its marker is present.
             if (upstream not in c) if patched == "" else (marker in c):
                 continue
             if upstream not in c:
-                print(f"  [!] pi-ai gateway: {label} anchor did not match — reapply by hand against {os.path.basename(path)}")
+                # A sibling entry may carry the variant this base actually has,
+                # so defer the warning until every variant has had its turn.
+                pending.setdefault(marker, label)
                 continue
             c = c.replace(upstream, patched, 1)
             changed = True
             applied.append(label)
+        for marker, label in pending.items():
+            if marker not in c:
+                print(f"  [!] pi-ai gateway: {label} anchor did not match — reapply by hand against {os.path.basename(path)}")
         if changed:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(c)

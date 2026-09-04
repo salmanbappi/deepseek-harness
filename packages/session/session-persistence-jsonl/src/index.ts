@@ -886,6 +886,13 @@ class JsonlSessionPersistence extends SessionPersistence {
     try {
       await link(tmp, finalPath)
       linked = true
+    } catch (err: unknown) {
+      if (err instanceof Error && 'code' in err && (err.code === 'EACCES' || err.code === 'EPERM' || err.code === 'EXDEV' || err.code === 'ENOSYS')) {
+        await rename(tmp, finalPath)
+        linked = true
+      } else {
+        throw err
+      }
     } finally {
       // Remove an unpublished temp on failure. After publication, defer cleanup
       // until the directory entry is durable so cleanup cannot reject a live log.

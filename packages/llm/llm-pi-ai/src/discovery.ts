@@ -314,7 +314,14 @@ export async function discoverModels(
   const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
   let response: Response
   try {
-    const headers = new Headers(stored?.headers === undefined ? undefined : Object.entries(stored.headers))
+    // Attribution first so a route's own `User-Agent` overrides it, exactly as
+    // it does on a model request: a gateway that admits only a recognized
+    // client would otherwise serve that route's requests while refusing to
+    // list its models.
+    const headers = new Headers(Object.entries(attributionHeaders()))
+    if (stored?.headers !== undefined) {
+      for (const [name, value] of Object.entries(stored.headers)) headers.set(name, value)
+    }
     headers.set('accept', 'application/json')
     if (api === 'anthropic-messages') {
       headers.set('anthropic-version', ANTHROPIC_VERSION)
@@ -322,7 +329,6 @@ export async function discoverModels(
     } else if (apiKey !== undefined) {
       headers.set('authorization', `Bearer ${apiKey}`)
     }
-    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     response = await fetch(url, {
       method: 'GET',
       headers,

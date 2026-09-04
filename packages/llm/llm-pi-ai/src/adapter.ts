@@ -201,10 +201,20 @@ function reasoningInfo(
   }
 }
 
-/** Merge deployment headers with provider defaults while allowing custom user-agent overrides. */
+/**
+ * Merge Harness attribution with a route's deployment headers, letting the
+ * route win per header name. HTTP field names are case-insensitive, so an
+ * attribution header a route restates under different capitalization is
+ * dropped rather than merged: a gateway that admits only a recognized client
+ * rejects both a comma-joined `User-Agent` and whichever single value a
+ * downstream normalizer happened to keep.
+ * @param headers - the route's configured headers, when it declares any.
+ * @returns headers for the provider request, each name present once.
+ */
 function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const configured = new Set(Object.keys(headers ?? {}).map(name => name.toLowerCase()))
   return {
-    ...attributionHeaders(),
+    ...Object.fromEntries(Object.entries(attributionHeaders()).filter(([name]) => !configured.has(name.toLowerCase()))),
     ...headers,
   }
 }

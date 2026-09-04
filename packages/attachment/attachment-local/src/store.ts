@@ -2,7 +2,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { constants, createReadStream } from 'node:fs'
-import { chmod, link, mkdir, open, readFile, unlink } from 'node:fs/promises'
+import { chmod, link, mkdir, open, readFile, rename, symlink, unlink } from 'node:fs/promises'
 import { dirname, join, parse, resolve } from 'node:path'
 import {
   AttachmentError,
@@ -133,7 +133,17 @@ async function syncDirectory(path: string): Promise<void> {
   /* v8 ignore next -- Windows cannot open directory handles; NTFS metadata journaling owns entry durability there. */
   if (process.platform === 'win32') return
   /* v8 ignore start -- Windows cannot exercise directory fsync; POSIX behavior tests enforce this peer. */
-  const handle = await open(path, constants.O_RDONLY)
+  let handle
+  try {
+    handle = await open(path, constants.O_RDONLY)
+  } catch (error) {
+    // Android's app sandbox refuses to open /data/data and every ancestor above
+    // it, which the DSH_HOME walk reaches three levels above the harness tree. A
+    // directory this process cannot open is one it cannot have created, so its
+    // entry was already durable before the walk started.
+    if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM')) return
+    throw error
+  }
   try {
     await handle.sync()
   } finally {
@@ -282,10 +292,17 @@ export async function publishImmutableAlias(
     try {
       await link(source, target)
     } catch (error) {
-      /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-      if (await digestFile(target) !== sha256) {
-        throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+      if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
+        // An alias is a second name for one object: Android denies link(), so
+        // the fallback shares the bytes through a symlink rather than doubling
+        // them with a copy, which would also break the store's dedup accounting.
+        await symlink(source, target)
+      } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+        if (await digestFile(target) !== sha256) {
+          throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+        }
+      } else {
+        throw error
       }
     }
     await chmod(target, 0o400)
@@ -355,18 +372,26 @@ async function publishStagedObject(
   const parent = dirname(target)
   try {
     await ensureDurableDirectory(parent, staged.boundary)
+    let renamed = false
     try {
       await link(staged.path, target)
     } catch (error) {
-      /* v8 ignore next -- Private same-filesystem directories make EEXIST the only recoverable link race. */
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-      if (await digestFile(target) !== staged.sha256) {
-        throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+      if (error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS')) {
+        await rename(staged.path, target)
+        renamed = true
+      } else if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+        if (await digestFile(target) !== staged.sha256) {
+          throw new AttachmentError('Stored attachment failed integrity verification.', 'ATTACHMENT_CORRUPT')
+        }
+      } else {
+        throw error
       }
     }
     // Windows shares the read-only attribute across hard links and refuses to
     // unlink either name once it is set, so discard the staging name first.
-    await unlink(staged.path)
+    // The rename fallback moved that name onto the target, so only a link or a
+    // deduplicated observation leaves a staging entry to discard.
+    if (!renamed) await unlink(staged.path)
     // The target remains the sole link for a new object; this also restores
     // read-only mode when the deduplication path observes an existing object.
     await chmod(target, 0o400)
