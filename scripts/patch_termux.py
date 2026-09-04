@@ -559,6 +559,221 @@ def patch_ripgrep():
         print(f"  [+] Linked Termux ripgrep into {count} @vscode/ripgrep copy(ies).")
 
 
+def patch_settings_mobile():
+    """Reapplies the mobile settings sheet to packages/client/ui-settings-general.
+
+    Upstream owns both files and rewrote the stylesheet against a desktop figma
+    spec, so a merge resolved to upstream drops the sheet while leaving the TSX
+    referencing classes that no longer exist — the failure that broke the
+    settings screen in both views on 2026-09-01. The CSS block lives in
+    patches/settings-mobile.css so it stays reviewable.
+    """
+    base = os.path.join(REPO_DIR, "packages", "client", "ui-settings-general")
+    tsx_path = os.path.join(base, "src", "client", "SettingsRoot.tsx")
+    css_path = os.path.join(base, "src", "client", "SettingsRoot.module.css")
+    manifest_path = os.path.join(base, "package.json")
+    block_path = os.path.join(PATCH_DIR, "settings-mobile.css")
+    if not os.path.exists(tsx_path) or not os.path.exists(css_path):
+        return False
+
+    applied = []
+    with open(tsx_path, "r", encoding="utf-8") as f:
+        tsx = f.read()
+
+    header_jsx = """        <div className={css.mobileHeader}>
+          <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
+          <div className={css.mobileActions}>
+            {renderSlot('settings.action', {})}
+            <button type="button" className={css.mobileClose} onClick={onClose} aria-label="Close">
+              <IconCloseOutline16 size={16} />
+            </button>
+          </div>
+        </div>
+"""
+    nav_open = "        <nav className={css.nav}>\n"
+    panel_open = '  return (\n    <div className={css.overlay} role="presentation">\n'
+    react_import = "import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'\n"
+    panel_tail = "      </div>\n    </div>\n  )\n}\n"
+
+    for marker, upstream, patched, label in (
+        ("from 'react-dom'", react_import, react_import + "import { createPortal } from 'react-dom'\n", "react-dom import"),
+        # The panel becomes a value so it can be portalled to document.body.
+        ("const panel = (", panel_open, panel_open.replace("  return (", "  const panel = ("), "panel binding"),
+        ("css.mobileHeader", nav_open, header_jsx + nav_open, "mobile header row"),
+        (
+            "createPortal(panel, document.body)",
+            panel_tail,
+            "      </div>\n    </div>\n  )\n\n  if (typeof document !== 'undefined') {\n    return createPortal(panel, document.body)\n  }\n  return panel\n}\n",
+            "portal render",
+        ),
+    ):
+        if marker in tsx:
+            continue
+        if upstream not in tsx:
+            print(f"  [!] settings sheet: {label} anchor did not match — reapply by hand against SettingsRoot.tsx")
+            continue
+        tsx = tsx.replace(upstream, patched, 1)
+        applied.append(label)
+    if applied:
+        with open(tsx_path, "w", encoding="utf-8") as f:
+            f.write(tsx)
+
+    with open(css_path, "r", encoding="utf-8") as f:
+        css = f.read()
+    if ".mobileHeader" not in css:
+        if not os.path.exists(block_path):
+            print("  [!] settings sheet: patches/settings-mobile.css is missing — the mobile CSS cannot be restored")
+        else:
+            with open(block_path, "r", encoding="utf-8") as f:
+                block = f.read()
+            with open(css_path, "w", encoding="utf-8") as f:
+                f.write(css + block)
+            applied.append("mobile stylesheet")
+
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = f.read()
+        changed = False
+        for anchor, addition in (
+            ('    "@types/react": "~18.3.1",\n', '    "@types/react-dom": "~18.3.1",\n'),
+            ('    "react": "^18.2.0",\n', '    "react-dom": "^18.2.0",\n'),
+        ):
+            if addition.strip() in manifest or anchor not in manifest:
+                continue
+            manifest = manifest.replace(anchor, anchor + addition, 1)
+            changed = True
+        if changed:
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                f.write(manifest)
+            applied.append("react-dom dependency")
+
+    if applied:
+        print(f"  [+] Restored the mobile settings sheet ({', '.join(applied)}).")
+    return True
+
+
+def patch_llm_pi_ai_gateway():
+    """Reapplies the custom-gateway edits to the pi-ai adapter and the LLM error classifier.
+
+    The harness sends attribution headers that win over a route's own by design.
+    Gateways declared in ~/.dsh/settings.yaml (agentrouter, justwoker) admit only
+    a recognized client, so a joined User-Agent is refused; these edits let the
+    route's header replace attribution on requests and on model discovery alike,
+    and classify the billing statuses those gateways answer with as terminal
+    quota. Upstream's specs for these functions assert the opposite precedence.
+    """
+    files = {
+        "adapter": os.path.join(REPO_DIR, "packages", "llm", "llm-pi-ai", "src", "adapter.ts"),
+        "discovery": os.path.join(REPO_DIR, "packages", "llm", "llm-pi-ai", "src", "discovery.ts"),
+        "stream": os.path.join(REPO_DIR, "packages", "llm", "llm-pi-ai", "src", "stream.ts"),
+        "error": os.path.join(REPO_DIR, "packages", "llm", "llm", "src", "error.ts"),
+    }
+    if not all(os.path.exists(p) for p in files.values()):
+        return False
+
+    edits = {
+        "adapter": [(
+            "const configured = new Set(",
+            """/** Merge deployment headers while removing case-insensitive attribution collisions. */
+function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const attribution = attributionHeaders()
+  const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
+  return {
+    ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
+    ...attribution,
+  }
+}
+""",
+            """/**
+ * Merge Harness attribution with a route's deployment headers, letting the
+ * route win per header name. HTTP field names are case-insensitive, so an
+ * attribution header a route restates under different capitalization is
+ * dropped rather than merged: a gateway that admits only a recognized client
+ * rejects both a comma-joined `User-Agent` and whichever single value a
+ * downstream normalizer happened to keep.
+ * @param headers - the route's configured headers, when it declares any.
+ * @returns headers for the provider request, each name present once.
+ */
+function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const configured = new Set(Object.keys(headers ?? {}).map(name => name.toLowerCase()))
+  return {
+    ...Object.fromEntries(Object.entries(attributionHeaders()).filter(([name]) => !configured.has(name.toLowerCase()))),
+    ...headers,
+  }
+}
+""",
+            "request header precedence",
+        )],
+        "discovery": [
+            (
+                "// Attribution first so a route's own",
+                "    const headers = new Headers(stored?.headers === undefined ? undefined : Object.entries(stored.headers))\n",
+                """    // Attribution first so a route's own `User-Agent` overrides it, exactly as
+    // it does on a model request: a gateway that admits only a recognized
+    // client would otherwise serve that route's requests while refusing to
+    // list its models.
+    const headers = new Headers(Object.entries(attributionHeaders()))
+    if (stored?.headers !== undefined) {
+      for (const [name, value] of Object.entries(stored.headers)) headers.set(name, value)
+    }
+""",
+                "discovery header precedence",
+            ),
+            (
+                "// Attribution first so a route's own",
+                "    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)\n",
+                "",
+                "discovery attribution override removal",
+            ),
+        ],
+        "stream": [(
+            "/\\b402\\b/.test(message)",
+            "  if (isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE\n",
+            """  // 402 Payment Required is the billing status OpenAI-compatible gateways
+  // answer with when an account's credit, balance, or budget is spent, whatever
+  // wording their body carries.
+  if (/\\b402\\b/.test(message) || isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
+""",
+            "402 as terminal quota",
+        )],
+        "error": [(
+            "(?:has|have|is|are|was|were)",
+            """    || /\\b(?:quota|usage[\\s_-]+limit)[\\s_-]+(?:exceeded|exhausted|reached)\\b/i.test(detail)""",
+            """    || /\\b(?:quota|usage[\\s_-]+limit)(?:[\\s_-]+(?:has|have|is|are|was|were)(?:[\\s_-]+been)?)?[\\s_-]+(?:exceeded|exhausted|reached)\\b/i.test(detail)""",
+            "quota wording with a copula",
+        ), (
+            "(?:balance|credits?)(?:[\\s_-]+(?:has",
+            """    || /\\b(?:balance|credits?)[\\s_-]+(?:exhausted|depleted)\\b/i.test(detail)""",
+            """    || /\\b(?:balance|credits?)(?:[\\s_-]+(?:has|have|is|are|was|were)(?:[\\s_-]+been)?)?[\\s_-]+(?:exhausted|depleted)\\b/i.test(detail)""",
+            "balance wording with a copula",
+        )],
+    }
+
+    applied = []
+    for key, path in files.items():
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        changed = False
+        for marker, upstream, patched, label in edits[key]:
+            # A removal is done when its upstream line is gone; every other edit
+            # is done when its marker is present.
+            if (upstream not in c) if patched == "" else (marker in c):
+                continue
+            if upstream not in c:
+                print(f"  [!] pi-ai gateway: {label} anchor did not match — reapply by hand against {os.path.basename(path)}")
+                continue
+            c = c.replace(upstream, patched, 1)
+            changed = True
+            applied.append(label)
+        if changed:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(c)
+
+    if applied:
+        print(f"  [+] Reapplied the pi-ai gateway edits ({', '.join(applied)}).")
+    return True
+
+
 def apply_git_patch():
     """Attempts git apply using the master patch bundle."""
     target_patch = PATCH_FILE if os.path.exists(PATCH_FILE) else LEGACY_PATCH_FILE
@@ -732,6 +947,8 @@ def apply_all():
     patch_koffi()
     patch_node_pty()
     patch_ripgrep()
+    patch_settings_mobile()
+    patch_llm_pi_ai_gateway()
     
     print("[+] All Termux & Mobile UX patches verified and active.")
     export_patch()
