@@ -3060,9 +3060,18 @@ index f9415d59d4..1dac051fca 100644
    }
  
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
-index fa0fa221ca..f3a52dfef4 100644
+index fa0fa221ca..58104cc48c 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
 +++ b/packages/session/session-persistence-jsonl/src/index.ts
+@@ -13,7 +13,7 @@ import {
+   sessionFormatCatalog,
+ } from '@deepseek-ai/dsh-session-format-catalog'
+ import { readdirSync, type Dirent } from 'node:fs'
+-import { open, mkdir, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
++import { link, mkdir, open, readdir, realpath, rename, rm, stat, truncate } from 'node:fs/promises'
+ import { dirname, join, resolve } from 'node:path'
+ import { performance } from 'node:perf_hooks'
+ import { scheduler } from 'node:timers/promises'
 @@ -886,6 +886,13 @@ class JsonlSessionPersistence extends SessionPersistence {
      try {
        await link(tmp, finalPath)

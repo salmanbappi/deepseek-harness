@@ -167,13 +167,18 @@ def patch_session_persistence():
         c = f.read()
 
     modified = False
-    if "rename" not in c or "truncate, rename" not in c:
-        c = re.sub(
-            r"import\s*\{\s*open,\s*mkdir,\s*readFile,\s*readdir,\s*realpath,\s*link,\s*rm,\s*stat,\s*truncate\s*\}\s*from\s*'node:fs/promises'",
-            "import { open, mkdir, readFile, readdir, realpath, link, rm, stat, truncate, rename } from 'node:fs/promises'",
-            c
-        )
-        modified = True
+    # Merge rename() into whatever upstream imports: pinning the whole list let a
+    # dropped name (0.1.3 removed readFile) miss silently, leaving the fallback
+    # calling an unimported rename and failing the build with TS2552.
+    imports = re.search(r"import \{([^}]*)\} from 'node:fs/promises'", c)
+    if imports is None:
+        print("  [!] session persistence: fs/promises import not found — rename() cannot be added")
+    else:
+        present = {name.strip() for name in imports.group(1).split(",") if name.strip()}
+        wanted = present | {"rename"}
+        if wanted != present:
+            c = c.replace(imports.group(0), "import { " + ", ".join(sorted(wanted)) + " } from 'node:fs/promises'", 1)
+            modified = True
 
     if "err.code === 'EACCES'" not in c and "err.code === 'ENOSYS'" not in c:
         pat = re.compile(
@@ -188,8 +193,11 @@ def patch_session_persistence():
         throw err
       }
     }\3"""
-        c = pat.sub(repl, c, count=1)
-        modified = True
+        c, count = pat.subn(repl, c, count=1)
+        if count == 0:
+            print("  [!] session persistence: link fallback anchor did not match — reapply by hand against index.ts")
+        else:
+            modified = True
 
     if modified:
         with open(path, "w", encoding="utf-8") as f:
