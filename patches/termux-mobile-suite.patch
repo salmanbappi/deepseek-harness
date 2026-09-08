@@ -1463,9 +1463,18 @@ index b2cb715287..8bc1405ee2 100644
  .empty {
    padding: 10px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index e9fc0195ef..eb46bb17e3 100644
+index e9fc0195ef..cbec11a720 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
+@@ -13,7 +13,7 @@
+  */
+ import {
+   useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
+-  type CSSProperties, type KeyboardEvent, type FocusEvent,
++  type CSSProperties, type KeyboardEvent,
+ } from 'react'
+ import { createPortal } from 'react-dom'
+ import clsx from 'clsx'
 @@ -113,14 +113,14 @@ export function ModelSelect(
  
    useEffect(() => {
@@ -1484,7 +1493,22 @@ index e9fc0195ef..eb46bb17e3 100644
    }, [open])
  
    // Portaled placement (the Menu primitive's portal rules: fixed from the
-@@ -259,7 +259,7 @@ export function ModelSelect(
+@@ -194,14 +194,6 @@ export function ModelSelect(
+     }
+   }
+ 
+-  const onBlur = (event: FocusEvent<HTMLDivElement>): void => {
+-    if (event.relatedTarget instanceof Node && (
+-      rootRef.current?.contains(event.relatedTarget) === true
+-      || menuRef.current?.contains(event.relatedTarget) === true
+-    )) return
+-    close()
+-  }
+-
+   const settleSelection = (accepted: boolean): void => {
+     if (accepted) {
+       if (rootRef.current !== null) close(true)
+@@ -259,7 +251,7 @@ export function ModelSelect(
    }
  
    return (

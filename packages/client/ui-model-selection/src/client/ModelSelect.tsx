@@ -13,7 +13,7 @@
  */
 import {
   useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
-  type CSSProperties, type KeyboardEvent, type FocusEvent,
+  type CSSProperties, type KeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
 import clsx from 'clsx'
@@ -192,14 +192,6 @@ export function ModelSelect(
       event.preventDefault()
       moveFocus(event.key === 'ArrowDown' ? 1 : -1)
     }
-  }
-
-  const onBlur = (event: FocusEvent<HTMLDivElement>): void => {
-    if (event.relatedTarget instanceof Node && (
-      rootRef.current?.contains(event.relatedTarget) === true
-      || menuRef.current?.contains(event.relatedTarget) === true
-    )) return
-    close()
   }
 
   const settleSelection = (accepted: boolean): void => {
