@@ -1244,10 +1244,10 @@ index 9c006c93e7..8b30c351a9 100644
        caseName: 'edit omits old_string', name: 'edit',
        args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 5a4f131e5b..d711717309 100644
+index 5a4f131e5b..17c7eaad85 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -97,3 +97,109 @@
+@@ -97,3 +97,112 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -1294,7 +1294,10 @@ index 5a4f131e5b..d711717309 100644
 +    pointer-events: none;
 +  }
 +
-+  .detailsCol {
++  /* 0.1.5 renamed detailsCol → rightbarCol (and data-details-collapsed →
++     data-rightbar-collapsed); the mobile drawer selectors must match the
++     live JSX or the file-explorer drawer renders unstyled below the fold. */
++  .rightbarCol {
 +    position: fixed;
 +    top: 0;
 +    bottom: 0;
@@ -1308,7 +1311,7 @@ index 5a4f131e5b..d711717309 100644
 +    transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
 +  }
 +
-+  .frame[data-details-collapsed] .detailsCol {
++  .frame[data-rightbar-collapsed] .rightbarCol {
 +    transform: translateX(100%);
 +    pointer-events: none;
 +  }

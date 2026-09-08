@@ -140,7 +140,10 @@
     pointer-events: none;
   }
 
-  .detailsCol {
+  /* 0.1.5 renamed detailsCol → rightbarCol (and data-details-collapsed →
+     data-rightbar-collapsed); the mobile drawer selectors must match the
+     live JSX or the file-explorer drawer renders unstyled below the fold. */
+  .rightbarCol {
     position: fixed;
     top: 0;
     bottom: 0;
@@ -154,7 +157,7 @@
     transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
   }
 
-  .frame[data-details-collapsed] .detailsCol {
+  .frame[data-rightbar-collapsed] .rightbarCol {
     transform: translateX(100%);
     pointer-events: none;
   }
