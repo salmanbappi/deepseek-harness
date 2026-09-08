@@ -129,16 +129,15 @@
 }
 
 @media (max-width: 640px) {
+  /* 0.1.5 placement: ModelSelect.tsx pins the portaled card with inline
+     left/top (anchor-based, viewport-clamped). Do NOT set position/left/
+     right/bottom here — inline styles win, and mixing all four insets
+     over-constrains the box into a mangled sheet. Only constrain SIZE. */
   .menu {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: calc(var(--dsh-composer-height, 76px) + 12px);
     width: auto;
     min-width: 0;
     max-width: calc(100vw - 24px);
     max-height: min(400px, 60vh);
-    margin: 0 auto;
   }
 }
 

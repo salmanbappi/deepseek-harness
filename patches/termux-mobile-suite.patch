@@ -1438,24 +1438,23 @@ index 62623b9b81..5eee02c827 100644
    )
    const utils = render(element())
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-index b2cb715287..8bc1405ee2 100644
+index b2cb715287..0431f0df42 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-@@ -128,6 +128,20 @@
+@@ -128,6 +128,19 @@
    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
  }
  
 +@media (max-width: 640px) {
++  /* 0.1.5 placement: ModelSelect.tsx pins the portaled card with inline
++     left/top (anchor-based, viewport-clamped). Do NOT set position/left/
++     right/bottom here — inline styles win, and mixing all four insets
++     over-constrains the box into a mangled sheet. Only constrain SIZE. */
 +  .menu {
-+    position: fixed;
-+    left: 12px;
-+    right: 12px;
-+    bottom: calc(var(--dsh-composer-height, 76px) + 12px);
 +    width: auto;
 +    min-width: 0;
 +    max-width: calc(100vw - 24px);
 +    max-height: min(400px, 60vh);
-+    margin: 0 auto;
 +  }
 +}
 +
