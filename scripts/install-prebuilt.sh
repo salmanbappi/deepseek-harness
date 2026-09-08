@@ -64,10 +64,34 @@ else
   echo "       No cached pty.node — run: bash $DSH_DIR/scripts/install-pty-prebuild.sh"
 fi
 
-# Refresh .dsh profile symlinks
-echo "[4/5] Refreshing ~/.dsh/profiles node_modules symlinks..."
-if [ -f "$HOME/.dsh/profiles/web/package.json" ]; then
-  (cd "$HOME/.dsh/profiles" && pnpm install --frozen-lockfile --ignore-scripts 2>/dev/null) || true
+# Verify profile bundle resolution. Since upstream 0.1.5 each profile is its
+# own workspace root whose dsh.profile.bundles (@deepseek-ai/dsh-*) resolve
+# through the REPO's node_modules workspace links — there is nothing to
+# pnpm-install inside ~/.dsh/profiles anymore.
+echo "[4/5] Verifying profile bundle resolution..."
+MISSING=0
+for B in $(node -e "
+  for (const d of ['web','headless']) {
+    try {
+      const p = require(process.env.HOME + '/.dsh/profiles/' + d + '/package.json');
+      for (const b of (p.dsh && p.dsh.profile && p.dsh.profile.bundles) || []) console.log(b);
+    } catch (e) {}
+  }" 2>/dev/null); do
+  if ! node -e "require.resolve('$B/package.json', {paths: ['$DSH_DIR']})" >/dev/null 2>&1; then
+    echo "       WARN: profile bundle $B does not resolve from the repo workspace."
+    MISSING=1
+  fi
+done
+if [ "$MISSING" -eq 0 ]; then
+  echo "       All profile bundles resolve (web, headless)."
+else
+  echo "       Fix with: cd $DSH_DIR && pnpm install --frozen-lockfile=false"
+fi
+# Legacy flat-layout cleanup: pre-0.1.5 the profiles ROOT was a workspace and
+# accumulated a node_modules there. It is dead weight under the new layout.
+if [ -d "$HOME/.dsh/profiles/node_modules" ] && [ ! -f "$HOME/.dsh/profiles/pnpm-workspace.yaml" ]; then
+  echo "       Removing stale pre-0.1.5 profiles/node_modules (old flat layout)..."
+  rm -rf "$HOME/.dsh/profiles/node_modules"
 fi
 
 # Re-assert every Termux accommodation the install may have disturbed: the
