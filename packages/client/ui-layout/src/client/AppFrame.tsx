@@ -208,6 +208,34 @@ export function AppFrame({
         productTitle={productTitle}
         {...documentTitle === undefined ? {} : { title: documentTitle }}
       />
+      {/* Mobile drawer backdrop */}
+      {isMobile && (!sidebarCollapsed || cols.details > 0) && (
+        <div
+          className={css.mobileBackdrop}
+          onClick={() => {
+            if (!sidebarCollapsed) actions.toggleSidebar()
+            if (cols.details > 0) actions.closeDetails()
+          }}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile sidebar toggle button when collapsed */}
+      {isMobile && sidebarCollapsed && (
+        <button
+          type="button"
+          className={css.mobileSidebarToggle}
+          aria-label="Toggle sidebar"
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      )}
+
       <div className={css.sidebarCol}>
         {/* Render-site slot call with live concession output: a closed
             sidebar keeps the mounted slot at the compact-rail width, and the
@@ -215,8 +243,8 @@ export function AppFrame({
             (collapsed follows the resolved rail, so a derived auto-collapse
             renders the rail UI too). */}
         {renderSlot('sidebar', {
-          collapsed: sidebarCollapsed,
-          width: cols.sidebar,
+          collapsed: isMobile ? false : sidebarCollapsed,
+          width: isMobile ? 280 : cols.sidebar,
         })}
       </div>
       <>
@@ -239,7 +267,7 @@ export function AppFrame({
         {renderSlot('shell.overlay', {})}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!sidebarCollapsed && !isMobile && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {panels.rightbarShown && !panels.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}
