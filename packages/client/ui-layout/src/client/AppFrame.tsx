@@ -157,6 +157,7 @@ export function AppFrame({
   }, [actions])
 
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
+  const isMobile = viewport <= 768
   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
@@ -209,12 +210,12 @@ export function AppFrame({
         {...documentTitle === undefined ? {} : { title: documentTitle }}
       />
       {/* Mobile drawer backdrop */}
-      {isMobile && (!sidebarCollapsed || cols.details > 0) && (
+      {isMobile && (!sidebarCollapsed || cols.rightbar > 0) && (
         <div
           className={css.mobileBackdrop}
           onClick={() => {
             if (!sidebarCollapsed) actions.toggleSidebar()
-            if (cols.details > 0) actions.closeDetails()
+            if (cols.rightbar > 0) actions.closeRightbar()
           }}
           aria-hidden="true"
         />

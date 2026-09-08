@@ -335,47 +335,87 @@ def patch_package_json():
 
 
 def patch_app_frame():
-    """Patches packages/client/ui-layout/src/client/AppFrame.tsx and CSS for mobile drawer."""
+    """Patches packages/client/ui-layout/src/client/AppFrame.tsx for the mobile drawer.
+
+    Adaptive to upstream renames: the old suite targeted `cols.details` /
+    `actions.closeDetails`; the current upstream renamed that panel to
+    `rightbar` (`cols.rightbar` / `actions.closeRightbar`) and dropped the
+    `setNarrow` effect the old definition anchor depended on. Every edit is
+    anchored against the live file and reported, so a missed anchor is visible
+    instead of silently producing an uncompilable half-patch.
+    """
     tsx_path = os.path.join(REPO_DIR, "packages", "client", "ui-layout", "src", "client", "AppFrame.tsx")
-    if os.path.exists(tsx_path):
-        with open(tsx_path, "r", encoding="utf-8") as f:
-            c = f.read()
-        if "isMobile" not in c:
+    if not os.path.exists(tsx_path):
+        return
+    with open(tsx_path, "r", encoding="utf-8") as f:
+        c = f.read()
+    edits = []
+
+    # 0. Migrate stale references left by an older suite run against a
+    #    previous upstream shape (details panel → rightbar panel). Runs even
+    #    when the file already looks patched, otherwise a merge leaves the old
+    #    identifiers in place and the client build fails on CI.
+    if "cols.details" in c and "cols.rightbar" in c:
+        c = c.replace("cols.details", "cols.rightbar")
+        edits.append("cols.details→cols.rightbar")
+    if "actions.closeDetails" in c:
+        # The close action lives in the store, not this file — ask stores.ts
+        # which name upstream currently ships (closeDetails is gone as of the
+        # rightbar rename).
+        stores_path = os.path.join(REPO_DIR, "packages", "client", "ui-layout", "src", "client", "stores.ts")
+        store_c = ""
+        if os.path.exists(stores_path):
+            with open(stores_path, "r", encoding="utf-8") as f:
+                store_c = f.read()
+        if "closeRightbar" in store_c or "closeDetails" not in store_c:
+            c = c.replace("actions.closeDetails", "actions.closeRightbar")
+            edits.append("closeDetails→closeRightbar")
+    if "const isMobile" in c and "mobileBackdrop" in c and not edits:
+        return  # already patched, nothing stale to migrate
+
+    # 1. Define isMobile next to the narrow breakpoint (anchor survives across
+    #    upstream versions; only the following statement differs).
+    if "const isMobile" not in c:
+        anchor = "const narrow = viewport < SIDEBAR_AUTO_COLLAPSE"
+        if anchor in c:
             c = c.replace(
-                "const narrow = viewport < SIDEBAR_AUTO_COLLAPSE\n  useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])",
-                "const narrow = viewport < SIDEBAR_AUTO_COLLAPSE\n  const isMobile = viewport <= 768\n  useEffect(() => { actions.setNarrow(narrow) }, [actions, narrow])"
+                anchor,
+                anchor + "\n  const isMobile = viewport <= 768",
+                1,
             )
-            c = c.replace(
-                "style={{ gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}",
-                "style={{ gridTemplateColumns: isMobile ? '0px 1fr 0px' : `${cols.sidebar}px minmax(0, 1fr) ${cols.details}px` }}"
-            )
-            c = c.replace(
-                "width: cols.sidebar,\n        })}",
-                "width: isMobile ? 280 : cols.sidebar,\n        })}"
-            )
-            c = c.replace(
-                "{renderSlot('sidebar', {\n          collapsed: sidebarCollapsed,",
-                "{renderSlot('sidebar', {\n          collapsed: isMobile ? false : sidebarCollapsed,"
-            )
-            backdrop_code = """      {/* Mobile drawer backdrop */}
-      {isMobile && (!sidebarCollapsed || cols.details > 0) && (
+            edits.append("isMobile definition")
+
+    # 2. Sidebar slot: drawer always expanded, fixed 280px width on mobile.
+    old_slot = "{renderSlot('sidebar', {\n          collapsed: sidebarCollapsed,\n          width: cols.sidebar,\n        })}"
+    new_slot = "{renderSlot('sidebar', {\n          collapsed: isMobile ? false : sidebarCollapsed,\n          width: isMobile ? 280 : cols.sidebar,\n        })}"
+    if old_slot in c:
+        c = c.replace(old_slot, new_slot, 1)
+        edits.append("sidebar slot params")
+
+    # 3. Backdrop + collapsed-state toggle button. The right panel closed on
+    #    backdrop tap uses whichever close action upstream currently ships.
+    if "mobileBackdrop" not in c:
+        close_action = "closeRightbar" if "closeRightbar" in c else "closeDetails"
+        track_col = "cols.rightbar" if "cols.rightbar" in c else "cols.details"
+        backdrop_code = f"""      {{/* Mobile drawer backdrop */}}
+      {{isMobile && (!sidebarCollapsed || {track_col} > 0) && (
         <div
-          className={css.mobileBackdrop}
-          onClick={() => {
+          className={{css.mobileBackdrop}}
+          onClick={{() => {{
             if (!sidebarCollapsed) actions.toggleSidebar()
-            if (cols.details > 0) actions.closeDetails()
-          }}
+            if ({track_col} > 0) actions.{close_action}()
+          }}}}
           aria-hidden="true"
         />
-      )}
+      )}}
 
-      {/* Mobile sidebar toggle button when collapsed */}
-      {isMobile && sidebarCollapsed && (
+      {{/* Mobile sidebar toggle button when collapsed */}}
+      {{isMobile && sidebarCollapsed && (
         <button
           type="button"
-          className={css.mobileSidebarToggle}
+          className={{css.mobileSidebarToggle}}
           aria-label="Toggle sidebar"
-          onClick={() => { actions.toggleSidebar() }}
+          onClick={{() => {{ actions.toggleSidebar() }}}}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -383,22 +423,30 @@ def patch_app_frame():
             <line x1="3" y1="18" x2="21" y2="18"></line>
           </svg>
         </button>
-      )}
+      )}}
 
-      <div className={css.sidebarCol}>"""
-            c = c.replace("      <div className={css.sidebarCol}>", backdrop_code)
+      <div className={{css.sidebarCol}}>"""
+        anchor = "      <div className={css.sidebarCol}>"
+        if anchor in c:
+            c = c.replace(anchor, backdrop_code, 1)
+            edits.append("mobile backdrop + toggle button")
 
-            c = c.replace(
-                '{!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}',
-                '{!sidebarCollapsed && !isMobile && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}'
-            )
-            c = c.replace(
-                '{cols.details > 0 && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}',
-                '{cols.details > 0 && !isMobile && <DragHandle side="details" left={viewport - cols.details} onStart={onDetailsStart} onDrag={onDetailsDrag} onEnd={onDragEnd} />}'
-            )
-            with open(tsx_path, "w", encoding="utf-8") as f:
-                f.write(c)
-            print("  [+] Patched AppFrame.tsx mobile responsive drawer.")
+    # 4. Desktop-only sidebar drag handle (the CSS also hides .handle on
+    #    mobile; this keeps the DOM honest).
+    old_handle = '{!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />} '
+    old_handle = old_handle.rstrip()
+    new_handle = '{!sidebarCollapsed && !isMobile && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />} '
+    new_handle = new_handle.rstrip()
+    if old_handle in c and new_handle not in c:
+        c = c.replace(old_handle, new_handle, 1)
+        edits.append("sidebar drag handle gating")
+
+    if edits:
+        with open(tsx_path, "w", encoding="utf-8") as f:
+            f.write(c)
+        print(f"  [+] Patched AppFrame.tsx mobile responsive drawer ({', '.join(edits)}).")
+    elif "const isMobile" not in c or "mobileBackdrop" not in c:
+        print("  [!] AppFrame.tsx anchors did not match — mobile drawer NOT applied. File may have changed upstream; update patch_app_frame().")
 
 
 def patch_model_select():
@@ -977,7 +1025,7 @@ def check_status():
     if os.path.exists(frame_path):
         with open(frame_path, "r", encoding="utf-8") as f:
             c = f.read()
-        frame_ok = "isMobile" in c and "mobileBackdrop" in c
+        frame_ok = "const isMobile" in c and "mobileBackdrop" in c
     print(f"[*] Responsive Mobile Drawer & UI:     {'[PASS]' if frame_ok else '[FAIL]'}")
 
     # 5. Model Selection Touch Fix

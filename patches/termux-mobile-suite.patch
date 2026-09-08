@@ -1334,20 +1334,28 @@ index 5a4f131e5b..d711717309 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index 905341f503..f162125a9f 100644
+index 905341f503..fd0ce598d0 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
-@@ -208,6 +208,34 @@ export function AppFrame({
+@@ -157,6 +157,7 @@ export function AppFrame({
+   }, [actions])
+ 
+   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
++  const isMobile = viewport <= 768
+   const sidebarCollapsed = narrow ? !panels.narrowExpanded : panels.sidebar === 0
+   const sidebarPreference = sidebarCollapsed
+     ? 0
+@@ -208,6 +209,34 @@ export function AppFrame({
          productTitle={productTitle}
          {...documentTitle === undefined ? {} : { title: documentTitle }}
        />
 +      {/* Mobile drawer backdrop */}
-+      {isMobile && (!sidebarCollapsed || cols.details > 0) && (
++      {isMobile && (!sidebarCollapsed || cols.rightbar > 0) && (
 +        <div
 +          className={css.mobileBackdrop}
 +          onClick={() => {
 +            if (!sidebarCollapsed) actions.toggleSidebar()
-+            if (cols.details > 0) actions.closeDetails()
++            if (cols.rightbar > 0) actions.closeRightbar()
 +          }}
 +          aria-hidden="true"
 +        />
@@ -1372,7 +1380,7 @@ index 905341f503..f162125a9f 100644
        <div className={css.sidebarCol}>
          {/* Render-site slot call with live concession output: a closed
              sidebar keeps the mounted slot at the compact-rail width, and the
-@@ -215,8 +243,8 @@ export function AppFrame({
+@@ -215,8 +244,8 @@ export function AppFrame({
              (collapsed follows the resolved rail, so a derived auto-collapse
              renders the rail UI too). */}
          {renderSlot('sidebar', {
@@ -1383,7 +1391,7 @@ index 905341f503..f162125a9f 100644
          })}
        </div>
        <>
-@@ -239,7 +267,7 @@ export function AppFrame({
+@@ -239,7 +268,7 @@ export function AppFrame({
          {renderSlot('shell.overlay', {})}
        </div>
        {/* The collapsed rail is fixed-width: no resize handle while closed. */}
