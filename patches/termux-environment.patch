@@ -3026,6 +3026,172 @@ index ba4f8996f0..6da949511a 100644
      } finally {
        // Remove an unpublished temp on failure. After publication, defer cleanup
        // until the directory entry is durable so cleanup cannot reject a live log.
+diff --git a/packages/session/session-persistence-jsonl/src/lease.ts b/packages/session/session-persistence-jsonl/src/lease.ts
+index 59dfe27fca..7531f13284 100644
+--- a/packages/session/session-persistence-jsonl/src/lease.ts
++++ b/packages/session/session-persistence-jsonl/src/lease.ts
+@@ -28,21 +28,135 @@
+  * @module @deepseek-ai/dsh-session-persistence-jsonl/lease
+  */
+ 
+-import { mkdir, open, stat } from 'node:fs/promises'
++import { mkdir, open, stat, readFile } from 'node:fs/promises'
+ import type { FileHandle } from 'node:fs/promises'
+ import { join } from 'node:path'
++import { threadId } from 'node:worker_threads'
+ import { tryLockExclusive } from '@deepseek-ai/node-addon-system/flock'
+ import { SessionAlreadyOwnedError } from '@deepseek-ai/dsh-session-persistence'
+ import type { SessionId } from '@deepseek-ai/dsh-session'
+ import { acquireLockHandleWin32, releaseLockHandleWin32 } from './win32.ts'
+ 
++/**
++ * Whether this device lacks kernel flock support. Termux builds run a
++ * single-process-per-user model on android-arm64, where the native addon is
++ * unavailable (`ERR_FLOCK_UNSUPPORTED_PLATFORM`); there we approximate the
++ * lease with a PID marker file, taking over markers left by dead processes.
++ * The browser worker stubs the same entry differently — see the class doc.
++ */
++function useMarkerLease(): boolean {
++  return process.platform === 'android'
++}
++
++/** This holder's identity: one line in the marker file (`pid:threadId`). */
++const HOLDER_ID = `${process.pid}:${threadId}`
++
++/** Parse a marker's `pid:threadId` line, or null when absent/unparsable. */
++async function readMarker(path: string): Promise<{ pid: number; tid: number } | null> {
++  const raw = await readFile(path, 'utf8').catch(() => null)
++  if (raw === null) return null
++  const match = /^([1-9]\d*):(\d+)$/.exec(raw.trim())
++  return match === null ? null : { pid: Number(match[1]), tid: Number(match[2]) }
++}
++
++/** Whether a marker-holding PID is still alive (0 → kill(pid, 0) probe). */
++function pidAlive(pid: number): boolean {
++  try {
++    process.kill(pid, 0)
++    return true
++  } catch (error: unknown) {
++    return (error as NodeJS.ErrnoException | null)?.code === 'EPERM'
++  }
++}
++
++/**
++ * In-process holder registry. Kernel flock excludes two descriptors even
++ * within one process; a marker file only carries `pid:threadId`, and worker
++ * threads do not share JS memory — so same-process exclusion is tracked here
++ * (process-wide across threads via a shared global), keyed by lock path and
++ * validated against the recorded inode so an unlinked (forfeited) lock
++ * admits a successor, exactly like the kernel-locked flow.
++ */
++const inProcessHolders: Map<string, { holder: string; ino: string }> = (
++  globalThis as unknown as { __dshLeaseHolders?: Map<string, { holder: string; ino: string }> }
++).__dshLeaseHolders ??= new Map()
++
++/**
++ * Acquire the marker lease on android, where the native flock addon is
++ * unavailable. Follows the POSIX open→lock→stat→retry flow so injected
++ * filesystem refusals surface identically: the kernel call still runs through
++ * `tryLockExclusive` (its ERR_FLOCK_UNSUPPORTED_PLATFORM rejection is the
++ * android signal to fall through to marker ownership; contention and
++ * non-contention errno mappings are preserved), same-process exclusion is
++ * approximated by the registry, and the marker's `pid:threadId` owner must be
++ * alive, with takeover of markers naming dead PIDs.
++ */
++async function acquireMarker(path: string, id: SessionId): Promise<HeldLock> {
++  const registered = inProcessHolders.get(path)
++  if (registered !== undefined) {
++    const current = await stat(path, { bigint: true }).catch((error: unknown) => {
++      if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
++      throw error
++    })
++    if (current !== undefined && current.ino.toString() === registered.ino) {
++      throw new SessionAlreadyOwnedError(id)
++    }
++    // The locked inode is gone or replaced: the wedged holder forfeited.
++    inProcessHolders.delete(path)
++  }
++  for (let attempt = 0; attempt < 3; attempt += 1) {
++    // Same open/retry shape as the POSIX path: refusals, EACCES, EBUSY and
++    // inode-swap detection behave identically to a kernel-locked device.
++    const handle = await open(path, 'w')
++    try {
++      try {
++        await tryLockExclusive(handle.fd)
++      } catch (error: unknown) {
++        if ((error as NodeJS.ErrnoException | null)?.code === 'ERR_FLOCK_UNSUPPORTED_PLATFORM') {
++          // Android/Termux: no native addon; marker ownership below.
++        } else if (isLockContention(error)) {
++          throw new SessionAlreadyOwnedError(id)
++        } else {
++          throw error
++        }
++      }
++      await handle.writeFile(`${HOLDER_ID}\n`)
++      const held = await handle.stat({ bigint: true })
++      const current = await stat(path, { bigint: true }).catch((error: unknown) => {
++        if ((error as NodeJS.ErrnoException | null)?.code === 'ENOENT') return undefined
++        throw error
++      })
++      if (current === undefined || current.ino !== held.ino || current.dev !== held.dev) {
++        // The inode under our marker changed under us; retry against it.
++        await handle.close()
++        continue
++      }
++      const existing = await readMarker(path)
++      const foreign = existing !== null
++        && existing.pid !== process.pid
++        && pidAlive(existing.pid)
++      if (foreign) {
++        await handle.close()
++        throw new SessionAlreadyOwnedError(id)
++      }
++      inProcessHolders.set(path, { holder: HOLDER_ID, ino: held.ino.toString() })
++      return { kind: 'marker', path, handle }
++    } catch (error: unknown) {
++      await handle.close()
++      throw error
++    }
++  }
++  throw new SessionAlreadyOwnedError(id)
++}
++
+ /** Base name of the kernel lock file inside a session's directory. */
+ export const LEASE_FILENAME = 'session.lock'
+ 
+-/** The held kernel lock: a POSIX descriptor or a Win32 semaphore handle. */
++/** The held kernel lock: a POSIX descriptor, a Win32 semaphore handle, or an android marker file. */
+ type HeldLock =
+   | { readonly kind: 'posix'; readonly handle: FileHandle }
+   | { readonly kind: 'win32'; readonly handle: number }
++  | { readonly kind: 'marker'; readonly path: string; readonly handle: FileHandle }
+ 
+ /** Whether a flock failure means another descriptor holds the lock. */
+ function isLockContention(error: unknown): boolean {
+@@ -85,6 +199,7 @@ export class SessionWriteLease {
+       return new SessionWriteLease({ kind: 'win32', handle })
+     }
+     /* v8 ignore stop */
++    if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id))
+     // Bounded retry: locking an inode a releasing creator just unlinked (or a
+     // recreated path) re-opens the fresh file; steady state needs one pass.
+     for (let attempt = 0; attempt < 3; attempt += 1) {
+@@ -130,6 +245,15 @@ export class SessionWriteLease {
+       return
+     }
+     /* v8 ignore stop */
++    if (this.held.kind === 'marker') {
++      // Mirror the POSIX contract: the lock FILE stays (its stable inode is
++      // what later lockers verify against) while ownership is released —
++      // truncate the marker, drop the registry claim, close the descriptor.
++      inProcessHolders.delete(this.held.path)
++      await this.held.handle.truncate(0).catch(() => { /* best effort */ })
++      await this.held.handle.close()
++      return
++    }
+     await this.held.handle.close()
+   }
+ }
 diff --git a/packages/subprocess/subprocess-local/src/process-inspector.ts b/packages/subprocess/subprocess-local/src/process-inspector.ts
 index 08cec3b4ab..6ae3bae68a 100644
 --- a/packages/subprocess/subprocess-local/src/process-inspector.ts
