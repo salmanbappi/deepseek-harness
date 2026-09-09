@@ -1055,8 +1055,21 @@ def check_status():
         pkg_ok = "--expose-internals" in c and "sharp-wasm32" in c
     print(f"[*] Runtime Engine Flags & Wasm:       {'[PASS]' if pkg_ok else '[FAIL]'}")
 
+    # 8. Android session lease (flock fallback): 0.1.5's write lease takes a
+    #    kernel flock through a native addon that throws on android — the
+    #    marker-lease fallback in lease.ts is what makes session resume work
+    #    on Termux at all. If a merge drops it, EVERY session dies with
+    #    "flock is not supported on android-arm64" — so verify loudly.
+    lease_path = os.path.join(REPO_DIR, "packages", "session", "session-persistence-jsonl", "src", "lease.ts")
+    lease_ok = False
+    if os.path.exists(lease_path):
+        with open(lease_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        lease_ok = "useMarkerLease" in c and "ERR_FLOCK_UNSUPPORTED_PLATFORM" in c and "acquireMarker" in c
+    print(f"[*] Android Session Lease (no flock):  {'[PASS]' if lease_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok
     return all_ok
 
 
