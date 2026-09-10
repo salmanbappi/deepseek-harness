@@ -225,7 +225,7 @@ export function AppFrame({
           className={css.mobileBackdrop}
           onClick={() => {
             if (!sidebarCollapsed) actions.toggleSidebar()
-            if (cols.rightbar > 0) actions.closeDetails()
+            if (cols.rightbar > 0) actions.closeRightbar()
           }}
           aria-hidden="true"
         />

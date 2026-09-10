@@ -1346,7 +1346,7 @@ index 5a4f131e5b..567b2db587 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index 05bb4b9494..e937febf2c 100644
+index 05bb4b9494..d93d218549 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
 @@ -158,6 +158,7 @@ export function AppFrame({
@@ -1367,7 +1367,7 @@ index 05bb4b9494..e937febf2c 100644
 +          className={css.mobileBackdrop}
 +          onClick={() => {
 +            if (!sidebarCollapsed) actions.toggleSidebar()
-+            if (cols.rightbar > 0) actions.closeDetails()
++            if (cols.rightbar > 0) actions.closeRightbar()
 +          }}
 +          aria-hidden="true"
 +        />
