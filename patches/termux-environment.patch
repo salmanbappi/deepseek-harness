@@ -2267,6 +2267,326 @@ index 1e8b2fdef6..9460ebcea5 100644
    it.each([
      {
        command: 'create',
+diff --git a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
+index 35266eed00..00cdfa7ed4 100644
+--- a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
++++ b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
+@@ -20,6 +20,7 @@
+   overflow-y: auto;
+   padding-bottom: var(--dsh-trajectory-bottom-clearance, 0px);
+   container: trajectory-table / inline-size;
++  isolation: isolate;
+ }
+ 
+ .historyLoading {
+@@ -843,6 +844,9 @@
+ 
+ .overview dd.error {
+   color: var(--dsw-alias-state-error-primary);
++  white-space: normal;
++  word-break: break-word;
++  line-height: 18px;
+ }
+ 
+ .details .errorPayload {
+@@ -1032,14 +1036,13 @@
+   box-sizing: border-box;
+   flex-direction: column;
+   padding-bottom: calc(12px + var(--dsh-trajectory-bottom-clearance, 0px));
+-  overflow: hidden;
++  overflow-x: hidden;
++  overflow-y: auto;
++  scrollbar-gutter: stable;
+ }
+ 
+ .detailBodySummary > .overview {
+-  flex: 0 1 auto;
+-  min-height: 0;
+-  overflow: auto;
+-  overscroll-behavior: contain;
++  flex: none;
+ }
+ 
+ .detailBodySummary > .compactedSummary {
+@@ -1071,7 +1074,8 @@
+ 
+ .overviewParentLinks {
+   display: flex;
+-  gap: 14px;
++  flex-wrap: wrap;
++  gap: 8px 14px;
+ }
+ 
+ .overviewHierarchyNavLink {
+@@ -1107,10 +1111,11 @@
+ 
+ .overview > div {
+   display: grid;
+-  grid-template-columns: 94px minmax(0, 1fr);
++  grid-template-columns: 96px minmax(0, 1fr);
+   min-height: 22px;
+-  padding: 0 14px;
+-  align-items: center;
++  padding: 2px 14px;
++  align-items: baseline;
++  gap: 8px;
+ }
+ 
+ .overview > .requestTokenDetail dt {
+@@ -1144,10 +1149,11 @@
+ .overview dd {
+   min-width: 0;
+   margin: 0;
+-  overflow: hidden;
+   color: var(--dsw-alias-label-primary);
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
++  white-space: normal;
++  word-break: break-word;
++  overflow-wrap: anywhere;
++  line-height: 18px;
+ }
+ 
+ .timestampToggle {
+@@ -1165,20 +1171,15 @@
+ 
+ .overviewSections {
+   display: flex;
+-  flex: 1;
+-  min-height: min-content;
++  flex: none;
+   flex-direction: column;
+-  overflow: hidden;
+   border-top: 0;
+ }
+ 
+ .overviewSection {
+   display: flex;
+-  flex: 1 1 0;
+-  max-height: max-content;
+-  min-height: 28px;
++  flex: none;
+   flex-direction: column;
+-  overflow: hidden;
+ }
+ 
+ .overviewSection + .overviewSection {
+@@ -1236,10 +1237,11 @@
+ }
+ 
+ .overviewPreview {
+-  flex: 1;
+-  min-height: 0;
++  box-sizing: border-box;
++  max-height: 280px;
+   overflow: auto;
+-  overscroll-behavior: contain;
++  overscroll-behavior: auto;
++  -webkit-overflow-scrolling: touch;
+   background: var(--dsw-alias-bg-layer-1);
+ }
+ 
+@@ -1761,13 +1763,100 @@
+ @media (max-width: 760px) {
+   .details {
+     position: absolute;
+-    z-index: 5;
++    z-index: 20;
+     top: 0;
+     right: 0;
+     bottom: 0;
+-    width: min(92%, 420px);
+-    max-width: 92%;
+-    border-left-color: var(--dsw-alias-border-l3);
+-    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.14);
++    left: 0;
++    width: 100% !important;
++    max-width: 100% !important;
++    border-left: none;
++    box-shadow: none;
++  }
++
++  .detailsResizeHandle {
++    display: none;
++  }
++
++  .detailsHeader {
++    height: 44px;
++    padding: 0 8px 0 12px;
++  }
++
++  .close {
++    width: 36px;
++    height: 36px;
++    font-size: 20px;
++    line-height: 20px;
++  }
++
++  .detailTabs {
++    height: 38px;
++    padding: 0 4px;
++  }
++
++  .detailTab {
++    padding: 0 12px;
++    font-size: 13px;
++  }
++
++  .detailBodySummary {
++    padding-bottom: calc(24px + var(--dsh-trajectory-bottom-clearance, 168px));
++  }
++
++  .overview {
++    padding: 8px 0;
++  }
++
++  .overview > div {
++    grid-template-columns: 88px minmax(0, 1fr);
++    padding: 3px 12px;
++    gap: 8px;
++  }
++
++  .overviewHeading {
++    min-height: 30px;
++    padding: 4px 12px;
++  }
++
++  .overviewPreview {
++    max-height: 320px;
++    overscroll-behavior: auto;
++  }
++
++  .payload {
++    padding: 10px 12px;
++    font-size: 12px;
++    line-height: 18px;
++  }
++
++  .resultBlocks {
++    padding: 10px 12px;
++    gap: 8px;
++  }
++
++  .resultBlockText {
++    font-size: 12px;
++    line-height: 18px;
++  }
++
++  .schemaIntro {
++    padding: 10px 12px 6px;
++  }
++
++  .schemaParametersTitle {
++    padding: 4px 12px 2px;
++  }
++
++  .markdownPayload {
++    padding: 12px;
++  }
++
++  .markdownPreview {
++    padding: 6px 12px 8px;
++  }
++
++  .usageHeading {
++    padding: 4px 12px 1px;
+   }
+ }
+diff --git a/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css b/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
+index bbe543610c..d3831edcba 100644
+--- a/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
++++ b/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
+@@ -101,6 +101,11 @@
+ }
+ 
+ @media (max-width: 720px) {
++  .frame {
++    padding-left: var(--dsh-composer-side-clearance);
++    padding-right: var(--dsh-composer-side-clearance);
++  }
++
+   .card {
+     border-radius: 16px;
+   }
+@@ -110,7 +115,28 @@
+   }
+ 
+   .footer {
+-    align-items: flex-end;
++    flex-wrap: wrap;
++    gap: 8px 12px;
++    align-items: center;
+     padding: 8px 12px 10px;
+   }
++
++  .feedback {
++    order: -1;
++    width: 100%;
++    min-height: 0;
++    word-break: break-word;
++  }
++
++  .feedback:empty {
++    display: none;
++  }
++
++  .actions {
++    display: flex;
++    align-items: center;
++    flex-wrap: wrap;
++    gap: 8px;
++    margin-left: auto;
++  }
+ }
+diff --git a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
+index 10d108d3df..e044db0a9d 100644
+--- a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
++++ b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
+@@ -420,6 +420,11 @@
+ }
+ 
+ @media (max-width: 720px) {
++  .frame {
++    padding-left: var(--dsh-composer-side-clearance);
++    padding-right: var(--dsh-composer-side-clearance);
++  }
++
+   .card {
+     border-radius: 16px;
+   }
+@@ -443,12 +448,31 @@
+   }
+ 
+   .footer {
+-    align-items: flex-end;
++    flex-wrap: wrap;
++    gap: 8px 12px;
++    align-items: center;
+     padding: 0 10px;
+   }
+ 
++  .feedback {
++    order: -1;
++    width: 100%;
++    min-height: 0;
++    text-align: left;
++    word-break: break-word;
++  }
++
++  .feedback:empty {
++    display: none;
++  }
++
+   .footerActions {
++    display: flex;
++    align-items: center;
++    flex-wrap: wrap;
++    gap: 8px;
+     flex-shrink: 0;
++    margin-left: auto;
+   }
+ }
+ 
 diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
 index b4633d0ad1..f0c598ac6f 100644
 --- a/packages/client/web/src/base.css

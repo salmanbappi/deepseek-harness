@@ -101,6 +101,11 @@
 }
 
 @media (max-width: 720px) {
+  .frame {
+    padding-left: var(--dsh-composer-side-clearance);
+    padding-right: var(--dsh-composer-side-clearance);
+  }
+
   .card {
     border-radius: 16px;
   }
@@ -110,7 +115,28 @@
   }
 
   .footer {
-    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: center;
     padding: 8px 12px 10px;
+  }
+
+  .feedback {
+    order: -1;
+    width: 100%;
+    min-height: 0;
+    word-break: break-word;
+  }
+
+  .feedback:empty {
+    display: none;
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
   }
 }

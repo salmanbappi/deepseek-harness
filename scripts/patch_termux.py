@@ -936,6 +936,229 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
     return True
 
 
+def patch_user_questions_mobile():
+    """Patches packages/client/ui-user-questions for mobile viewport clearance and button wrapping.
+
+    Fixes the Ask User and Plan Review floating decision footers on mobile screens
+    so the submit button and feedback text clear the viewport and wrap naturally.
+    """
+    base = os.path.join(REPO_DIR, "packages", "client", "ui-user-questions", "src", "client")
+    qc_css = os.path.join(base, "QuestionComposer.module.css")
+    pr_css = os.path.join(base, "PlanReviewPanel.module.css")
+    applied = []
+
+    for path, label in ((qc_css, "QuestionComposer"), (pr_css, "PlanReviewPanel")):
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+
+        changed = False
+        if "padding-left: var(--dsh-composer-side-clearance);" not in c:
+            anchor = "@media (max-width: 720px) {\n  .card {"
+            replacement = "@media (max-width: 720px) {\n  .frame {\n    padding-left: var(--dsh-composer-side-clearance);\n    padding-right: var(--dsh-composer-side-clearance);\n  }\n\n  .card {"
+            if anchor in c:
+                c = c.replace(anchor, replacement, 1)
+                changed = True
+                applied.append(f"{label} clearance")
+
+        if "flex-wrap: wrap;" not in c:
+            old_footer = "  .footer {\n    align-items: flex-end;"
+            new_footer = "  .footer {\n    flex-wrap: wrap;\n    gap: 8px 12px;\n    align-items: center;"
+            if old_footer in c:
+                c = c.replace(old_footer, new_footer, 1)
+                changed = True
+
+            if label == "QuestionComposer" and ".footerActions {" in c:
+                old_fa = "  .footerActions {\n    flex-shrink: 0;\n  }"
+                new_fa = "  .feedback {\n    order: -1;\n    width: 100%;\n    min-height: 0;\n    text-align: left;\n    word-break: break-word;\n  }\n\n  .feedback:empty {\n    display: none;\n  }\n\n  .footerActions {\n    display: flex;\n    align-items: center;\n    flex-wrap: wrap;\n    gap: 8px;\n    flex-shrink: 0;\n    margin-left: auto;\n  }"
+                if old_fa in c:
+                    c = c.replace(old_fa, new_fa, 1)
+                    changed = True
+                    applied.append(f"{label} button wrapping")
+            elif label == "PlanReviewPanel" and ".feedback {" not in c:
+                old_tail = "  .footer {\n    flex-wrap: wrap;\n    gap: 8px 12px;\n    align-items: center;\n    padding: 8px 12px 10px;\n  }\n}"
+                new_tail = "  .footer {\n    flex-wrap: wrap;\n    gap: 8px 12px;\n    align-items: center;\n    padding: 8px 12px 10px;\n  }\n\n  .feedback {\n    order: -1;\n    width: 100%;\n    min-height: 0;\n    word-break: break-word;\n  }\n\n  .feedback:empty {\n    display: none;\n  }\n\n  .actions {\n    display: flex;\n    align-items: center;\n    flex-wrap: wrap;\n    gap: 8px;\n    margin-left: auto;\n  }\n}"
+                if old_tail in c:
+                    c = c.replace(old_tail, new_tail, 1)
+                    changed = True
+                    applied.append(f"{label} actions wrapping")
+
+        if changed:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(c)
+
+    if applied:
+        print(f"  [+] Patched user-questions mobile clearance ({', '.join(applied)}).")
+    return True
+
+
+def patch_trajectory_mobile():
+    """Patches packages/client/ui-trajectory for mobile readability, z-index isolation, and smooth scrolling."""
+    css_path = os.path.join(REPO_DIR, "packages", "client", "ui-trajectory", "src", "client", "TrajectoryTable.module.css")
+    if not os.path.exists(css_path):
+        return False
+    with open(css_path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    changed = False
+    applied = []
+
+    # 1. Isolation on tablePane so request dots and table controls do not bleed through details
+    if "container: trajectory-table / inline-size;\n  isolation: isolate;" not in c:
+        anchor = "container: trajectory-table / inline-size;"
+        if anchor in c:
+            c = c.replace(anchor, "container: trajectory-table / inline-size;\n  isolation: isolate;", 1)
+            changed = True
+            applied.append("tablePane isolation")
+
+    # 2. Overview items wrapping without ellipsis truncation
+    if ".overview dd {\n  min-width: 0;\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  white-space: normal;" not in c:
+        old_dd = ".overview dd {\n  min-width: 0;\n  margin: 0;\n  overflow: hidden;\n  color: var(--dsw-alias-label-primary);\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}"
+        new_dd = ".overview dd {\n  min-width: 0;\n  margin: 0;\n  color: var(--dsw-alias-label-primary);\n  white-space: normal;\n  word-break: break-word;\n  overflow-wrap: anywhere;\n  line-height: 18px;\n}"
+        if old_dd in c:
+            c = c.replace(old_dd, new_dd, 1)
+            changed = True
+            applied.append("overview text wrap")
+
+    # 3. Overview preview touch scrolling
+    if "overscroll-behavior: auto;\n  -webkit-overflow-scrolling: touch;" not in c:
+        old_prev = ".overviewPreview {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  background: var(--dsw-alias-bg-layer-1);\n}"
+        new_prev = ".overviewPreview {\n  box-sizing: border-box;\n  max-height: 280px;\n  overflow: auto;\n  overscroll-behavior: auto;\n  -webkit-overflow-scrolling: touch;\n  background: var(--dsw-alias-bg-layer-1);\n}"
+        if old_prev in c:
+            c = c.replace(old_prev, new_prev, 1)
+            changed = True
+            applied.append("overviewPreview touch scroll")
+
+    # 4. Mobile details full-width overlay and z-index 20
+    if "z-index: 20;\n    top: 0;\n    right: 0;\n    bottom: 0;\n    left: 0;\n    width: 100% !important;" not in c:
+        old_details = """@media (max-width: 760px) {
+  .details {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(92%, 420px);
+    max-width: 92%;
+    border-left-color: var(--dsw-alias-border-l3);
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.14);
+  }
+}"""
+        new_details = """@media (max-width: 760px) {
+  .details {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-left: none;
+    box-shadow: none;
+  }
+
+  .detailsResizeHandle {
+    display: none;
+  }
+
+  .detailsHeader {
+    height: 44px;
+    padding: 0 8px 0 12px;
+  }
+
+  .close {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    line-height: 20px;
+  }
+
+  .detailTabs {
+    height: 38px;
+    padding: 0 4px;
+  }
+
+  .detailTab {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .detailBodySummary {
+    padding-bottom: calc(24px + var(--dsh-trajectory-bottom-clearance, 168px));
+  }
+
+  .overview {
+    padding: 8px 0;
+  }
+
+  .overview > div {
+    grid-template-columns: 88px minmax(0, 1fr);
+    padding: 3px 12px;
+    gap: 8px;
+  }
+
+  .overviewHeading {
+    min-height: 30px;
+    padding: 4px 12px;
+  }
+
+  .overviewPreview {
+    max-height: 320px;
+    overscroll-behavior: auto;
+  }
+
+  .payload {
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .resultBlocks {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .resultBlockText {
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .schemaIntro {
+    padding: 10px 12px 6px;
+  }
+
+  .schemaParametersTitle {
+    padding: 4px 12px 2px;
+  }
+
+  .markdownPayload {
+    padding: 12px;
+  }
+
+  .markdownPreview {
+    padding: 6px 12px 8px;
+  }
+
+  .usageHeading {
+    padding: 4px 12px 1px;
+  }
+}"""
+        if old_details in c:
+            c = c.replace(old_details, new_details, 1)
+            changed = True
+            applied.append("mobile full-width details & z-index 20")
+
+    if changed:
+        with open(css_path, "w", encoding="utf-8") as f:
+            f.write(c)
+
+    if applied:
+        print(f"  [+] Patched trajectory mobile summary & view ({', '.join(applied)}).")
+    return True
+
+
 def apply_git_patch():
     """Attempts git apply using the master patch bundle."""
     target_patch = PATCH_FILE if os.path.exists(PATCH_FILE) else LEGACY_PATCH_FILE
@@ -1068,8 +1291,26 @@ def check_status():
         lease_ok = "useMarkerLease" in c and "ERR_FLOCK_UNSUPPORTED_PLATFORM" in c and "acquireMarker" in c
     print(f"[*] Android Session Lease (no flock):  {'[PASS]' if lease_ok else '[FAIL]'}")
 
+    # 9. Mobile User Questions UI
+    qc_path = os.path.join(REPO_DIR, "packages", "client", "ui-user-questions", "src", "client", "QuestionComposer.module.css")
+    qc_ok = False
+    if os.path.exists(qc_path):
+        with open(qc_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        qc_ok = "padding-left: var(--dsh-composer-side-clearance)" in c and "flex-wrap: wrap" in c
+    print(f"[*] Mobile User Questions Clearance:   {'[PASS]' if qc_ok else '[FAIL]'}")
+
+    # 10. Mobile Trajectory Summary
+    traj_path = os.path.join(REPO_DIR, "packages", "client", "ui-trajectory", "src", "client", "TrajectoryTable.module.css")
+    traj_ok = False
+    if os.path.exists(traj_path):
+        with open(traj_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        traj_ok = "isolation: isolate" in c and "z-index: 20" in c and "white-space: normal" in c
+    print(f"[*] Mobile Trajectory Summary & View:  {'[PASS]' if traj_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok
     return all_ok
 
 
@@ -1125,6 +1366,8 @@ def apply_all():
     patch_ripgrep()
     patch_settings_mobile()
     patch_llm_pi_ai_gateway()
+    patch_user_questions_mobile()
+    patch_trajectory_mobile()
     
     print("[+] All Termux & Mobile UX patches verified and active.")
     export_patch()
