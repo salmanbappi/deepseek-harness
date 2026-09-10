@@ -158,6 +158,7 @@ export function AppFrame({
   }, [actions])
 
   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
+  const isMobile = viewport <= 768
   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
   const sidebarPreference = sidebarCollapsed
     ? 0
@@ -218,6 +219,34 @@ export function AppFrame({
         useSessions={useSessions}
         usePanelInfo={usePanelInfo}
       />
+      {/* Mobile drawer backdrop */}
+      {isMobile && (!sidebarCollapsed || cols.rightbar > 0) && (
+        <div
+          className={css.mobileBackdrop}
+          onClick={() => {
+            if (!sidebarCollapsed) actions.toggleSidebar()
+            if (cols.rightbar > 0) actions.closeDetails()
+          }}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* Mobile sidebar toggle button when collapsed */}
+      {isMobile && sidebarCollapsed && (
+        <button
+          type="button"
+          className={css.mobileSidebarToggle}
+          aria-label="Toggle sidebar"
+          onClick={() => { actions.toggleSidebar() }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>
+        </button>
+      )}
+
       <div className={css.sidebarCol}>
         {sidebar}
       </div>
@@ -231,7 +260,7 @@ export function AppFrame({
         {overlays}
       </div>
       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
-      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
+      {!sidebarCollapsed && !isMobile && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
       {layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
       )}
