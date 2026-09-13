@@ -62,6 +62,24 @@ describe('DeepSeekFilesClient', () => {
     })
   })
 
+  it('sends configured deployment headers on a file request', async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+      const headers = new Headers(init?.headers)
+      expect(headers.get('user-agent')).toBe('cline/3.5.0')
+      expect(headers.get('x-gateway-tenant')).toBe('acme')
+      expect(headers.get('authorization')).toBe('Bearer key')
+      return new Response(JSON.stringify(file()), { status: 200 })
+    }) as typeof fetch
+    const client = new DeepSeekFilesClient({
+      baseURL: 'https://api.deepseek.com',
+      apiKey: 'key',
+      headers: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
+      fetch: fetchImpl,
+    })
+
+    await expect(client.retrieve(DeepSeekFileId('file-api-one'))).resolves.toMatchObject({ id: 'file-api-one' })
+  })
+
   it('validates list, retrieve, and delete responses', async () => {
     const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const target = requestUrl(url)

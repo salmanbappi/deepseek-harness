@@ -89,6 +89,26 @@ describe('DeepSeekFileStore', () => {
     expect(remote.uploads()).toBe(1)
   })
 
+  it('sends the connection headers on every file request', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
+    roots.push(dir)
+    // The default index lives under DSH_HOME; a temp one keeps this upload in
+    // the test and out of the developer's real upload record.
+    const index = new DeepSeekUploadIndex(join(dir, 'index.json'))
+    const remote = uploadFetch()
+    const seen: Headers[] = []
+    const observed = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push(new Headers(init?.headers))
+      return remote.fetchImpl(url, init)
+    }) as typeof fetch
+    const store = new DeepSeekFileStore({ index, now: () => NOW, fetch: observed })
+
+    await store.ensureUploaded(VERSION, { ...CONNECTION, headers: { 'User-Agent': 'cline/3.5.0' } }, POLICY)
+
+    expect(seen[0]?.get('user-agent')).toBe('cline/3.5.0')
+    expect(seen[0]?.get('authorization')).toBe('Bearer key')
+  })
+
   it('keeps a shared upload alive while another waiter remains', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
     roots.push(dir)

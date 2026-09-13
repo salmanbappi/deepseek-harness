@@ -66,3 +66,21 @@ export function attributionHeaders(
 ): Record<string, string> {
   return { 'user-agent': userAgent(identity) }
 }
+
+/**
+ * Merge Harness attribution with a deployment's configured headers, letting
+ * the deployment win per header name. HTTP field names are case-insensitive,
+ * so an attribution header a deployment restates under different
+ * capitalization is dropped rather than merged: a gateway that admits only a
+ * recognized client rejects both a comma-joined `User-Agent` and whichever
+ * single value a downstream normalizer happened to keep.
+ * @param headers - the deployment's configured headers, when it declares any.
+ * @returns headers for the provider request, each name present once.
+ */
+export function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
+  const configured = new Set(Object.keys(headers ?? {}).map(name => name.toLowerCase()))
+  return {
+    ...Object.fromEntries(Object.entries(attributionHeaders()).filter(([name]) => !configured.has(name.toLowerCase()))),
+    ...headers,
+  }
+}

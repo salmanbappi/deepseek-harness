@@ -1029,6 +1029,13 @@ export interface Config {
   apiKeyEnv?: string
   /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
   baseURL?: string
+  /**
+   * Deployment headers sent on every provider request, chat and Files API
+   * alike. They are merged over the attribution `User-Agent`; the credential,
+   * content type, accept, and harness identity headers stay harness-owned. A
+   * gateway that admits only a recognized client needs this.
+   */
+  headers?: Record<string, string>
   /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
   thinking?: 'enabled' | 'disabled'
   /** Default thinking effort (default `high`); `off` disables thinking per request. */

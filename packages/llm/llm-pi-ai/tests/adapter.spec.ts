@@ -9,7 +9,7 @@ import type {
   SaveImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import LlmRuntime, { createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -113,14 +113,16 @@ describe('PiAiAdapter provider routing', () => {
     expect(second.requests).toHaveLength(0)
   })
 
-  it('merges profile headers with Harness attribution winning', async () => {
+  it('merges profile headers with the deployment value winning per name', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = await harness(server.url, {
       headers: { 'x-company': 'private', 'User-Agent': 'wrong' },
     })
     await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(server.headers[0]?.['x-company']).toBe('private')
-    expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+    // A gateway that admits one client rejects a joined pair, so the profile
+    // value replaces the attribution spelling instead of combining with it.
+    expect(server.headers[0]?.['user-agent']).toBe('wrong')
   })
 
   it('forwards common stream options and profile reasoning', async () => {

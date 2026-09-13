@@ -366,6 +366,30 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
   })
 
+  it('sends configured deployment headers on the chat request and keeps harness-owned fields', async () => {
+    const server = await mockServer([{ kind: 'sse', events: textEvents }])
+    const adapter = adapterOf({
+      baseURL: server.url,
+      headers: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
+    })
+
+    await drain(adapter.stream({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-pro',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'hi' }],
+        source: { kind: 'plugin', plugin: 'test' },
+      })],
+    }))
+
+    // The deployment's User-Agent replaces attribution rather than joining it,
+    // while the credential and harness identity stay harness-owned.
+    expect(server.headers[0]?.['user-agent']).toBe('cline/3.5.0')
+    expect(server.headers[0]?.['x-gateway-tenant']).toBe('acme')
+    expect(server.headers[0]?.['authorization']).toBe('Bearer k')
+    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(TEST_USER_ID)
+  })
+
   it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
     const server = await mockServer([{ kind: 'sse', events: textEvents }])
     const signalSeen: (AbortSignal | undefined)[] = []
@@ -1989,6 +2013,19 @@ describe('plugin registration and config', () => {
   it.each([0, 1.5])('rejects a per-model output cap of %s', (maxTokens) => {
     expect(() => resolveAdapterOptions({ models: [{ id: 'bad-cap', maxTokens }] }))
       .toThrow(/maxTokens must be a positive integer/)
+  })
+
+  it('validates configured deployment headers before any request', () => {
+    expect(() => resolveAdapterOptions({ headers: { 'bad name': 'x' } }))
+      .toThrow(/header name "bad name" is not a valid HTTP field name/)
+    expect(() => resolveAdapterOptions({ headers: { 'x-test': 'a\nb' } }))
+      .toThrow(/header "x-test" value must not contain CR, LF, or NUL/)
+    expect(() => resolveAdapterOptions({ headers: { 'X-Test': 'a', 'x-test': 'b' } }))
+      .toThrow(/header "x-test" repeats "X-Test"; HTTP field names are case-insensitive/)
+    // An empty section is absent facts, not an empty header map.
+    expect(resolveAdapterOptions({ headers: {} })).not.toHaveProperty('headers')
+    expect(resolveAdapterOptions({ headers: { 'X-Tenant': 'acme' } }))
+      .toMatchObject({ headers: { 'X-Tenant': 'acme' } })
   })
 
   it('surfaces a catalog model\'s in-history system prompt update mode and rejects any other mode', async () => {

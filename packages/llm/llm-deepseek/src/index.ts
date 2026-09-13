@@ -136,6 +136,13 @@ export interface Config {
   apiKeyEnv?: string
   /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
   baseURL?: string
+  /**
+   * Deployment headers sent on every provider request, chat and Files API
+   * alike. They are merged over the attribution `User-Agent`; the credential,
+   * content type, accept, and harness identity headers stay harness-owned. A
+   * gateway that admits only a recognized client needs this.
+   */
+  headers?: Record<string, string>
   /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
   thinking?: 'enabled' | 'disabled'
   /** Default thinking effort (default `high`); `off` disables thinking per request. */
@@ -187,6 +194,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
 export const Config: z<Config> = z.object({
   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV),
   baseURL: z.string(),
+  headers: z.dict(z.string()),
   thinking: z.union(['enabled', 'disabled']),
   reasoningEffort: z.union(['off', 'low', 'high', 'max']),
   maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS),
@@ -296,6 +304,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
 }
 
 /**
+ * An HTTP field name (RFC 9110 `tchar`).
+ */
+const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
+
+/** Header values travel on one line; CR, LF, or NUL cannot mean what the section wrote. */
+const UNENCODABLE_HEADER_VALUE = /[\0\r\n]/u
+
+/**
+ * Validate and detach the deployment's request headers. Two spellings of one
+ * field name are rejected rather than resolved: HTTP field names are
+ * case-insensitive, so accepting both would send a joined value where the
+ * deployment meant one of them to replace the other.
+ * @param headers - configured headers, when the section declares any.
+ * @returns a detached map, or `undefined` when nothing is configured.
+ */
+function resolveHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> | undefined {
+  if (headers === undefined) return undefined
+  const resolved: Record<string, string> = {}
+  const spellings = new Map<string, string>()
+  for (const [name, value] of Object.entries(headers)) {
+    if (!HEADER_NAME.test(name)) {
+      throw new Error(`llm-deepseek: header name ${JSON.stringify(name)} is not a valid HTTP field name`)
+    }
+    if (UNENCODABLE_HEADER_VALUE.test(value)) {
+      throw new Error(`llm-deepseek: header "${name}" value must not contain CR, LF, or NUL`)
+    }
+    const lower = name.toLowerCase()
+    const previous = spellings.get(lower)
+    if (previous !== undefined) {
+      throw new Error(`llm-deepseek: header "${name}" repeats "${previous}"; HTTP field names are case-insensitive`)
+    }
+    spellings.set(lower, name)
+    resolved[name] = value
+  }
+  return Object.keys(resolved).length === 0 ? undefined : resolved
+}
+
+/**
  * The one explicit resolve step from raw config to validated connection
  * facts. Programmatic construction may bypass Schemastery normalization, so
  * every default and bound is re-judged here — for the composition entry at
@@ -313,6 +359,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
     && config.reasoningEffort !== 'off') {
     throw new Error('llm-deepseek: only reasoningEffort "off" can be configured when thinking is disabled')
   }
+  const headers = resolveHeaders(config.headers)
   if (config.defaultContextWindow !== undefined
     && (!Number.isInteger(config.defaultContextWindow) || config.defaultContextWindow <= 0)) {
     throw new Error('llm-deepseek: defaultContextWindow must be a positive integer')
@@ -394,6 +441,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
     baseURL: config.baseURL
       ?? environment?.get(BASE_URL_ENV)?.value
       ?? PUBLIC_BASE_URL,
+    ...headers === undefined ? {} : { headers },
     defaults: {
       thinking: config.thinking,
       reasoningEffort: config.reasoningEffort,

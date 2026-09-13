@@ -22,6 +22,8 @@ export interface DeepSeekFilePolicy {
 export interface DeepSeekFileConnection {
   baseURL: string
   apiKey: string
+  /** Deployment headers sent on every file request; the connection options carry the same map. */
+  headers?: Readonly<Record<string, string>>
 }
 
 /** Result of one file-id resolution. */
@@ -127,6 +129,7 @@ export class DeepSeekFileStore {
     return new DeepSeekFilesClient({
       baseURL: connection.baseURL,
       apiKey: connection.apiKey,
+      ...connection.headers === undefined ? {} : { headers: connection.headers },
       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
     })
   }

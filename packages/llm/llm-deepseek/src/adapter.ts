@@ -8,7 +8,7 @@
  * @module dsh-llm-deepseek/adapter
  */
 
-import { attributionHeaders, contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, requestHeaders } from '@deepseek-ai/dsh-llm'
 import type {
   ContentBlock,
   GenerateOptions,
@@ -116,6 +116,12 @@ export interface DeepSeekConnectionOptions {
   filePolicy: DeepSeekFilePolicy
   /** Provider-owned model-request retry policy, already resolved. */
   retryPolicy: ResolvedRetryPolicy
+  /**
+   * Deployment headers sent on every provider request, chat and Files API
+   * alike. They are merged over the attribution `User-Agent`; the credential,
+   * content type, accept, and harness identity headers stay harness-owned.
+   */
+  headers?: Readonly<Record<string, string>>
 }
 
 /** Constructor options for {@link DeepSeekAdapter}: the operation-local resolution hooks the plugin owns. */
@@ -537,10 +543,13 @@ export class DeepSeekAdapter extends LlmAdapter {
     onActivity: () => void,
   ): AsyncIterable<StreamChunk> {
     const headers = {
+      // Deployment headers first: the attribution `User-Agent` travels inside
+      // `requestHeaders`, while the harness-owned fields below are not
+      // overridable — the credential in particular always comes from the seam.
+      ...requestHeaders(connection.headers),
       'authorization': `Bearer ${apiKey}`,
       'content-type': 'application/json',
       'accept': 'text/event-stream',
-      ...attributionHeaders(),
       'x-deepseek-harness-user-id': String(userId),
       ...options.sessionId !== undefined
         ? { 'x-deepseek-harness-session-id': String(options.sessionId) }
@@ -550,7 +559,11 @@ export class DeepSeekAdapter extends LlmAdapter {
         : {},
     }
 
-    const fileConnection = { baseURL: connection.baseURL, apiKey }
+    const fileConnection = {
+      baseURL: connection.baseURL,
+      apiKey,
+      ...connection.headers === undefined ? {} : { headers: connection.headers },
+    }
     const model = connection.models.find(entry => entry.id === options.model)
     const policy = model === undefined ? undefined : resolveRequestImagePolicy(model)
     const resolveImageAccess = attachments === undefined

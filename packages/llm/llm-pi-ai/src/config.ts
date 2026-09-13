@@ -147,7 +147,7 @@ export interface PiAiProviderProfile {
    * to answer instead.
    */
   defaultInput?: PiAiModality[]
-  /** Provider request headers, validated against Fetch when the profile resolves; Harness attribution wins reserved names. */
+  /** Provider request headers, validated against Fetch when the profile resolves; a name given here replaces the attribution header of the same name. */
   headers?: Record<string, string>
   /** Provider-neutral pi-ai reasoning level. */
   reasoning?: ModelThinkingLevel
