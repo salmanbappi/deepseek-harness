@@ -58,10 +58,10 @@ index 20a428fee6..e1d3cdffc7 100644
        "src": "/favicon.svg",
        "sizes": "any",
 diff --git a/package.json b/package.json
-index cd8264c164..65e2bb7bf3 100644
+index d0d5d9817d..d3a4ed7093 100644
 --- a/package.json
 +++ b/package.json
-@@ -176,7 +176,7 @@
+@@ -186,7 +186,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -70,7 +70,7 @@ index cd8264c164..65e2bb7bf3 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -221,5 +221,8 @@
+@@ -240,5 +240,8 @@
      "typescript": "^6.0.3",
      "vite-tsconfig-paths": "^6.1.1",
      "vitest": "^4.1.8"
@@ -1021,7 +1021,7 @@ index e06a9b949f..24267312b4 100644
 +  }
 +}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index 22420cc8d8..1b30fa0710 100644
+index 4962d24672..5f01822268 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 @@ -1,3 +1,8 @@
@@ -1085,7 +1085,7 @@ index 22420cc8d8..1b30fa0710 100644
  /* Composer context stack (Figma 9:937): standalone dock cards share one
     rhythm above the input card. */
  .composerStack {
-@@ -474,3 +460,47 @@
+@@ -479,3 +465,47 @@
  .root[data-phase='settling'] .composerSeat {
    visibility: hidden;
  }
@@ -1166,7 +1166,7 @@ index d47e0bfe2f..81a13ac97c 100644
 +}
 +
 diff --git a/packages/client/ui-deliverables/src/client/turn-deliverables.ts b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-index 31c78d9e57..a0b8b01747 100644
+index 0b762d7a96..b43a340bf6 100644
 --- a/packages/client/ui-deliverables/src/client/turn-deliverables.ts
 +++ b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
 @@ -69,6 +69,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
@@ -1528,121 +1528,8 @@ index 44ec4b7d93..7341d1ca8a 100644
 +    padding: 0 16px;
 +  }
 +}
-diff --git a/packages/client/ui-primitives/src/markdown/MarkdownText.module.css b/packages/client/ui-primitives/src/markdown/MarkdownText.module.css
-index d29c50c99a..a642675f04 100644
---- a/packages/client/ui-primitives/src/markdown/MarkdownText.module.css
-+++ b/packages/client/ui-primitives/src/markdown/MarkdownText.module.css
-@@ -111,7 +111,7 @@
- }
- 
- .markdown li::marker {
--  line-height: 24px;
-+  line-height: 28px;
-   color: var(--dsw-alias-label-secondary);
- }
- 
-@@ -193,51 +193,12 @@
-   overscroll-behavior-x: contain;
- }
- 
--/* Wide tables reveal their horizontal bar on hover (or keyboard focus)
--   instead of keeping it painted. Chromium never repaints state-conditioned
--   scrollbar STYLES (neither hover-conditioned `::-webkit-scrollbar*` rules
--   nor a :hover `scrollbar-color` change reaches the painted bar), so the
--   toggle is `overflow-x` itself — a layout change repaints reliably. The
--   resting padding matches the themed bar's height, so on an overflowing
--   table the appearing bar exactly replaces it and nothing below shifts.
--   Wheel and trackpad scrolling need the pointer over the table, which is
--   already the hover that re-enables `auto`. */
--.tableScroll:global(.md-table-wide) {
--  overflow-x: hidden;
--  padding-bottom: var(--dsh-scrollbar-width, 8px);
--}
--
--.tableScroll:global(.md-table-wide):hover,
--.tableScroll:global(.md-table-wide):focus-visible {
--  overflow-x: auto;
--  padding-bottom: 0;
--}
--
--/* Chromium keyboard-focuses scrollable containers by default; the ring uses
--   the sheet's link focus color. */
--.tableScroll:focus-visible {
--  outline: none;
--  box-shadow: 0 0 0 2px var(--dsw-alias-state-business-primary);
--}
--
--/* Many-column tables (the renderer's `md-table-wide` hook) keep their
--   natural width and scroll inside the wrapper; a hosting layout may widen
--   the wrapper through the hook (deepsuite chat TableWrapper parity). */
- .tableScroll table {
-   border-collapse: collapse;
-   width: max-content;
-   max-width: max-content;
- }
- 
--/* Tables under four columns, and any table inside a blockquote, fill the
--   column instead: cells wrap down to their minimum readable width, and the
--   wrapper's scroll only remains for the below-floor case (deepsuite chat
--   parity: `.wrapper:not(:has(th:nth-child(4), td:nth-child(4)))`). */
--.tableFill table {
--  width: 100%;
--  max-width: none;
--}
--
- .tableScroll th {
-   text-align: start;
-   padding: 10px 16px;
-@@ -268,7 +229,7 @@
- }
- 
- .tableScroll table code {
--  font-size: 11px;
-+  font-size: 13px;
- }
- 
- .markdown > *:first-child,
-@@ -319,3 +280,38 @@
-   text-decoration: underline dotted var(--dsw-alias-link);
-   text-underline-offset: 3px;
- }
-+
-+@media (max-width: 768px) {
-+  .markdown {
-+    font-size: 15px;
-+    line-height: 24px;
-+  }
-+
-+  .markdown h1 {
-+    font-size: 20px;
-+    line-height: 28px;
-+    margin: 20px 0 10px;
-+  }
-+
-+  .markdown h2 {
-+    font-size: 18px;
-+    line-height: 24px;
-+    margin: 18px 0 10px;
-+  }
-+
-+  .markdown h3 {
-+    font-size: 16px;
-+    line-height: 22px;
-+    margin: 14px 0 8px;
-+  }
-+
-+  .markdown p {
-+    margin: 10px 0;
-+  }
-+
-+  .markdown :where(ul, ol) {
-+    margin: 10px 0;
-+    padding-left: 16px;
-+  }
-+}
-+
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index f884624c13..7648d7b448 100644
+index 842a287b1c..dd9be821e4 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -64,6 +64,7 @@
@@ -1856,7 +1743,7 @@ index 95de406381..f3de5ff745 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index e0b20dceed..9f980be5b9 100644
+index 33ad30cb1b..cdd045e979 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 @@ -11,6 +11,7 @@
@@ -1867,7 +1754,7 @@ index e0b20dceed..9f980be5b9 100644
  import clsx from 'clsx'
  import {
    ConnectionIndicator,
-@@ -41,14 +42,15 @@ type PanelProps = {
+@@ -46,14 +47,15 @@ type PanelProps = {
  
  /**
   * The modal layer: full-viewport mask + centered panel. Close paths: the
@@ -1886,7 +1773,7 @@ index e0b20dceed..9f980be5b9 100644
  
    useEffect(() => {
      const onKeyDown = (e: KeyboardEvent) => {
-@@ -62,10 +64,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -67,10 +69,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
    const closeButton = useRef<HTMLButtonElement | null>(null)
    useEffect(() => { closeButton.current?.focus() }, [])
  
@@ -1907,7 +1794,7 @@ index e0b20dceed..9f980be5b9 100644
          <nav className={css.nav}>
            <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
            <div className={css.navList}>
-@@ -98,6 +109,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -103,6 +114,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
        </div>
      </div>
    )
@@ -2060,10 +1947,10 @@ index 4c801b8d4d..06fd5afb65 100644
   * upstream (deepsuite theme/global.css) — supplied here so the composite
   * --dsw-font-* variables resolve and motion rides the upstream curve. Code
 diff --git a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-index 03eaf04a3a..1cdc6c28f2 100644
+index 5343472cd0..2eb7d30403 100644
 --- a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
 +++ b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-@@ -47,7 +47,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
+@@ -39,7 +39,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
    return out
  }
  
@@ -2072,7 +1959,7 @@ index 03eaf04a3a..1cdc6c28f2 100644
  
  function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
    const parsed = parsedToolCall(block)
-@@ -59,7 +59,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -51,7 +51,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
        if (fileText !== undefined && typeof fileText !== 'string') return null
        return {
          tool: 'str_replace_editor',
@@ -2081,7 +1968,7 @@ index 03eaf04a3a..1cdc6c28f2 100644
        }
      }
      if (command === 'str_replace') {
-@@ -67,7 +67,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -59,7 +59,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
        if (newText !== undefined && typeof newText !== 'string') return null
        return {
          tool: 'str_replace_editor',
@@ -2090,7 +1977,7 @@ index 03eaf04a3a..1cdc6c28f2 100644
        }
      }
      return null
-@@ -78,14 +78,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -70,14 +70,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
    if (parsed.name === 'write') {
      const { content } = parsed.args
      return typeof content === 'string'
@@ -2118,7 +2005,7 @@ index 03eaf04a3a..1cdc6c28f2 100644
  }
  
  function appliedDiffs(meta: unknown): DiffHunk[] | 'empty' | null {
-@@ -109,12 +120,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
+@@ -101,12 +112,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
    if (block.parentCallId !== undefined) return null
    const intended = intendedDiff(block)
    if (intended === null) return null
@@ -2189,7 +2076,7 @@ index 1e8b2fdef6..9460ebcea5 100644
      {
        command: 'create',
 diff --git a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
-index 35266eed00..00cdfa7ed4 100644
+index c743e0e503..f3c322b01b 100644
 --- a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 +++ b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 @@ -20,6 +20,7 @@
@@ -2200,61 +2087,7 @@ index 35266eed00..00cdfa7ed4 100644
  }
  
  .historyLoading {
-@@ -843,6 +844,9 @@
- 
- .overview dd.error {
-   color: var(--dsw-alias-state-error-primary);
-+  white-space: normal;
-+  word-break: break-word;
-+  line-height: 18px;
- }
- 
- .details .errorPayload {
-@@ -1032,14 +1036,13 @@
-   box-sizing: border-box;
-   flex-direction: column;
-   padding-bottom: calc(12px + var(--dsh-trajectory-bottom-clearance, 0px));
--  overflow: hidden;
-+  overflow-x: hidden;
-+  overflow-y: auto;
-+  scrollbar-gutter: stable;
- }
- 
- .detailBodySummary > .overview {
--  flex: 0 1 auto;
--  min-height: 0;
--  overflow: auto;
--  overscroll-behavior: contain;
-+  flex: none;
- }
- 
- .detailBodySummary > .compactedSummary {
-@@ -1071,7 +1074,8 @@
- 
- .overviewParentLinks {
-   display: flex;
--  gap: 14px;
-+  flex-wrap: wrap;
-+  gap: 8px 14px;
- }
- 
- .overviewHierarchyNavLink {
-@@ -1107,10 +1111,11 @@
- 
- .overview > div {
-   display: grid;
--  grid-template-columns: 94px minmax(0, 1fr);
-+  grid-template-columns: 96px minmax(0, 1fr);
-   min-height: 22px;
--  padding: 0 14px;
--  align-items: center;
-+  padding: 2px 14px;
-+  align-items: baseline;
-+  gap: 8px;
- }
- 
- .overview > .requestTokenDetail dt {
-@@ -1144,10 +1149,11 @@
+@@ -1153,10 +1154,11 @@
  .overview dd {
    min-width: 0;
    margin: 0;
@@ -2269,30 +2102,7 @@ index 35266eed00..00cdfa7ed4 100644
  }
  
  .timestampToggle {
-@@ -1165,20 +1171,15 @@
- 
- .overviewSections {
-   display: flex;
--  flex: 1;
--  min-height: min-content;
-+  flex: none;
-   flex-direction: column;
--  overflow: hidden;
-   border-top: 0;
- }
- 
- .overviewSection {
-   display: flex;
--  flex: 1 1 0;
--  max-height: max-content;
--  min-height: 28px;
-+  flex: none;
-   flex-direction: column;
--  overflow: hidden;
- }
- 
- .overviewSection + .overviewSection {
-@@ -1236,10 +1237,11 @@
+@@ -1245,10 +1247,11 @@
  }
  
  .overviewPreview {
@@ -2307,7 +2117,7 @@ index 35266eed00..00cdfa7ed4 100644
    background: var(--dsw-alias-bg-layer-1);
  }
  
-@@ -1761,13 +1763,100 @@
+@@ -1914,13 +1917,100 @@
  @media (max-width: 760px) {
    .details {
      position: absolute;
@@ -2528,55 +2338,11 @@ index b4633d0ad1..f0c598ac6f 100644
  
  html,
  body,
-diff --git a/packages/e2b/fs-e2b/src/index.ts b/packages/e2b/fs-e2b/src/index.ts
-index 2d879adb0c..3c444670d8 100644
---- a/packages/e2b/fs-e2b/src/index.ts
-+++ b/packages/e2b/fs-e2b/src/index.ts
-@@ -146,9 +146,9 @@ function mapError(error: unknown, operation: string, displayPath: string, signal
-   return new FsError(`cannot ${operation} "${displayPath}": ${String(error)}`, 'FS_IO_ERROR', { cause: error })
- }
- 
--function literalEdit(content: string, request: FsEditRequest, displayPath: string): string {
--  const oldString = normalizeLineEndings(request.oldString)
--  const newString = normalizeLineEndings(request.newString)
-+function applySingleLiteralEdit(content: string, oldStr: string, newStr: string, replaceAll: boolean, displayPath: string): string {
-+  const oldString = normalizeLineEndings(oldStr)
-+  const newString = normalizeLineEndings(newStr)
-   if (oldString.length === 0) {
-     throw new FsError(`cannot edit "${displayPath}": old_string must be non-empty`, 'FS_EDIT_NOT_FOUND')
-   }
-@@ -161,10 +161,24 @@ function literalEdit(content: string, request: FsEditRequest, displayPath: strin
-     offset = found + oldString.length
-   }
-   if (matches === 0) throw new FsError(`cannot edit "${displayPath}": old_string was not found`, 'FS_EDIT_NOT_FOUND')
--  if (!request.replaceAll && matches !== 1) {
-+  if (!replaceAll && matches !== 1) {
-     throw new FsError(`cannot edit "${displayPath}": old_string matched ${matches} times`, 'FS_AMBIGUOUS_EDIT')
-   }
--  return request.replaceAll ? content.split(oldString).join(newString) : content.replace(oldString, newString)
-+  return replaceAll ? content.split(oldString).join(newString) : content.replace(oldString, newString)
-+}
-+
-+function literalEdit(content: string, request: FsEditRequest, displayPath: string): string {
-+  if (Array.isArray(request.edits) && request.edits.length > 0) {
-+    let current = content
-+    for (const op of request.edits) {
-+      current = applySingleLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, displayPath)
-+    }
-+    return current
-+  }
-+  if (request.oldString !== undefined && request.newString !== undefined) {
-+    return applySingleLiteralEdit(content, request.oldString, request.newString, request.replaceAll ?? false, displayPath)
-+  }
-+  throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
- }
- 
- /** Remote filesystem backend sharing the sandbox owned by `ctx.e2b`. */
 diff --git a/packages/fs/fs-local/src/fsio.ts b/packages/fs/fs-local/src/fsio.ts
-index e07567e0e3..57e416511c 100644
+index a9d97fd6ac..285637a87a 100644
 --- a/packages/fs/fs-local/src/fsio.ts
 +++ b/packages/fs/fs-local/src/fsio.ts
-@@ -617,7 +617,35 @@ export async function writeFileAtomic(
+@@ -634,7 +634,35 @@ export async function writeFileAtomic(
        try {
          await linkFile(tempPath, absolutePath)
        } catch (error: unknown) {
@@ -2614,10 +2380,10 @@ index e07567e0e3..57e416511c 100644
      } else if (platform === 'win32' && mode !== undefined) {
        try {
 diff --git a/packages/fs/fs-local/src/index.ts b/packages/fs/fs-local/src/index.ts
-index 22fc6310fb..54e15c58a8 100644
+index b755bbb0e5..fe4cff31c3 100644
 --- a/packages/fs/fs-local/src/index.ts
 +++ b/packages/fs/fs-local/src/index.ts
-@@ -248,8 +248,19 @@ export class LocalFileSystem extends FileSystem {
+@@ -250,8 +250,19 @@ export class LocalFileSystem extends FileSystem {
        }
  
        const original = await readForEdit(target.targetKey, target.displayPath, signal)
@@ -2639,7 +2405,7 @@ index 22fc6310fb..54e15c58a8 100644
        await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
  
        const after = await probe(target.targetKey)
-@@ -258,7 +269,7 @@ export class LocalFileSystem extends FileSystem {
+@@ -260,7 +271,7 @@ export class LocalFileSystem extends FileSystem {
          // The LF-normalized before/after text (the applied-hunk diff basis);
          // line-ending restoration is a storage detail the diff ignores.
          before: original.content,
@@ -2649,10 +2415,10 @@ index 22fc6310fb..54e15c58a8 100644
      })
    }
 diff --git a/packages/fs/fs-local/tests/filesystem.spec.ts b/packages/fs/fs-local/tests/filesystem.spec.ts
-index 9b88e4cad3..bec162f24d 100644
+index 96419634f7..901fba5b55 100644
 --- a/packages/fs/fs-local/tests/filesystem.spec.ts
 +++ b/packages/fs/fs-local/tests/filesystem.spec.ts
-@@ -728,6 +728,32 @@ describe('editText', () => {
+@@ -739,6 +739,32 @@ describe('editText', () => {
      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('b b b')
    })
  
@@ -2686,10 +2452,10 @@ index 9b88e4cad3..bec162f24d 100644
      const path = join(dir, 'bad.txt')
      const bytes = Buffer.from([0x68, 0xff, 0x69])
 diff --git a/packages/fs/fs-local/tests/fsio.spec.ts b/packages/fs/fs-local/tests/fsio.spec.ts
-index 5cf5ffd5d3..8eba5f3b1e 100644
+index 40ed836309..09b45666f3 100644
 --- a/packages/fs/fs-local/tests/fsio.spec.ts
 +++ b/packages/fs/fs-local/tests/fsio.spec.ts
-@@ -766,6 +766,7 @@ describe('writeFileAtomic — temp-file safety', () => {
+@@ -826,6 +826,7 @@ describe('writeFileAtomic — temp-file safety', () => {
      const denied = Object.assign(new Error('link denied'), { code: 'EACCES' })
  
      await expect(writeFileAtomic(file, 'ours', undefined, undefined, {
@@ -2770,7 +2536,7 @@ index f1b4800042..59a02607f1 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 49ad5d74f9..6a3cd2953c 100644
+index 298bdd6a4d..78a7e347be 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
 @@ -100,7 +100,14 @@ class FakeFs extends FileSystem {
@@ -2789,7 +2555,7 @@ index 49ad5d74f9..6a3cd2953c 100644
      this.files.set(target.targetKey, after)
      return { version: FsVersion('v3'), before: content, after }
    }
-@@ -476,6 +483,40 @@ describe('edit tool', () => {
+@@ -475,6 +482,40 @@ describe('edit tool', () => {
      expect(result.isError).toBe(true)
      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
    })
@@ -2830,7 +2596,7 @@ index 49ad5d74f9..6a3cd2953c 100644
  })
  
  describe('tool-owned presentation (pure presentCall)', () => {
-@@ -602,6 +643,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -601,6 +642,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
        locations: [{ path: 'a.txt' }],
      })
    })
@@ -2855,284 +2621,11 @@ index 49ad5d74f9..6a3cd2953c 100644
  })
  
  describe('result-time contextual diff (meta + presentResult)', () => {
-diff --git a/packages/llm/llm-deepseek/README.i18n.yaml b/packages/llm/llm-deepseek/README.i18n.yaml
-index a33c4084ce..ac14eff56c 100644
---- a/packages/llm/llm-deepseek/README.i18n.yaml
-+++ b/packages/llm/llm-deepseek/README.i18n.yaml
-@@ -2,5 +2,5 @@
- # side as of the last confirmed-consistent state. Both languages carry equal authority;
- # after editing either side, bring the other along and re-record with:
- #   pnpm run verify-translation-pairing --write packages/llm/llm-deepseek/README.md
--README.md: 41646097f80dfad9cc523595b9d2820c28fde66b
--README.zh.md: c7a1e40952dff7a804880dcd266114cecb20918f
-+README.md: 058e158bb151c7fbd439342e74ab76bbea4b4364
-+README.zh.md: d65566544ada246af3077c63cd950a591c64b8cf
-diff --git a/packages/llm/llm-deepseek/README.md b/packages/llm/llm-deepseek/README.md
-index 41646097f8..058e158bb1 100644
---- a/packages/llm/llm-deepseek/README.md
-+++ b/packages/llm/llm-deepseek/README.md
-@@ -38,6 +38,7 @@ Choose this adapter when the deployment targets DeepSeek's official API, optiona
-   config:
-     apiKeyEnv: DEEPSEEK_API_KEY  # credential reference, resolved per request
-     baseURL: https://api.deepseek.com # optional; $DEEPSEEK_BASE_URL then this default
-+    headers: { User-Agent: cline/3.5.0 } # optional; merged over attribution
-     reasoningEffort: high        # optional; off | low | high | max
-     maxTokens: 256000            # optional per-request output cap
-     maxRequestFilesBytes: 134217728
-@@ -48,10 +49,13 @@ Choose this adapter when the deployment targets DeepSeek's official API, optiona
- 
- A request selects the route with `provider: deepseek-official`; the model id passes through to the wire, so new DeepSeek models need no re-registration. Omitted `models` advertises the text- and image-capable `deepseek-flash` and `deepseek-v4-flash-vision-exp` alongside the text-only `deepseek-v4-flash` and `deepseek-v4-pro`, each with a 1,000,000-token context window. An explicit list replaces those defaults, and unlisted model ids still pass through as text-only routes. Clients, including model discovery tools, can read the advisory entries through `ctx.llm.listModels('deepseek-official')`. Image-capable entries may set `imagePixelBudget` to a positive integer or `low`, and may set `imageMaxBytes`. An entry may declare `systemPromptUpdate: in-history` when its endpoint reads the latest `system` message at any position of `messages` as the complete effective system prompt; the adapter reports the mode on the resolved model and the prepared call, and the agent loop then appends a changed prompt after the cached history instead of rewriting the leading system message ([decision rule](../../core/agent-loop/README.md#understand-the-implementation)). The default `deepseek-flash` entry declares this mode; other models require an explicit `models` declaration, and any value other than `in-history` fails at load with `llm-deepseek: catalog model "<id>" systemPromptUpdate must be "in-history" when present`.
- 
-+A deployment behind a gateway that admits only a recognized client names the required request headers in `headers`, merged over the harness attribution `User-Agent` on every chat and Files API request: a name given there replaces attribution rather than joining it, while the credential, content type, accept, and harness identity headers stay harness-owned. Names must be HTTP field names; a name repeated under another capitalization, an invalid name, or a value carrying CR, LF, or NUL fails at load.
-+
- | Field | Default | Meaning |
- |---|---|---|
- | `apiKeyEnv` | `DEEPSEEK_API_KEY` | Credential reference resolved per request through the credentials seam, then the environment |
- | `baseURL` | `https://api.deepseek.com` | Endpoint base; `$DEEPSEEK_BASE_URL` wins when set |
-+| `headers` | none | Extra headers on every chat and Files API request, merged over the attribution `User-Agent` |
- | `thinking` | `enabled` | Deployment policy; `disabled` locks every request to `off` |
- | `reasoningEffort` | `high` | Default effort: `off`, `low`, `high`, or `max` |
- | `maxTokens` | `256,000` | Per-request output cap; a model's own cap and explicit request values win |
-diff --git a/packages/llm/llm-deepseek/README.zh.md b/packages/llm/llm-deepseek/README.zh.md
-index c7a1e40952..d65566544a 100644
---- a/packages/llm/llm-deepseek/README.zh.md
-+++ b/packages/llm/llm-deepseek/README.zh.md
-@@ -38,6 +38,7 @@ kind: "package-reference"
-   config:
-     apiKeyEnv: DEEPSEEK_API_KEY  # credential reference, resolved per request
-     baseURL: https://api.deepseek.com # optional; $DEEPSEEK_BASE_URL then this default
-+    headers: { User-Agent: cline/3.5.0 } # optional; merged over attribution
-     reasoningEffort: high        # optional; off | low | high | max
-     maxTokens: 256000            # optional per-request output cap
-     maxRequestFilesBytes: 134217728
-@@ -48,10 +49,13 @@ kind: "package-reference"
- 
- 请求用 `provider: deepseek-official` 选择路由；模型 id 原样传到协议，因此新增 DeepSeek 模型无需重新注册。省略 `models` 时公布支持文本和图像的 `deepseek-flash` 和 `deepseek-v4-flash-vision-exp`，以及仅支持文本的 `deepseek-v4-flash` 和 `deepseek-v4-pro`，各自的上下文窗口均为 1,000,000 token。显式列表会替换这些默认值，未列出的模型 id 仍作为纯文本路由原样通过。包括模型发现工具在内的客户端可通过 `ctx.llm.listModels('deepseek-official')` 读取这些建议性条目。支持图片的条目可把 `imagePixelBudget` 设置为正整数或 `low`，也可以设置 `imageMaxBytes`。当端点把 `messages` 中任意位置最新的 `system` 消息读作完整的有效系统提示词时，条目可以声明 `systemPromptUpdate: in-history`；适配器会在已解析模型与已准备调用上报告该模式，agent loop（智能体循环）随后把变化后的提示词追加到已缓存历史之后，而不是改写开头的 system 消息（[决策规则](../../core/agent-loop/README.zh.md#understand-the-implementation)）。默认的 `deepseek-flash` 条目声明该模式；其他模型需通过 `models` 显式声明，`in-history` 以外的任何值都会在加载时以 `llm-deepseek: catalog model "<id>" systemPromptUpdate must be "in-history" when present` 失败。
- 
-+若部署位于只接纳已识别客户端的网关之后，用 `headers` 声明该网关要求的请求头，它会在每个聊天与 Files API 请求上覆盖式合入 harness 的 attribution `User-Agent`：其中同名的条目替换 attribution，而非与之合并；凭据、content type、accept 与 harness 身份头仍归 harness 所有。头名必须是 HTTP 字段名；同一名称以不同大小写重复、名称非法，或值包含 CR、LF、NUL 时都会在加载时失败。
-+
- | 字段 | 默认值 | 含义 |
- |---|---|---|
- | `apiKeyEnv` | `DEEPSEEK_API_KEY` | 按请求解析的凭据引用：先经凭据 seam，再到环境变量 |
- | `baseURL` | `https://api.deepseek.com` | 端点基址；设置了 `$DEEPSEEK_BASE_URL` 时优先 |
-+| `headers` | 无 | 每个聊天与 Files API 请求的附加头，覆盖同名的 attribution `User-Agent` |
- | `thinking` | `enabled` | 部署策略；`disabled` 把所有请求锁定为 `off` |
- | `reasoningEffort` | `high` | 默认强度：`off`、`low`、`high` 或 `max` |
- | `maxTokens` | `256,000` | 单次请求输出上限；模型自身上限与显式请求值优先 |
-diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
-index be165c1d4c..5e6a274835 100644
---- a/packages/llm/llm-deepseek/src/adapter.ts
-+++ b/packages/llm/llm-deepseek/src/adapter.ts
-@@ -8,7 +8,7 @@
-  * @module dsh-llm-deepseek/adapter
-  */
- 
--import { attributionHeaders, contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
-+import { contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, requestHeaders } from '@deepseek-ai/dsh-llm'
- import type {
-   ContentBlock,
-   GenerateOptions,
-@@ -116,6 +116,12 @@ export interface DeepSeekConnectionOptions {
-   filePolicy: DeepSeekFilePolicy
-   /** Provider-owned model-request retry policy, already resolved. */
-   retryPolicy: ResolvedRetryPolicy
-+  /**
-+   * Deployment headers sent on every provider request, chat and Files API
-+   * alike. They are merged over the attribution `User-Agent`; the credential,
-+   * content type, accept, and harness identity headers stay harness-owned.
-+   */
-+  headers?: Readonly<Record<string, string>>
- }
- 
- /** Constructor options for {@link DeepSeekAdapter}: the operation-local resolution hooks the plugin owns. */
-@@ -537,10 +543,13 @@ export class DeepSeekAdapter extends LlmAdapter {
-     onActivity: () => void,
-   ): AsyncIterable<StreamChunk> {
-     const headers = {
-+      // Deployment headers first: the attribution `User-Agent` travels inside
-+      // `requestHeaders`, while the harness-owned fields below are not
-+      // overridable — the credential in particular always comes from the seam.
-+      ...requestHeaders(connection.headers),
-       'authorization': `Bearer ${apiKey}`,
-       'content-type': 'application/json',
-       'accept': 'text/event-stream',
--      ...attributionHeaders(),
-       'x-deepseek-harness-user-id': String(userId),
-       ...options.sessionId !== undefined
-         ? { 'x-deepseek-harness-session-id': String(options.sessionId) }
-@@ -550,7 +559,11 @@ export class DeepSeekAdapter extends LlmAdapter {
-         : {},
-     }
- 
--    const fileConnection = { baseURL: connection.baseURL, apiKey }
-+    const fileConnection = {
-+      baseURL: connection.baseURL,
-+      apiKey,
-+      ...connection.headers === undefined ? {} : { headers: connection.headers },
-+    }
-     const model = connection.models.find(entry => entry.id === options.model)
-     const policy = model === undefined ? undefined : resolveRequestImagePolicy(model)
-     const resolveImageAccess = attachments === undefined
-diff --git a/packages/llm/llm-deepseek/src/file-store.ts b/packages/llm/llm-deepseek/src/file-store.ts
-index fde86fa44e..0816389ace 100644
---- a/packages/llm/llm-deepseek/src/file-store.ts
-+++ b/packages/llm/llm-deepseek/src/file-store.ts
-@@ -22,6 +22,8 @@ export interface DeepSeekFilePolicy {
- export interface DeepSeekFileConnection {
-   baseURL: string
-   apiKey: string
-+  /** Deployment headers sent on every file request; the connection options carry the same map. */
-+  headers?: Readonly<Record<string, string>>
- }
- 
- /** Result of one file-id resolution. */
-@@ -127,6 +129,7 @@ export class DeepSeekFileStore {
-     return new DeepSeekFilesClient({
-       baseURL: connection.baseURL,
-       apiKey: connection.apiKey,
-+      ...connection.headers === undefined ? {} : { headers: connection.headers },
-       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
-     })
-   }
-diff --git a/packages/llm/llm-deepseek/src/files-api.ts b/packages/llm/llm-deepseek/src/files-api.ts
-index cc998b2e7e..497cdf724a 100644
---- a/packages/llm/llm-deepseek/src/files-api.ts
-+++ b/packages/llm/llm-deepseek/src/files-api.ts
-@@ -1,6 +1,6 @@
- /** OpenAI-compatible DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
- 
--import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
-+import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
- import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
- import { DeepSeekFileId } from './file-id.ts'
- import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
-@@ -70,6 +70,8 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
- interface FilesApiOptions {
-   baseURL: string
-   apiKey: string
-+  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
-+  headers?: Readonly<Record<string, string>>
-   fetch?: typeof fetch
- }
- 
-@@ -128,21 +130,23 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
- export class DeepSeekFilesClient {
-   private readonly baseURL: string
-   private readonly apiKey: string
-+  private readonly headers: Readonly<Record<string, string>> | undefined
-   private readonly fetchImpl: typeof fetch
- 
-   /**
--   * @param options - endpoint, API-key snapshot, and optional test transport.
-+   * @param options - endpoint, API-key snapshot, optional deployment headers, and optional test transport.
-    */
-   constructor(options: FilesApiOptions) {
-     this.baseURL = options.baseURL.replace(/\/+$/u, '')
-     this.apiKey = options.apiKey
-+    this.headers = options.headers
-     this.fetchImpl = options.fetch ?? globalThis.fetch
-   }
- 
-   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
-     let response: Response
-     try {
--      const headers = new Headers(attributionHeaders())
-+      const headers = new Headers(requestHeaders(this.headers))
-       headers.set('authorization', `Bearer ${this.apiKey}`)
-       response = await this.fetchImpl(`${this.baseURL}${path}`, {
-         ...init,
-diff --git a/packages/llm/llm-deepseek/src/index.ts b/packages/llm/llm-deepseek/src/index.ts
-index d536fc1f9b..2384030eef 100644
---- a/packages/llm/llm-deepseek/src/index.ts
-+++ b/packages/llm/llm-deepseek/src/index.ts
-@@ -136,6 +136,13 @@ export interface Config {
-   apiKeyEnv?: string
-   /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
-   baseURL?: string
-+  /**
-+   * Deployment headers sent on every provider request, chat and Files API
-+   * alike. They are merged over the attribution `User-Agent`; the credential,
-+   * content type, accept, and harness identity headers stay harness-owned. A
-+   * gateway that admits only a recognized client needs this.
-+   */
-+  headers?: Record<string, string>
-   /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
-   thinking?: 'enabled' | 'disabled'
-   /** Default thinking effort (default `high`); `off` disables thinking per request. */
-@@ -187,6 +194,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
- export const Config: z<Config> = z.object({
-   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV),
-   baseURL: z.string(),
-+  headers: z.dict(z.string()),
-   thinking: z.union(['enabled', 'disabled']),
-   reasoningEffort: z.union(['off', 'low', 'high', 'max']),
-   maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS),
-@@ -295,6 +303,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
-   })
- }
- 
-+/**
-+ * An HTTP field name (RFC 9110 `tchar`).
-+ */
-+const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
-+
-+/** Header values travel on one line; CR, LF, or NUL cannot mean what the section wrote. */
-+const UNENCODABLE_HEADER_VALUE = /[\0\r\n]/u
-+
-+/**
-+ * Validate and detach the deployment's request headers. Two spellings of one
-+ * field name are rejected rather than resolved: HTTP field names are
-+ * case-insensitive, so accepting both would send a joined value where the
-+ * deployment meant one of them to replace the other.
-+ * @param headers - configured headers, when the section declares any.
-+ * @returns a detached map, or `undefined` when nothing is configured.
-+ */
-+function resolveHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> | undefined {
-+  if (headers === undefined) return undefined
-+  const resolved: Record<string, string> = {}
-+  const spellings = new Map<string, string>()
-+  for (const [name, value] of Object.entries(headers)) {
-+    if (!HEADER_NAME.test(name)) {
-+      throw new Error(`llm-deepseek: header name ${JSON.stringify(name)} is not a valid HTTP field name`)
-+    }
-+    if (UNENCODABLE_HEADER_VALUE.test(value)) {
-+      throw new Error(`llm-deepseek: header "${name}" value must not contain CR, LF, or NUL`)
-+    }
-+    const lower = name.toLowerCase()
-+    const previous = spellings.get(lower)
-+    if (previous !== undefined) {
-+      throw new Error(`llm-deepseek: header "${name}" repeats "${previous}"; HTTP field names are case-insensitive`)
-+    }
-+    spellings.set(lower, name)
-+    resolved[name] = value
-+  }
-+  return Object.keys(resolved).length === 0 ? undefined : resolved
-+}
-+
- /**
-  * The one explicit resolve step from raw config to validated connection
-  * facts. Programmatic construction may bypass Schemastery normalization, so
-@@ -313,6 +359,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
-     && config.reasoningEffort !== 'off') {
-     throw new Error('llm-deepseek: only reasoningEffort "off" can be configured when thinking is disabled')
-   }
-+  const headers = resolveHeaders(config.headers)
-   if (config.defaultContextWindow !== undefined
-     && (!Number.isInteger(config.defaultContextWindow) || config.defaultContextWindow <= 0)) {
-     throw new Error('llm-deepseek: defaultContextWindow must be a positive integer')
-@@ -394,6 +441,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
-     baseURL: config.baseURL
-       ?? environment?.get(BASE_URL_ENV)?.value
-       ?? PUBLIC_BASE_URL,
-+    ...headers === undefined ? {} : { headers },
-     defaults: {
-       thinking: config.thinking,
-       reasoningEffort: config.reasoningEffort,
 diff --git a/packages/llm/llm-deepseek/tests/adapter.spec.ts b/packages/llm/llm-deepseek/tests/adapter.spec.ts
-index fefe4815b4..8cf8cc31bc 100644
+index e43c19c765..0740ccb5f3 100644
 --- a/packages/llm/llm-deepseek/tests/adapter.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/adapter.spec.ts
-@@ -366,6 +366,30 @@ describe('DeepSeekAdapter against a mock server', () => {
+@@ -373,6 +373,30 @@ describe('DeepSeekAdapter against a mock server', () => {
      expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
    })
  
@@ -3163,7 +2656,7 @@ index fefe4815b4..8cf8cc31bc 100644
    it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
      const server = await mockServer([{ kind: 'sse', events: textEvents }])
      const signalSeen: (AbortSignal | undefined)[] = []
-@@ -1991,6 +2015,19 @@ describe('plugin registration and config', () => {
+@@ -2013,6 +2037,19 @@ describe('plugin registration and config', () => {
        .toThrow(/maxTokens must be a positive integer/)
    })
  
@@ -3184,10 +2677,10 @@ index fefe4815b4..8cf8cc31bc 100644
      const adapter = adapterOf({ models: [
        { id: 'capable', systemPromptUpdate: 'in-history' },
 diff --git a/packages/llm/llm-deepseek/tests/file-store.spec.ts b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-index 9b97859ac8..968b30ba84 100644
+index b45928ab06..2a6766b0d0 100644
 --- a/packages/llm/llm-deepseek/tests/file-store.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-@@ -89,6 +89,26 @@ describe('DeepSeekFileStore', () => {
+@@ -161,6 +161,26 @@ describe('DeepSeekFileStore', () => {
      expect(remote.uploads()).toBe(1)
    })
  
@@ -3215,10 +2708,10 @@ index 9b97859ac8..968b30ba84 100644
      const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
      roots.push(dir)
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index e6a1aa59ea..92bcd9470d 100644
+index 1f014d387a..8679dcad1d 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-@@ -62,6 +62,24 @@ describe('DeepSeekFilesClient', () => {
+@@ -165,6 +165,24 @@ describe('DeepSeekFilesClient', () => {
      })
    })
  
@@ -3319,7 +2812,7 @@ index 09be7b6207..691c73f0c5 100644
        method: 'GET',
        headers,
 diff --git a/packages/llm/llm-pi-ai/src/stream.ts b/packages/llm/llm-pi-ai/src/stream.ts
-index 9bc2f98c4c..9063fc4828 100644
+index 380eec2ced..c8e480b2d0 100644
 --- a/packages/llm/llm-pi-ai/src/stream.ts
 +++ b/packages/llm/llm-pi-ai/src/stream.ts
 @@ -41,7 +41,10 @@ export function mapUsage(usage: PiUsage): TokenUsage {
@@ -3335,7 +2828,7 @@ index 9bc2f98c4c..9063fc4828 100644
    // A rejected request body (gateway or provider size cap): resending the
    // same request cannot succeed, so it is invalid, not transient.
 diff --git a/packages/llm/llm-pi-ai/tests/adapter.spec.ts b/packages/llm/llm-pi-ai/tests/adapter.spec.ts
-index a54ec17697..0278e0ee1b 100644
+index a247b20e42..c35d4cd253 100644
 --- a/packages/llm/llm-pi-ai/tests/adapter.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/adapter.spec.ts
 @@ -9,7 +9,7 @@ import type {
@@ -3415,7 +2908,7 @@ index 42980939cc..dcb0db1a36 100644
 +  }
 +}
 diff --git a/packages/llm/llm/src/error.ts b/packages/llm/llm/src/error.ts
-index 4b3e25c75f..421da7060d 100644
+index 477735d178..4cbbb80978 100644
 --- a/packages/llm/llm/src/error.ts
 +++ b/packages/llm/llm/src/error.ts
 @@ -93,9 +93,9 @@ export function isContextWindowExceededError(detail: string): boolean {
@@ -3438,80 +2931,6 @@ index 0000000000..2131a5c92f
 @@ -0,0 +1 @@
 +/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
 \ No newline at end of file
-diff --git a/packages/sandbox/sandbox-local/src/index.ts b/packages/sandbox/sandbox-local/src/index.ts
-index 9e9b45a741..6e8535aecb 100644
---- a/packages/sandbox/sandbox-local/src/index.ts
-+++ b/packages/sandbox/sandbox-local/src/index.ts
-@@ -33,13 +33,17 @@ import {
- } from '@deepseek-ai/node-addon-system/landlock-run'
- import { Context } from '@deepseek-ai/cordis'
- import z from '@deepseek-ai/schemastery'
--import { SandboxProvider, SandboxUnavailableError } from '@deepseek-ai/dsh-sandbox'
-+import { createRequire } from 'node:module'
-+import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
- import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
- import type { SessionId } from '@deepseek-ai/dsh-session'
--import { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
-+import type { AclWriteGrant } from '@deepseek-ai/dsh-sandbox-windows-acl'
- import { assertNever } from '@deepseek-ai/dsh-util-values'
- import { bwrapProfileArgs, landlockProfileArgs, seatbeltProfileArgs } from './profiles.ts'
- 
-+const dynamicRequire = createRequire(import.meta.url)
-+
-+
- /** Plugin config. All optional — `static Config` supplies the defaults. */
- export interface Config {
-   /**
-@@ -323,6 +327,14 @@ export class LocalSandboxProvider extends SandboxProvider {
-       }
-     }
-     const selected = this.selectRunner(policy.mode)
-+    if (selected === 'unavailable') {
-+      return {
-+        argv: [...argv],
-+        enforcement: 'partial',
-+        denialSignatures: [],
-+        runnerFailureRules: [],
-+      }
-+    }
-     const runnerArgv = this.runnerArgv(selected.runner, policy)
-     return {
-       argv: [...runnerArgv, '--', ...argv],
-@@ -365,6 +377,7 @@ export class LocalSandboxProvider extends SandboxProvider {
-         '--mode', policy.mode,
-       ]
-     }
-+    const { workspaceWriteSid } = dynamicRequire('@deepseek-ai/dsh-sandbox-windows-acl') as typeof import('@deepseek-ai/dsh-sandbox-windows-acl')
-     const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot)
-     return [
-       ...this.windowsAclRunnerInvocation(),
-@@ -390,6 +403,7 @@ export class LocalSandboxProvider extends SandboxProvider {
-    * @returns the pair's private temp directory and write capability.
-    */
-   private materializeAclGrant(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
-+    const { AclWriteGrant, assertTempRootOutsideWorkspace, tempWriteSid, workspaceWriteSid } = dynamicRequire('@deepseek-ai/dsh-sandbox-windows-acl') as typeof import('@deepseek-ai/dsh-sandbox-windows-acl')
-     assertTempRootOutsideWorkspace(workspaceRoot, tmpdir())
-     const writeSid = workspaceWriteSid(workspaceRoot)
-     if (!this.workspaceGrants.has(workspaceRoot)) {
-@@ -398,6 +412,7 @@ export class LocalSandboxProvider extends SandboxProvider {
-         grant.add(workspaceRoot, true)
-       } catch (error) {
-         // Free the SID; a standing ACE (if the apply succeeded before a
-+
-         // post-apply throw) is the intended end state, not an error
-         // artifact — nothing to revoke.
-         try {
-@@ -489,9 +504,8 @@ export class LocalSandboxProvider extends SandboxProvider {
-    * functional probes in chain order. Fail closed when the platform has no
-    * chain or no candidate passes — the command never runs.
-    */
--  private selectRunner(mode: ConfinedSandboxMode): SelectedRunner {
-+  private selectRunner(_mode: ConfinedSandboxMode): SelectedRunner | 'unavailable' {
-     this.selectedRunner ??= this.chainVerdict()
--    if (this.selectedRunner === 'unavailable') throw new SandboxUnavailableError(mode)
-     return this.selectedRunner
-   }
- 
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
 index ba4f8996f0..6da949511a 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
@@ -3718,112 +3137,6 @@ index 08cec3b4ab..6ae3bae68a 100644
    if (platform === 'darwin') return new MacProcessInspector(internals)
    if (platform === 'win32') return createWindowsProcessInspector()
    throw new Error(`subprocess-local: terminal inspection is unsupported on platform ${platform}`)
-diff --git a/packages/subprocess/subprocess-local/src/windows-inspector.ts b/packages/subprocess/subprocess-local/src/windows-inspector.ts
-index 14715c65aa..0106e9ef32 100644
---- a/packages/subprocess/subprocess-local/src/windows-inspector.ts
-+++ b/packages/subprocess/subprocess-local/src/windows-inspector.ts
-@@ -10,10 +10,26 @@
-  */
- 
- import { spawnSync } from 'node:child_process'
--import koffi from 'koffi'
-+import { createRequire } from 'node:module'
- import type { SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess'
- import type { ProcessIdentity, ProcessInspector, ProcessSnapshot } from './process-inspector.ts'
- 
-+const require = createRequire(import.meta.url)
-+
-+// eslint-disable-next-line @typescript-eslint/no-explicit-any
-+let koffiInstance: any
-+// eslint-disable-next-line @typescript-eslint/no-explicit-any
-+function getKoffi(): any {
-+  if (koffiInstance === undefined) {
-+    if (process.platform !== 'win32') {
-+      throw new Error('koffi is only supported on Windows')
-+    }
-+    koffiInstance = require('koffi')
-+  }
-+  return koffiInstance
-+}
-+
-+
- /** One Toolhelp32 process-table row. */
- export interface ProcessEntry {
-   pid: number
-@@ -183,7 +199,8 @@ interface Win32Bindings {
-   closeHandle(handle: NativePtr): number
- }
- 
--const PVOID: ReturnType<typeof koffi.pointer> = koffi.pointer('void')
-+// eslint-disable-next-line @typescript-eslint/no-explicit-any
-+let PVOID: any
- 
- /**
-  * Resolve the koffi Win32 struct types once. Registration is lazy and cached
-@@ -191,8 +208,11 @@ const PVOID: ReturnType<typeof koffi.pointer> = koffi.pointer('void')
-  * re-evaluate this module (a hoisted `vi.mock` re-imports the graph) must not
-  * re-register the names.
-  */
--function win32Structs(): { PROCESSENTRY32W: ReturnType<typeof koffi.struct>; FILETIME: ReturnType<typeof koffi.struct> } {
-+// eslint-disable-next-line @typescript-eslint/no-explicit-any
-+function win32Structs(): { PROCESSENTRY32W: any; FILETIME: any } {
-   if (cachedStructs !== undefined) return cachedStructs
-+  const koffi = getKoffi()
-+  PVOID = koffi.pointer('void')
-   // koffi PROCESSENTRY32W layout (tlhelp32.h); the size assert pins the x64 layout.
-   const PROCESSENTRY32W = koffi.struct('PROCESSENTRY32W', {
-     dwSize: 'uint32',
-@@ -236,12 +256,14 @@ let cachedBindings: Win32Bindings | undefined
-  */
- function win32Bindings(): Win32Bindings {
-   if (cachedBindings !== undefined) return cachedBindings
-+  const koffi = getKoffi()
-   const { PROCESSENTRY32W, FILETIME } = win32Structs()
-   const kernel32 = koffi.load('kernel32.dll')
-+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-   const bind = (
-     name: string,
--    result: ReturnType<typeof koffi.pointer> | string,
--    args: Array<ReturnType<typeof koffi.pointer> | string>,
-+    result: any,
-+    args: any[],
-   ): unknown => kernel32.func('__stdcall', name, result, args)
-   cachedBindings = {
-     createToolhelp32Snapshot: bind('CreateToolhelp32Snapshot', PVOID, ['uint32', 'uint32']),
-@@ -268,13 +290,16 @@ function win32Bindings(): Win32Bindings {
-  * @param count - element count.
-  * @returns the branded allocation pointer.
-  */
--function allocNative(type: Parameters<typeof koffi.alloc>[0], count: number): NativePtr {
-+// eslint-disable-next-line @typescript-eslint/no-explicit-any
-+function allocNative(type: any, count: number): NativePtr {
-+  const koffi = getKoffi()
-   const value: unknown = koffi.alloc(type, count)
-   return value as NativePtr
- }
- 
- /** Enumerate the current process table through Toolhelp32. */
- function snapshotWindowsProcesses(bindings: Win32Bindings): ProcessEntry[] {
-+  const koffi = getKoffi()
-   const { PROCESSENTRY32W } = win32Structs()
-   const snapshot = bindings.createToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-   /* v8 ignore next -- an invalid snapshot for the process flag is not producible through the public API;
-@@ -301,6 +326,7 @@ function snapshotWindowsProcesses(bindings: Win32Bindings): ProcessEntry[] {
- 
- /** Read one process's creation identity and current wait state. */
- function windowsProcessState(bindings: Win32Bindings, pid: number): WindowsProcessState | undefined {
-+  const koffi = getKoffi()
-   const { FILETIME } = win32Structs()
-   const handle = bindings.openProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, 0, pid)
-   if (isInvalidHandle(handle)) return undefined
-@@ -327,6 +353,7 @@ function windowsProcessState(bindings: Win32Bindings, pid: number): WindowsProce
-   }
- }
- 
-+
- /** The koffi-backed default internals; bindings resolve lazily on first use. */
- function defaultWindowsProcessInternals(): WindowsProcessInspectorInternals {
-   return {
 diff --git a/packages/terminal/terminal-bash/src/config.ts b/packages/terminal/terminal-bash/src/config.ts
 index 9a13bd9f90..c32d6649c3 100644
 --- a/packages/terminal/terminal-bash/src/config.ts

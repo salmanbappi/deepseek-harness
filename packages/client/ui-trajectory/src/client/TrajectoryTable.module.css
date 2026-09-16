@@ -20,6 +20,7 @@
   overflow-y: auto;
   padding-bottom: var(--dsh-trajectory-bottom-clearance, 0px);
   container: trajectory-table / inline-size;
+  isolation: isolate;
 }
 
 .historyLoading {
@@ -1153,10 +1154,11 @@
 .overview dd {
   min-width: 0;
   margin: 0;
-  overflow: hidden;
   color: var(--dsw-alias-label-primary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 18px;
 }
 
 .timestampToggle {
@@ -1245,10 +1247,11 @@
 }
 
 .overviewPreview {
-  flex: 1;
-  min-height: 0;
+  box-sizing: border-box;
+  max-height: 280px;
   overflow: auto;
-  overscroll-behavior: contain;
+  overscroll-behavior: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--dsw-alias-bg-layer-1);
 }
 
@@ -1914,13 +1917,100 @@
 @media (max-width: 760px) {
   .details {
     position: absolute;
-    z-index: 5;
+    z-index: 20;
     top: 0;
     right: 0;
     bottom: 0;
-    width: min(92%, 420px);
-    max-width: 92%;
-    border-left-color: var(--dsw-alias-border-l3);
-    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.14);
+    left: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-left: none;
+    box-shadow: none;
+  }
+
+  .detailsResizeHandle {
+    display: none;
+  }
+
+  .detailsHeader {
+    height: 44px;
+    padding: 0 8px 0 12px;
+  }
+
+  .close {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    line-height: 20px;
+  }
+
+  .detailTabs {
+    height: 38px;
+    padding: 0 4px;
+  }
+
+  .detailTab {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .detailBodySummary {
+    padding-bottom: calc(24px + var(--dsh-trajectory-bottom-clearance, 168px));
+  }
+
+  .overview {
+    padding: 8px 0;
+  }
+
+  .overview > div {
+    grid-template-columns: 88px minmax(0, 1fr);
+    padding: 3px 12px;
+    gap: 8px;
+  }
+
+  .overviewHeading {
+    min-height: 30px;
+    padding: 4px 12px;
+  }
+
+  .overviewPreview {
+    max-height: 320px;
+    overscroll-behavior: auto;
+  }
+
+  .payload {
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .resultBlocks {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .resultBlockText {
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .schemaIntro {
+    padding: 10px 12px 6px;
+  }
+
+  .schemaParametersTitle {
+    padding: 4px 12px 2px;
+  }
+
+  .markdownPayload {
+    padding: 12px;
+  }
+
+  .markdownPreview {
+    padding: 6px 12px 8px;
+  }
+
+  .usageHeading {
+    padding: 4px 12px 1px;
   }
 }
