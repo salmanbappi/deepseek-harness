@@ -51,6 +51,12 @@ export interface DeepSeekConnectionOptions {
   /** Root compatible with the selected protocol; custom paths remain unchanged. */
   baseURL: string
   /**
+   * Deployment headers sent on every provider request, chat and Files API
+   * alike. They are merged over the attribution `User-Agent`; the credential,
+   * content type, accept, and harness identity headers stay harness-owned.
+   */
+  headers?: Readonly<Record<string, string>>
+  /**
    * Credential reference of this same resolution, resolved per request.
    * Travelling with the endpoint is the point: a request can never pair one
    * generation's URL with another generation's secret. Configuration carries

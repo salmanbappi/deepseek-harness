@@ -25,6 +25,8 @@ export interface DeepSeekFileConnection {
   apiKey: string
   /** Files wire protocol selected by the resolved connection. */
   protocol: DeepSeekProtocol
+  /** Deployment headers sent on every file request; the connection options carry the same map. */
+  headers?: Readonly<Record<string, string>>
 }
 
 /** Result of one file-id resolution. */
@@ -137,6 +139,7 @@ export class DeepSeekFileStore {
       baseURL: connection.baseURL,
       apiKey: connection.apiKey,
       protocol: connection.protocol,
+      ...connection.headers === undefined ? {} : { headers: connection.headers },
       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
     })
   }

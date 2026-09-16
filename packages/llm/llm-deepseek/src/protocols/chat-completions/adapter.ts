@@ -8,7 +8,7 @@
  * @module dsh-llm-deepseek/adapter
  */
 
-import { attributionHeaders, contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
+import { contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, requestHeaders } from '@deepseek-ai/dsh-llm'
 import type {
   ContentBlock,
   GenerateOptions,
@@ -255,10 +255,10 @@ export class ChatCompletionsAdapter extends LlmAdapter {
     onActivity: () => void,
   ): AsyncIterable<StreamChunk> {
     const headers = {
+      ...requestHeaders(connection.headers),
       'authorization': `Bearer ${apiKey}`,
       'content-type': 'application/json',
       'accept': 'text/event-stream',
-      ...attributionHeaders(),
       'x-deepseek-harness-user-id': String(userId),
       ...options.sessionId !== undefined
         ? { 'x-deepseek-harness-session-id': String(options.sessionId) }
@@ -268,7 +268,12 @@ export class ChatCompletionsAdapter extends LlmAdapter {
         : {},
     }
 
-    const fileConnection = { baseURL: connection.baseURL, apiKey, protocol: connection.protocol }
+    const fileConnection = {
+      baseURL: connection.baseURL,
+      apiKey,
+      protocol: connection.protocol,
+      ...connection.headers === undefined ? {} : { headers: connection.headers },
+    }
     const model = connection.models.find(entry => entry.id === options.model)
     const resolveImageAccess = attachments === undefined
       ? undefined
