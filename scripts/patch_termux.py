@@ -1180,10 +1180,14 @@ def export_patch():
     ensure_patch_dir()
     try:
         base = "upstream/master"
-        # Verify if upstream/master exists, otherwise fallback to HEAD~1 or HEAD
-        has_upstream = subprocess.run(["git", "rev-parse", "--verify", base], cwd=REPO_DIR, capture_output=True).returncode == 0
-        if not has_upstream:
-            base = "HEAD"
+        # Use merge-base with upstream/master so diff contains only fork modifications
+        mb_res = subprocess.run(["git", "merge-base", "HEAD", base], cwd=REPO_DIR, capture_output=True, text=True)
+        if mb_res.returncode == 0 and mb_res.stdout.strip():
+            base = mb_res.stdout.strip()
+        else:
+            has_upstream = subprocess.run(["git", "rev-parse", "--verify", base], cwd=REPO_DIR, capture_output=True).returncode == 0
+            if not has_upstream:
+                base = "HEAD"
         
         diff = subprocess.run(
             ["git", "diff", base, "--", "package.json", "packages/", "apps/web/"],
