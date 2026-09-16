@@ -49,7 +49,8 @@ echo "[3/5] Re-linking workspace node_modules (pnpm install --frozen-lockfile)..
 # in pnpm-workspace.yaml, which 9 does not read), and aborting here would skip
 # the restores below and send dsh-update into a phone-local rebuild.
 pnpm install --dir "$DSH_DIR" --frozen-lockfile --ignore-scripts 2>&1 | tail -5 \
-  || echo "       Relink skipped: $(pnpm --version) cannot read this lockfile's config — node_modules left as-is."
+  || pnpm install --dir "$DSH_DIR" --no-frozen-lockfile --ignore-scripts 2>&1 | tail -5 \
+  || echo "       Relink skipped: $(pnpm --version) could not install dependencies — node_modules left as-is."
 
 # That re-extract drops node-pty's android-arm64 binary, which the harness needs
 # to load dsh-subprocess-local at all. Put the CI-built one back.
