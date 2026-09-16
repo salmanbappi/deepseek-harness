@@ -2621,6 +2621,261 @@ index 298bdd6a4d..78a7e347be 100644
  })
  
  describe('result-time contextual diff (meta + presentResult)', () => {
+diff --git a/packages/llm/llm-deepseek/src/common/file-store.ts b/packages/llm/llm-deepseek/src/common/file-store.ts
+index b311f48425..a970062822 100644
+--- a/packages/llm/llm-deepseek/src/common/file-store.ts
++++ b/packages/llm/llm-deepseek/src/common/file-store.ts
+@@ -25,6 +25,8 @@ export interface DeepSeekFileConnection {
+   apiKey: string
+   /** Files wire protocol selected by the resolved connection. */
+   protocol: DeepSeekProtocol
++  /** Deployment headers sent on every file request; the connection options carry the same map. */
++  headers?: Readonly<Record<string, string>>
+ }
+ 
+ /** Result of one file-id resolution. */
+@@ -137,6 +139,7 @@ export class DeepSeekFileStore {
+       baseURL: connection.baseURL,
+       apiKey: connection.apiKey,
+       protocol: connection.protocol,
++      ...connection.headers === undefined ? {} : { headers: connection.headers },
+       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
+     })
+   }
+diff --git a/packages/llm/llm-deepseek/src/common/files-api.ts b/packages/llm/llm-deepseek/src/common/files-api.ts
+index eab009302f..91acf9bf64 100644
+--- a/packages/llm/llm-deepseek/src/common/files-api.ts
++++ b/packages/llm/llm-deepseek/src/common/files-api.ts
+@@ -1,6 +1,6 @@
+ /** DeepSeek Files API transport for Chat Completions and Messages endpoints. @module dsh-llm-deepseek/files-api */
+ 
+-import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
++import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+ import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
+ import { DeepSeekFileId } from './file-id.ts'
+ import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
+@@ -76,7 +76,9 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
+ interface FilesApiOptions {
+   baseURL: string
+   apiKey: string
+-  protocol: DeepSeekProtocol
++  protocol?: DeepSeekProtocol
++  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
++  headers?: Readonly<Record<string, string>>
+   fetch?: typeof fetch
+ }
+ 
+@@ -147,6 +149,7 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
+ export class DeepSeekFilesClient {
+   private readonly baseURL: string
+   private readonly apiKey: string
++  private readonly headers: Readonly<Record<string, string>> | undefined
+   private readonly fetchImpl: typeof fetch
+   private readonly protocol: DeepSeekProtocol
+   private readonly path: string
+@@ -157,8 +160,9 @@ export class DeepSeekFilesClient {
+   constructor(options: FilesApiOptions) {
+     this.baseURL = options.baseURL.replace(/\/+$/u, '')
+     this.apiKey = options.apiKey
++    this.headers = options.headers
+     this.fetchImpl = options.fetch ?? globalThis.fetch
+-    this.protocol = options.protocol
++    this.protocol = options.protocol ?? 'chat-completions'
+     this.path = this.protocol === 'messages' ? '/v1/files' : '/files'
+   }
+ 
+@@ -169,7 +173,7 @@ export class DeepSeekFilesClient {
+   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+     let response: Response
+     try {
+-      const headers = new Headers(attributionHeaders())
++      const headers = new Headers(requestHeaders(this.headers))
+       if (this.protocol === 'messages') {
+         headers.set('x-api-key', this.apiKey)
+         headers.set('anthropic-version', '2023-06-01')
+diff --git a/packages/llm/llm-deepseek/src/common/types.ts b/packages/llm/llm-deepseek/src/common/types.ts
+index d1c4932317..52cb5c2bc9 100644
+--- a/packages/llm/llm-deepseek/src/common/types.ts
++++ b/packages/llm/llm-deepseek/src/common/types.ts
+@@ -50,6 +50,12 @@ export interface DeepSeekConnectionOptions {
+   protocol: DeepSeekProtocol
+   /** Root compatible with the selected protocol; custom paths remain unchanged. */
+   baseURL: string
++  /**
++   * Deployment headers sent on every provider request, chat and Files API
++   * alike. They are merged over the attribution `User-Agent`; the credential,
++   * content type, accept, and harness identity headers stay harness-owned.
++   */
++  headers?: Readonly<Record<string, string>>
+   /**
+    * Credential reference of this same resolution, resolved per request.
+    * Travelling with the endpoint is the point: a request can never pair one
+diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
+index 928fe45858..8ef532db06 100644
+--- a/packages/llm/llm-deepseek/src/config.ts
++++ b/packages/llm/llm-deepseek/src/config.ts
+@@ -29,6 +29,13 @@ export interface Config {
+   apiKeyEnv?: string
+   /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
+   baseURL?: string
++  /**
++   * Deployment headers sent on every provider request, chat and Files API
++   * alike. They are merged over the attribution `User-Agent`; the credential,
++   * content type, accept, and harness identity headers stay harness-owned. A
++   * gateway that admits only a recognized client needs this.
++   */
++  headers?: Record<string, string>
+   /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
+   thinking?: 'enabled' | 'disabled'
+   /** Default thinking effort (default `high`); `off` disables thinking per request. */
+@@ -81,6 +88,7 @@ export const Config: z<Config> = z.object({
+   protocol: z.union(['chat-completions', 'messages']).default('messages'),
+   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV),
+   baseURL: z.string(),
++  headers: z.dict(z.string()),
+   thinking: z.union(['enabled', 'disabled']),
+   reasoningEffort: z.union(['off', 'low', 'high', 'max']),
+   maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS),
+@@ -190,10 +198,48 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
+   })
+ }
+ 
++/**
++ * An HTTP field name (RFC 9110 `tchar`).
++ */
++const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
++
++/** Header values travel on one line; CR, LF, or NUL cannot mean what the section wrote. */
++const UNENCODABLE_HEADER_VALUE = /[\0\r\n]/u
++
++/**
++ * Validate and detach the deployment's request headers. Two spellings of one
++ * field name are rejected rather than resolved: HTTP field names are
++ * case-insensitive, so accepting both would send a joined value where the
++ * deployment meant one of them to replace the other.
++ * @param headers - configured headers, when the section declares any.
++ * @returns a detached map, or `undefined` when nothing is configured.
++ */
++function resolveHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> | undefined {
++  if (headers === undefined) return undefined
++  const resolved: Record<string, string> = {}
++  const spellings = new Map<string, string>()
++  for (const [name, value] of Object.entries(headers)) {
++    if (!HEADER_NAME.test(name)) {
++      throw new Error(`llm-deepseek: header name ${JSON.stringify(name)} is not a valid HTTP field name`)
++    }
++    if (UNENCODABLE_HEADER_VALUE.test(value)) {
++      throw new Error(`llm-deepseek: header "${name}" value must not contain CR, LF, or NUL`)
++    }
++    const lower = name.toLowerCase()
++    const previous = spellings.get(lower)
++    if (previous !== undefined) {
++      throw new Error(`llm-deepseek: header "${name}" repeats "${previous}"; HTTP field names are case-insensitive`)
++    }
++    spellings.set(lower, name)
++    resolved[name] = value
++  }
++  return Object.keys(resolved).length === 0 ? undefined : resolved
++}
++
+ /**
+  * The one explicit resolve step from raw config to validated connection
+  * facts. Programmatic construction may bypass Schemastery normalization, so
+- * every default and bound is re-judged here — for the composition entry at
++ * this function enforces the domain constraints and bounds checked at plugin
+  * load (fail loud) and for each settings snapshot at its first use.
+  * @param config - raw plugin config or resolved settings snapshot.
+  * @param environment - this run's environment layers, or `undefined` outside
+@@ -208,6 +254,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
+   if (protocol !== 'chat-completions' && protocol !== 'messages') {
+     throw new Error('llm-deepseek: protocol must be chat-completions or messages')
+   }
++  const headers = resolveHeaders(config.headers)
+   if (config.thinking === 'disabled'
+     && config.reasoningEffort !== undefined
+     && config.reasoningEffort !== 'off') {
+@@ -301,6 +348,7 @@ export function resolveAdapterOptions(config: Config, environment?: LaunchEnviro
+     protocol,
+     apiKeyEnv: credentialRef(config.apiKeyEnv ?? DEFAULT_API_KEY_ENV),
+     baseURL,
++    ...headers === undefined ? {} : { headers },
+     defaults: {
+       thinking: config.thinking,
+       reasoningEffort: config.reasoningEffort,
+diff --git a/packages/llm/llm-deepseek/src/protocols/chat-completions/adapter.ts b/packages/llm/llm-deepseek/src/protocols/chat-completions/adapter.ts
+index 3d2e50ea45..507128b81e 100644
+--- a/packages/llm/llm-deepseek/src/protocols/chat-completions/adapter.ts
++++ b/packages/llm/llm-deepseek/src/protocols/chat-completions/adapter.ts
+@@ -8,7 +8,7 @@
+  * @module dsh-llm-deepseek/adapter
+  */
+ 
+-import { attributionHeaders, contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
++import { contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, requestHeaders } from '@deepseek-ai/dsh-llm'
+ import type {
+   ContentBlock,
+   GenerateOptions,
+@@ -255,10 +255,10 @@ export class ChatCompletionsAdapter extends LlmAdapter {
+     onActivity: () => void,
+   ): AsyncIterable<StreamChunk> {
+     const headers = {
++      ...requestHeaders(connection.headers),
+       'authorization': `Bearer ${apiKey}`,
+       'content-type': 'application/json',
+       'accept': 'text/event-stream',
+-      ...attributionHeaders(),
+       'x-deepseek-harness-user-id': String(userId),
+       ...options.sessionId !== undefined
+         ? { 'x-deepseek-harness-session-id': String(options.sessionId) }
+@@ -268,7 +268,12 @@ export class ChatCompletionsAdapter extends LlmAdapter {
+         : {},
+     }
+ 
+-    const fileConnection = { baseURL: connection.baseURL, apiKey, protocol: connection.protocol }
++    const fileConnection = {
++      baseURL: connection.baseURL,
++      apiKey,
++      protocol: connection.protocol,
++      ...connection.headers === undefined ? {} : { headers: connection.headers },
++    }
+     const model = connection.models.find(entry => entry.id === options.model)
+     const resolveImageAccess = attachments === undefined
+       ? undefined
+diff --git a/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts b/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts
+index fd3745f04d..bfc335b0a0 100644
+--- a/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts
++++ b/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts
+@@ -1,6 +1,6 @@
+ /** Direct Messages transport with one cancellable lifecycle per model request. */
+ 
+-import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
++import { LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+ import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+ import type { AttachmentStore } from '@deepseek-ai/dsh-attachment'
+ import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+@@ -93,7 +93,12 @@ export class DeepSeekMessagesAdapter extends LlmAdapter {
+       options.messages, connection, options.model, this.dependencies.attachments(), this.dependencies.imageAccess, signal,
+     )
+     const key = await this.dependencies.apiKey(connection)
+-    const files = new RequestFiles(this.dependencies.files(), { baseURL: connection.baseURL, apiKey: key, protocol: 'messages' },
++    const files = new RequestFiles(this.dependencies.files(), {
++      baseURL: connection.baseURL,
++      apiKey: key,
++      protocol: 'messages',
++      ...connection.headers === undefined ? {} : { headers: connection.headers },
++    },
+       connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
+     let inline = false
+     while (true) {
+@@ -122,7 +127,7 @@ export class DeepSeekMessagesAdapter extends LlmAdapter {
+       const response = await fetch(`${connection.baseURL.replace(/\/+$/u, '')}/v1/messages`, {
+         method: 'POST', signal, body: extensions.payload, redirect: 'error',
+         headers: {
+-          ...attributionHeaders(),
++          ...requestHeaders(connection.headers),
+           'content-type': 'application/json', 'accept': 'text/event-stream',
+           'x-api-key': key, 'anthropic-version': '2023-06-01',
+           ...fileIds === undefined || fileIds.size === 0 ? {} : { 'anthropic-beta': MESSAGES_FILES_BETA },
 diff --git a/packages/llm/llm-deepseek/tests/adapter.spec.ts b/packages/llm/llm-deepseek/tests/adapter.spec.ts
 index e43c19c765..0740ccb5f3 100644
 --- a/packages/llm/llm-deepseek/tests/adapter.spec.ts
