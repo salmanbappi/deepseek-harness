@@ -912,6 +912,8 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
         changed = False
         pending = {}
         for marker, upstream, patched, label in edits[key]:
+            if key == "adapter" and "requestHeaders" in c and "@deepseek-ai/dsh-llm" in c:
+                continue
             # A removal is done when its upstream line is gone; every other edit
             # is done when its marker is present.
             if (upstream not in c) if patched == "" else (marker in c):
