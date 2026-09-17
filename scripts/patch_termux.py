@@ -574,6 +574,45 @@ def patch_koffi():
         print(f"  [+] Patched Koffi native fallback stubs ({count} files).")
 
 
+def patch_node_addon_require_builtin():
+    """Patches node-addon-require-builtin to fallback to direct require on Android/Termux (--expose-internals)."""
+    node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
+    if not os.path.exists(node_modules):
+        return
+    count = 0
+    for root, dirs, files in os.walk(node_modules):
+        if "node-addon-require-builtin" in root and "lib" in root and "index.js" in files:
+            fpath = os.path.join(root, "index.js")
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                if "pure-js-fallback" not in content and "createEntryApi" in content:
+                    patched = content.replace(
+                        "const { createEntryApi } = require('node-addon-native-custom-loader');\nconst api = createEntryApi(node_path_1.default.resolve(__dirname, '..'));",
+                        "let api;\ntry {\n    const { createEntryApi } = require('node-addon-native-custom-loader');\n    api = createEntryApi(node_path_1.default.resolve(__dirname, '..'));\n} catch (e) {}"
+                    )
+                    patched = patched.replace(
+                        "function requireBuiltin(moduleId) {\n    return api.requireBuiltin(moduleId);\n}",
+                        "function requireBuiltin(moduleId) {\n    if (api) { try { return api.requireBuiltin(moduleId); } catch {} }\n    return require(moduleId);\n}"
+                    )
+                    patched = patched.replace(
+                        "function isAllowedInternalId(moduleId) {\n    return api.isAllowedInternalId(moduleId);\n}",
+                        "function isAllowedInternalId(moduleId) {\n    if (api) { try { return api.isAllowedInternalId(moduleId); } catch {} }\n    return true;\n}"
+                    )
+                    patched = patched.replace(
+                        "function getBindingInfo() {\n    return api.getBindingInfo();\n}",
+                        "function getBindingInfo() {\n    if (api) { try { return api.getBindingInfo(); } catch {} }\n    return { name: 'require_builtin', backend: 'pure-js-fallback' };\n}"
+                    )
+                    if patched != content:
+                        with open(fpath, "w", encoding="utf-8") as f:
+                            f.write(patched)
+                        count += 1
+            except Exception as e:
+                print(f"  [!] Notice patching {fpath}: {e}")
+    if count > 0:
+        print(f"  [+] Patched node-addon-require-builtin pure JS fallback ({count} files).")
+
+
 def patch_node_pty():
     """Ensures node-pty has an android-arm64 native binary: cached CI build first, local compile second."""
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
@@ -1369,6 +1408,7 @@ def apply_all():
     patch_app_frame()
     patch_model_select()
     patch_koffi()
+    patch_node_addon_require_builtin()
     patch_node_pty()
     patch_fs_ext()
     patch_ripgrep()
