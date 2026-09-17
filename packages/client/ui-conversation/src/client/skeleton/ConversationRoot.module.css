@@ -517,3 +517,19 @@
 .embeddedBody[data-content-phase='settling'] .composerSeat {
   visibility: hidden;
 }
+
+@media (max-width: 768px) {
+  .header {
+    padding: 8px 16px 0 48px;
+    min-height: 64px;
+  }
+
+  .titleRow {
+    min-height: 32px;
+  }
+
+  .crumb {
+    max-width: min(160px, 45vw);
+  }
+}
+

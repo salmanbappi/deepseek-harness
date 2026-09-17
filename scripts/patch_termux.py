@@ -370,6 +370,20 @@ def patch_app_frame():
         if "closeRightbar" in store_c or "closeDetails" not in store_c:
             c = c.replace("actions.closeDetails", "actions.closeRightbar")
             edits.append("closeDetails→closeRightbar")
+    if "viewBox=\"0 0 24 24\"" in c:
+        old_svg = """          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="3" y1="12" x2="21" y2="12"></line>
+            <line x1="3" y1="6" x2="21" y2="6"></line>
+            <line x1="3" y1="18" x2="21" y2="18"></line>
+          </svg>"""
+        new_svg = """          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+            <line x1="2.5" y1="4" x2="13.5" y2="4" />
+            <line x1="2.5" y1="8" x2="13.5" y2="8" />
+            <line x1="2.5" y1="12" x2="13.5" y2="12" />
+          </svg>"""
+        if old_svg in c:
+            c = c.replace(old_svg, new_svg)
+            edits.append("modernize mobile toggle icon")
     if "const isMobile" in c and "mobileBackdrop" in c and not edits:
         return  # already patched, nothing stale to migrate
 
@@ -417,10 +431,10 @@ def patch_app_frame():
           aria-label="Toggle sidebar"
           onClick={{() => {{ actions.toggleSidebar() }}}}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+            <line x1="2.5" y1="4" x2="13.5" y2="4" />
+            <line x1="2.5" y1="8" x2="13.5" y2="8" />
+            <line x1="2.5" y1="12" x2="13.5" y2="12" />
           </svg>
         </button>
       )}}
@@ -1202,6 +1216,39 @@ def patch_trajectory_mobile():
     return True
 
 
+def patch_conversation_mobile():
+    """Patches packages/client/ui-conversation for mobile header clearance and responsive breadcrumb sizing."""
+    css_path = os.path.join(REPO_DIR, "packages", "client", "ui-conversation", "src", "client", "skeleton", "ConversationRoot.module.css")
+    if not os.path.exists(css_path):
+        return False
+    with open(css_path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    if "@media (max-width: 768px)" not in c:
+        mobile_rules = """
+@media (max-width: 768px) {
+  .header {
+    padding: 8px 16px 0 48px;
+    min-height: 64px;
+  }
+
+  .titleRow {
+    min-height: 32px;
+  }
+
+  .crumb {
+    max-width: min(160px, 45vw);
+  }
+}
+"""
+        c = c.rstrip() + "\n" + mobile_rules
+        with open(css_path, "w", encoding="utf-8") as f:
+            f.write(c)
+        print("  [+] Patched ConversationRoot.module.css mobile header responsive clearance.")
+        return True
+    return True
+
+
 def apply_git_patch():
     """Attempts git apply using the master patch bundle."""
     target_patch = PATCH_FILE if os.path.exists(PATCH_FILE) else LEGACY_PATCH_FILE
@@ -1416,6 +1463,7 @@ def apply_all():
     patch_llm_pi_ai_gateway()
     patch_user_questions_mobile()
     patch_trajectory_mobile()
+    patch_conversation_mobile()
     
     print("[+] All Termux & Mobile UX patches verified and active.")
     export_patch()
