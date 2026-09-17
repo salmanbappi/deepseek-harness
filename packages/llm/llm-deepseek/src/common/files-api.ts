@@ -1,13 +1,11 @@
 /** DeepSeek Files API transport for Chat Completions and Messages endpoints. @module dsh-llm-deepseek/files-api */
 
-import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { DeepSeekFileId } from './file-id.ts'
 import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
+import { messagesApiRoot, MESSAGES_FILES_BETA } from './messages-api.ts'
 import type { DeepSeekProtocol } from './types.ts'
-
-/** Required opt-in for Messages file operations and file-referenced image requests. */
-export const MESSAGES_FILES_BETA = 'files-api-2025-04-14'
 
 /** Minimum provider-supported file lifetime. */
 export const MIN_FILE_EXPIRY_SECONDS = 3_600
@@ -76,9 +74,7 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
 interface FilesApiOptions {
   baseURL: string
   apiKey: string
-  protocol?: DeepSeekProtocol
-  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
-  headers?: Readonly<Record<string, string>>
+  protocol: DeepSeekProtocol
   fetch?: typeof fetch
 }
 
@@ -149,7 +145,6 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
 export class DeepSeekFilesClient {
   private readonly baseURL: string
   private readonly apiKey: string
-  private readonly headers: Readonly<Record<string, string>> | undefined
   private readonly fetchImpl: typeof fetch
   private readonly protocol: DeepSeekProtocol
   private readonly path: string
@@ -158,12 +153,13 @@ export class DeepSeekFilesClient {
    * @param options - endpoint, API-key snapshot, and optional test transport.
    */
   constructor(options: FilesApiOptions) {
-    this.baseURL = options.baseURL.replace(/\/+$/u, '')
     this.apiKey = options.apiKey
-    this.headers = options.headers
     this.fetchImpl = options.fetch ?? globalThis.fetch
-    this.protocol = options.protocol ?? 'chat-completions'
-    this.path = this.protocol === 'messages' ? '/v1/files' : '/files'
+    this.protocol = options.protocol
+    this.baseURL = this.protocol === 'messages'
+      ? messagesApiRoot(options.baseURL)
+      : options.baseURL.replace(/\/+$/u, '')
+    this.path = '/files'
   }
 
   private parseFile(value: unknown, operation: string): DeepSeekFileObject {
@@ -173,7 +169,7 @@ export class DeepSeekFilesClient {
   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     let response: Response
     try {
-      const headers = new Headers(requestHeaders(this.headers))
+      const headers = new Headers(attributionHeaders())
       if (this.protocol === 'messages') {
         headers.set('x-api-key', this.apiKey)
         headers.set('anthropic-version', '2023-06-01')
