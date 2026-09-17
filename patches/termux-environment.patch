@@ -2506,7 +2506,7 @@ index 5fcab0cbe1..5d1d91b5a7 100644
      })
    }
 diff --git a/packages/llm/llm-deepseek/src/common/files-api.ts b/packages/llm/llm-deepseek/src/common/files-api.ts
-index 5420871bf0..3fea080d24 100644
+index 5420871bf0..b5bdd4de71 100644
 --- a/packages/llm/llm-deepseek/src/common/files-api.ts
 +++ b/packages/llm/llm-deepseek/src/common/files-api.ts
 @@ -1,6 +1,6 @@
@@ -2517,10 +2517,12 @@ index 5420871bf0..3fea080d24 100644
  import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
  import { DeepSeekFileId } from './file-id.ts'
  import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
-@@ -75,6 +75,8 @@ interface FilesApiOptions {
+@@ -74,7 +74,9 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
+ interface FilesApiOptions {
    baseURL: string
    apiKey: string
-   protocol: DeepSeekProtocol
+-  protocol: DeepSeekProtocol
++  protocol?: DeepSeekProtocol
 +  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
 +  headers?: Readonly<Record<string, string>>
    fetch?: typeof fetch
@@ -2534,14 +2536,17 @@ index 5420871bf0..3fea080d24 100644
    private readonly fetchImpl: typeof fetch
    private readonly protocol: DeepSeekProtocol
    private readonly path: string
-@@ -154,6 +157,7 @@ export class DeepSeekFilesClient {
+@@ -154,8 +157,9 @@ export class DeepSeekFilesClient {
     */
    constructor(options: FilesApiOptions) {
      this.apiKey = options.apiKey
 +    this.headers = options.headers
      this.fetchImpl = options.fetch ?? globalThis.fetch
-     this.protocol = options.protocol
+-    this.protocol = options.protocol
++    this.protocol = options.protocol ?? 'chat-completions'
      this.baseURL = this.protocol === 'messages'
+       ? messagesApiRoot(options.baseURL)
+       : options.baseURL.replace(/\/+$/u, '')
 @@ -169,7 +173,7 @@ export class DeepSeekFilesClient {
    private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
      let response: Response

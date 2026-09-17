@@ -74,7 +74,7 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
 interface FilesApiOptions {
   baseURL: string
   apiKey: string
-  protocol: DeepSeekProtocol
+  protocol?: DeepSeekProtocol
   /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
   headers?: Readonly<Record<string, string>>
   fetch?: typeof fetch
@@ -159,7 +159,7 @@ export class DeepSeekFilesClient {
     this.apiKey = options.apiKey
     this.headers = options.headers
     this.fetchImpl = options.fetch ?? globalThis.fetch
-    this.protocol = options.protocol
+    this.protocol = options.protocol ?? 'chat-completions'
     this.baseURL = this.protocol === 'messages'
       ? messagesApiRoot(options.baseURL)
       : options.baseURL.replace(/\/+$/u, '')
