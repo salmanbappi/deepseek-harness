@@ -58,10 +58,10 @@ index 20a428fee6..e1d3cdffc7 100644
        "src": "/favicon.svg",
        "sizes": "any",
 diff --git a/package.json b/package.json
-index d0d5d9817d..d3a4ed7093 100644
+index 5e7ce892f0..696b60c992 100644
 --- a/package.json
 +++ b/package.json
-@@ -186,7 +186,7 @@
+@@ -186,13 +186,16 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -70,15 +70,15 @@ index d0d5d9817d..d3a4ed7093 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -240,5 +240,8 @@
-     "typescript": "^6.0.3",
-     "vite-tsconfig-paths": "^6.1.1",
-     "vitest": "^4.1.8"
-+  },
+     "dev:web": "tsx scripts/dev-web.ts --poll",
+     "postinstall": "node scripts/install-lefthook.mjs"
+   },
 +  "dependencies": {
 +    "@img/sharp-wasm32": "^0.35.4"
-   }
- }
++  },
+   "devDependencies": {
+     "@deepseek-ai/dsh-agent": "workspace:^",
+     "@deepseek-ai/dsh-browser-use": "workspace:^",
 diff --git a/packages/attachment/attachment-local/src/store.ts b/packages/attachment/attachment-local/src/store.ts
 index 7fab679e34..77e14abcb0 100644
 --- a/packages/attachment/attachment-local/src/store.ts
@@ -1020,119 +1020,6 @@ index e06a9b949f..24267312b4 100644
 +    padding-right: 12px;
 +  }
 +}
-diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index 4962d24672..5f01822268 100644
---- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-+++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-@@ -1,3 +1,8 @@
-+/* Conversation column skeleton: header (breadcrumb row only for subagents not fork + tabs) over the view
-+   area, composer InputBar at the bottom. Column width/squeeze is layout's;
-+   this fills its cell. Figma: Header 39:27730 (83px two-row), tabs 13px with
-+   a 2px active bar. */
-+
- .root {
-   position: relative; /* positioning context for slot-owned absolute chrome */
-   display: flex;
-@@ -8,27 +13,14 @@
- 
-   /* Shared width axis for the whole column: one content width W
-      (--dsh-chat-content-width) for the transcript, the dock cards
--     (todo/goal/queue: card minus four insets, 4 x 8 = 32), and business-owned
--     takeover cards; the input card alone is W + 32px.
-+     (todo/goal/queue: card minus four insets, 4 x 8 = 32), and the takeover
-+     cards (question/approval/plan review); the input card alone is W + 32px.
-      The relation also holds when a narrow viewport shrinks everything: the
-      chat scroller and the takeover frames pad clearance + 16px per side while
-      the input card clears the bare clearance, so the input card stays exactly
-      content + 32px at every width. Declared on the root because the
--     transcript and the composer seat are sibling subtrees.
--
--     W adapts to the column, not the viewport (a collapsed sidebar widens the
--     column without resizing the window): the component publishes the column's
--     live width as --dsh-conversation-column-width (px, via ResizeObserver —
--     container-type would re-anchor the subtree's portal-free position:fixed
--     descendants) and the clamp keeps a 680px floor (a step under the figma
--     748px — the full-width reading felt wide on every screen), takes 64% of
--     wider columns, and caps at 920px for line-length
--     readability. A dragged user preference (--dsh-chat-user-width, published
--     by the width handles) replaces the adaptive term wholesale. */
--  --dsh-chat-content-width: var(
--    --dsh-chat-user-width,
--    clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px)
--  );
-+     transcript and the composer seat are sibling subtrees. */
-+  --dsh-chat-content-width: 748px;
-   --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
-   --dsh-composer-side-clearance: 16px;
-   --dsh-composer-dock-inset: 8px;
-@@ -106,11 +98,6 @@
-   cursor: pointer;
- }
- 
--.crumbSubagent {
--  font-size: 12px;
--  line-height: 18px;
--}
--
- .crumb:hover:not(:disabled) {
-   background: var(--dsw-alias-interactive-bg-hover);
- }
-@@ -288,7 +275,6 @@
- .root:has([data-conversation-composer-overlay]) .widthHandle {
-   display: none;
- }
--
- /* Composer context stack (Figma 9:937): standalone dock cards share one
-    rhythm above the input card. */
- .composerStack {
-@@ -479,3 +465,47 @@
- .root[data-phase='settling'] .composerSeat {
-   visibility: hidden;
- }
-+
-+@media (max-width: 768px) {
-+  .root {
-+    --dsh-chat-content-width: 100%;
-+    --dsh-composer-card-max-width: 100%;
-+    --dsh-composer-side-clearance: 8px;
-+  }
-+
-+  .header {
-+    padding: 8px 12px 0 48px;
-+  }
-+
-+  .crumbs {
-+    max-width: 160px;
-+  }
-+
-+  .crumb {
-+    max-width: 140px;
-+    font-size: 13px;
-+    padding: 2px 6px;
-+  }
-+
-+  .tabs {
-+    gap: 16px;
-+    padding-left: 0;
-+    overflow-x: auto;
-+    scrollbar-width: none;
-+    -webkit-overflow-scrolling: touch;
-+  }
-+
-+  .tabs::-webkit-scrollbar {
-+    display: none;
-+  }
-+
-+  .composerHero {
-+    width: 100%;
-+    padding: 0 8px 16px;
-+  }
-+
-+  .heroWorkspaceRow {
-+    padding-left: 8px;
-+  }
-+}
-+
 diff --git a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
 index d47e0bfe2f..81a13ac97c 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
@@ -1166,10 +1053,10 @@ index d47e0bfe2f..81a13ac97c 100644
 +}
 +
 diff --git a/packages/client/ui-deliverables/src/client/turn-deliverables.ts b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-index 0b762d7a96..b43a340bf6 100644
+index 87d13e5e41..baa706cfd0 100644
 --- a/packages/client/ui-deliverables/src/client/turn-deliverables.ts
 +++ b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-@@ -69,6 +69,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
+@@ -77,6 +77,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
  
  /** Validate the fields that an `edit` execution requires. */
  function validEditArgs(args: Readonly<Record<string, unknown>>): boolean {
@@ -1187,11 +1074,11 @@ index 0b762d7a96..b43a340bf6 100644
    return typeof args.old_string === 'string'
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
-diff --git a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
-index 1460c31415..3c07321a67 100644
---- a/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
-+++ b/packages/client/ui-deliverables/tests/produced-files.client.spec.tsx
-@@ -219,27 +219,32 @@ describe('produced-file Turn data', () => {
+diff --git a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
+index 8cff6f2850..70c43bcc4d 100644
+--- a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
++++ b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
+@@ -227,27 +227,32 @@ describe('produced-file Turn data', () => {
          replace_all: false,
        }),
        result(5, 'edit'),
@@ -1232,7 +1119,7 @@ index 1460c31415..3c07321a67 100644
        'notes/new.md',
        'notes/existing.md',
        'notes/deleted-text.md',
-@@ -250,6 +255,10 @@ describe('produced-file Turn data', () => {
+@@ -258,6 +263,10 @@ describe('produced-file Turn data', () => {
    it.each([
      { caseName: 'write omits content', name: 'write', args: { file_path: 'write.txt' } },
      { caseName: 'write has non-string content', name: 'write', args: { file_path: 'write.txt', content: 1 } },
@@ -1244,10 +1131,10 @@ index 1460c31415..3c07321a67 100644
        caseName: 'edit omits old_string', name: 'edit',
        args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 5a4f131e5b..567b2db587 100644
+index 54dd7f368c..f2507c710d 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -97,3 +97,97 @@
+@@ -154,3 +154,97 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -1346,7 +1233,7 @@ index 5a4f131e5b..567b2db587 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index 05bb4b9494..d93d218549 100644
+index 323318f3e1..c72abda939 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
 @@ -158,6 +158,7 @@ export function AppFrame({
@@ -1357,7 +1244,7 @@ index 05bb4b9494..d93d218549 100644
    const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
    const sidebarPreference = sidebarCollapsed
      ? 0
-@@ -218,6 +219,34 @@ export function AppFrame({
+@@ -223,6 +224,34 @@ export function AppFrame({
          useSessions={useSessions}
          usePanelInfo={usePanelInfo}
        />
@@ -1392,7 +1279,7 @@ index 05bb4b9494..d93d218549 100644
        <div className={css.sidebarCol}>
          {sidebar}
        </div>
-@@ -231,7 +260,7 @@ export function AppFrame({
+@@ -236,7 +265,7 @@ export function AppFrame({
          {overlays}
        </div>
        {/* The collapsed rail is fixed-width: no resize handle while closed. */}
@@ -1426,19 +1313,10 @@ index b2cb715287..0431f0df42 100644
  .empty {
    padding: 10px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index e9fc0195ef..cbec11a720 100644
+index b5a55f5bd4..393901c252 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -13,7 +13,7 @@
-  */
- import {
-   useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
--  type CSSProperties, type KeyboardEvent, type FocusEvent,
-+  type CSSProperties, type KeyboardEvent,
- } from 'react'
- import { createPortal } from 'react-dom'
- import clsx from 'clsx'
-@@ -113,14 +113,14 @@ export function ModelSelect(
+@@ -119,14 +119,14 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -1455,23 +1333,8 @@ index e9fc0195ef..cbec11a720 100644
 +    return () => { document.removeEventListener('pointerdown', closeOutside) }
    }, [open])
  
-   // Portaled placement (the Menu primitive's portal rules: fixed from the
-@@ -194,14 +194,6 @@ export function ModelSelect(
-     }
-   }
- 
--  const onBlur = (event: FocusEvent<HTMLDivElement>): void => {
--    if (event.relatedTarget instanceof Node && (
--      rootRef.current?.contains(event.relatedTarget) === true
--      || menuRef.current?.contains(event.relatedTarget) === true
--    )) return
--    close()
--  }
--
-   const settleSelection = (accepted: boolean): void => {
-     if (accepted) {
-       if (rootRef.current !== null) close(true)
-@@ -259,7 +251,7 @@ export function ModelSelect(
+   // A pane switch unmounts the row that had focus, which drops focus onto the
+@@ -336,7 +336,7 @@ export function ModelSelect(
    }
  
    return (
@@ -1529,7 +1392,7 @@ index 44ec4b7d93..7341d1ca8a 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index 842a287b1c..dd9be821e4 100644
+index b0d0e950b6..41fecf4b2b 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -64,6 +64,7 @@
@@ -1541,7 +1404,7 @@ index 842a287b1c..dd9be821e4 100644
      "react": "^18.2.0"
    },
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index 95de406381..f3de5ff745 100644
+index 39703e1b1c..a9c7aa8ec7 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 @@ -234,3 +234,197 @@
@@ -1743,7 +1606,7 @@ index 95de406381..f3de5ff745 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index 33ad30cb1b..cdd045e979 100644
+index 347c03a961..63a342ef18 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 @@ -11,6 +11,7 @@
@@ -1754,7 +1617,7 @@ index 33ad30cb1b..cdd045e979 100644
  import clsx from 'clsx'
  import {
    ConnectionIndicator,
-@@ -46,14 +47,15 @@ type PanelProps = {
+@@ -47,14 +48,15 @@ type PanelProps = {
  
  /**
   * The modal layer: full-viewport mask + centered panel. Close paths: the
@@ -1773,7 +1636,7 @@ index 33ad30cb1b..cdd045e979 100644
  
    useEffect(() => {
      const onKeyDown = (e: KeyboardEvent) => {
-@@ -67,10 +69,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -68,10 +70,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
    const closeButton = useRef<HTMLButtonElement | null>(null)
    useEffect(() => { closeButton.current?.focus() }, [])
  
@@ -1794,7 +1657,7 @@ index 33ad30cb1b..cdd045e979 100644
          <nav className={css.nav}>
            <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
            <div className={css.navList}>
-@@ -103,6 +114,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+@@ -104,6 +115,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
        </div>
      </div>
    )
@@ -1807,10 +1670,10 @@ index 33ad30cb1b..cdd045e979 100644
  
  /**
 diff --git a/packages/client/ui-sidebar/src/client/SidebarRoot.module.css b/packages/client/ui-sidebar/src/client/SidebarRoot.module.css
-index f899b50c53..6c108e44a0 100644
+index 1309dd2322..fb3d04c35f 100644
 --- a/packages/client/ui-sidebar/src/client/SidebarRoot.module.css
 +++ b/packages/client/ui-sidebar/src/client/SidebarRoot.module.css
-@@ -33,7 +33,7 @@
+@@ -122,7 +122,7 @@
     class whenever the pointer is not inside (SidebarRoot.tsx owns the linger),
     and rebinding ui-theme's indirection pair to `transparent` takes the thumb
     out of every scroll region nested under it — the workspace browser's
@@ -1819,7 +1682,7 @@ index f899b50c53..6c108e44a0 100644
     the reservation (`scrollbar-gutter: stable` on the list) stays in force, so
     revealing the thumb never reflows a row. Rebinding contract and the two
     rendering paths it reaches: ui-theme's README. */
-@@ -125,58 +125,6 @@
+@@ -240,58 +240,6 @@
    cursor: pointer;
  }
  
@@ -1876,9 +1739,9 @@ index f899b50c53..6c108e44a0 100644
 -}
 -
  .iconButton {
+   position: relative;
    flex: none;
-   display: inline-flex;
-@@ -213,38 +161,16 @@
+@@ -331,38 +279,16 @@
    display: inline;
  }
  
@@ -1918,7 +1781,7 @@ index f899b50c53..6c108e44a0 100644
  /* New Session: 38px bar, 12px radius (figma 133:7634 geometry, squared-off
     corners); collapsed it renders as the rail's plain icon control. */
  .newSession {
-@@ -427,3 +353,11 @@
+@@ -558,3 +484,11 @@
      animation: none;
    }
  }
@@ -2021,7 +1884,7 @@ index 5343472cd0..2eb7d30403 100644
    return { card: { diffs: applied } }
  }
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index 1e8b2fdef6..9460ebcea5 100644
+index 9f5fabeede..6a7454d817 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 @@ -54,6 +54,50 @@ describe('diffCardModel', () => {
@@ -2076,7 +1939,7 @@ index 1e8b2fdef6..9460ebcea5 100644
      {
        command: 'create',
 diff --git a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
-index c743e0e503..f3c322b01b 100644
+index 520b71c4da..a74e6ce3d8 100644
 --- a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 +++ b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 @@ -20,6 +20,7 @@
@@ -2117,7 +1980,7 @@ index c743e0e503..f3c322b01b 100644
    background: var(--dsw-alias-bg-layer-1);
  }
  
-@@ -1914,13 +1917,100 @@
+@@ -1993,13 +1996,100 @@
  @media (max-width: 760px) {
    .details {
      position: absolute;
@@ -2224,10 +2087,10 @@ index c743e0e503..f3c322b01b 100644
    }
  }
 diff --git a/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css b/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
-index bbe543610c..d3831edcba 100644
+index cb4c4808e3..33dda8cd52 100644
 --- a/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
 +++ b/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
-@@ -101,6 +101,11 @@
+@@ -100,14 +100,40 @@
  }
  
  @media (max-width: 720px) {
@@ -2238,8 +2101,6 @@ index bbe543610c..d3831edcba 100644
 +
    .card {
      border-radius: 16px;
-   }
-@@ -110,7 +115,28 @@
    }
  
    .footer {
@@ -2269,6 +2130,8 @@ index bbe543610c..d3831edcba 100644
 +    margin-left: auto;
 +  }
  }
+ 
+ .previewActions {
 diff --git a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
 index 10d108d3df..e044db0a9d 100644
 --- a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
@@ -2319,7 +2182,7 @@ index 10d108d3df..e044db0a9d 100644
  }
  
 diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
-index b4633d0ad1..f0c598ac6f 100644
+index 10616bba3b..ee48118f1a 100644
 --- a/packages/client/web/src/base.css
 +++ b/packages/client/web/src/base.css
 @@ -1,5 +1,13 @@
@@ -2536,7 +2399,7 @@ index f1b4800042..59a02607f1 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 298bdd6a4d..78a7e347be 100644
+index f3f685f38e..659570733c 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
 @@ -100,7 +100,14 @@ class FakeFs extends FileSystem {
@@ -2622,10 +2485,10 @@ index 298bdd6a4d..78a7e347be 100644
  
  describe('result-time contextual diff (meta + presentResult)', () => {
 diff --git a/packages/llm/llm-deepseek/src/common/file-store.ts b/packages/llm/llm-deepseek/src/common/file-store.ts
-index b311f48425..a970062822 100644
+index 5fcab0cbe1..5d1d91b5a7 100644
 --- a/packages/llm/llm-deepseek/src/common/file-store.ts
 +++ b/packages/llm/llm-deepseek/src/common/file-store.ts
-@@ -25,6 +25,8 @@ export interface DeepSeekFileConnection {
+@@ -26,6 +26,8 @@ export interface DeepSeekFileConnection {
    apiKey: string
    /** Files wire protocol selected by the resolved connection. */
    protocol: DeepSeekProtocol
@@ -2634,7 +2497,7 @@ index b311f48425..a970062822 100644
  }
  
  /** Result of one file-id resolution. */
-@@ -137,6 +139,7 @@ export class DeepSeekFileStore {
+@@ -140,6 +142,7 @@ export class DeepSeekFileStore {
        baseURL: connection.baseURL,
        apiKey: connection.apiKey,
        protocol: connection.protocol,
@@ -2642,57 +2505,6 @@ index b311f48425..a970062822 100644
        ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
      })
    }
-diff --git a/packages/llm/llm-deepseek/src/common/files-api.ts b/packages/llm/llm-deepseek/src/common/files-api.ts
-index eab009302f..91acf9bf64 100644
---- a/packages/llm/llm-deepseek/src/common/files-api.ts
-+++ b/packages/llm/llm-deepseek/src/common/files-api.ts
-@@ -1,6 +1,6 @@
- /** DeepSeek Files API transport for Chat Completions and Messages endpoints. @module dsh-llm-deepseek/files-api */
- 
--import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
-+import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
- import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
- import { DeepSeekFileId } from './file-id.ts'
- import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
-@@ -76,7 +76,9 @@ export function isFilesQuotaError(error: unknown): error is DeepSeekFilesError {
- interface FilesApiOptions {
-   baseURL: string
-   apiKey: string
--  protocol: DeepSeekProtocol
-+  protocol?: DeepSeekProtocol
-+  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
-+  headers?: Readonly<Record<string, string>>
-   fetch?: typeof fetch
- }
- 
-@@ -147,6 +149,7 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
- export class DeepSeekFilesClient {
-   private readonly baseURL: string
-   private readonly apiKey: string
-+  private readonly headers: Readonly<Record<string, string>> | undefined
-   private readonly fetchImpl: typeof fetch
-   private readonly protocol: DeepSeekProtocol
-   private readonly path: string
-@@ -157,8 +160,9 @@ export class DeepSeekFilesClient {
-   constructor(options: FilesApiOptions) {
-     this.baseURL = options.baseURL.replace(/\/+$/u, '')
-     this.apiKey = options.apiKey
-+    this.headers = options.headers
-     this.fetchImpl = options.fetch ?? globalThis.fetch
--    this.protocol = options.protocol
-+    this.protocol = options.protocol ?? 'chat-completions'
-     this.path = this.protocol === 'messages' ? '/v1/files' : '/files'
-   }
- 
-@@ -169,7 +173,7 @@ export class DeepSeekFilesClient {
-   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
-     let response: Response
-     try {
--      const headers = new Headers(attributionHeaders())
-+      const headers = new Headers(requestHeaders(this.headers))
-       if (this.protocol === 'messages') {
-         headers.set('x-api-key', this.apiKey)
-         headers.set('anthropic-version', '2023-06-01')
 diff --git a/packages/llm/llm-deepseek/src/common/types.ts b/packages/llm/llm-deepseek/src/common/types.ts
 index d1c4932317..52cb5c2bc9 100644
 --- a/packages/llm/llm-deepseek/src/common/types.ts
@@ -2711,7 +2523,7 @@ index d1c4932317..52cb5c2bc9 100644
     * Credential reference of this same resolution, resolved per request.
     * Travelling with the endpoint is the point: a request can never pair one
 diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
-index 928fe45858..8ef532db06 100644
+index 3bf9f5a6d2..cfb1f2333c 100644
 --- a/packages/llm/llm-deepseek/src/config.ts
 +++ b/packages/llm/llm-deepseek/src/config.ts
 @@ -29,6 +29,13 @@ export interface Config {
@@ -2842,7 +2654,7 @@ index 3d2e50ea45..507128b81e 100644
      const resolveImageAccess = attachments === undefined
        ? undefined
 diff --git a/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts b/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts
-index fd3745f04d..bfc335b0a0 100644
+index e5304b8380..a757d2931c 100644
 --- a/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts
 +++ b/packages/llm/llm-deepseek/src/protocols/messages/adapter.ts
 @@ -1,6 +1,6 @@
@@ -2868,7 +2680,7 @@ index fd3745f04d..bfc335b0a0 100644
      let inline = false
      while (true) {
 @@ -122,7 +127,7 @@ export class DeepSeekMessagesAdapter extends LlmAdapter {
-       const response = await fetch(`${connection.baseURL.replace(/\/+$/u, '')}/v1/messages`, {
+       const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
          method: 'POST', signal, body: extensions.payload, redirect: 'error',
          headers: {
 -          ...attributionHeaders(),
@@ -2877,7 +2689,7 @@ index fd3745f04d..bfc335b0a0 100644
            'x-api-key': key, 'anthropic-version': '2023-06-01',
            ...fileIds === undefined || fileIds.size === 0 ? {} : { 'anthropic-beta': MESSAGES_FILES_BETA },
 diff --git a/packages/llm/llm-deepseek/tests/adapter.spec.ts b/packages/llm/llm-deepseek/tests/adapter.spec.ts
-index e43c19c765..0740ccb5f3 100644
+index 767c0d5c73..a8c2655d55 100644
 --- a/packages/llm/llm-deepseek/tests/adapter.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/adapter.spec.ts
 @@ -373,6 +373,30 @@ describe('DeepSeekAdapter against a mock server', () => {
@@ -2911,7 +2723,7 @@ index e43c19c765..0740ccb5f3 100644
    it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
      const server = await mockServer([{ kind: 'sse', events: textEvents }])
      const signalSeen: (AbortSignal | undefined)[] = []
-@@ -2013,6 +2037,19 @@ describe('plugin registration and config', () => {
+@@ -1993,6 +2017,19 @@ describe('plugin registration and config', () => {
        .toThrow(/maxTokens must be a positive integer/)
    })
  
@@ -2932,10 +2744,10 @@ index e43c19c765..0740ccb5f3 100644
      const adapter = adapterOf({ models: [
        { id: 'capable', systemPromptUpdate: 'in-history' },
 diff --git a/packages/llm/llm-deepseek/tests/file-store.spec.ts b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-index b45928ab06..2a6766b0d0 100644
+index 10af67203a..c5397588d6 100644
 --- a/packages/llm/llm-deepseek/tests/file-store.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-@@ -161,6 +161,26 @@ describe('DeepSeekFileStore', () => {
+@@ -162,6 +162,26 @@ describe('DeepSeekFileStore', () => {
      expect(remote.uploads()).toBe(1)
    })
  
@@ -2963,10 +2775,10 @@ index b45928ab06..2a6766b0d0 100644
      const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
      roots.push(dir)
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index 1f014d387a..8679dcad1d 100644
+index b8857bd0dc..1fd680374a 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-@@ -165,6 +165,24 @@ describe('DeepSeekFilesClient', () => {
+@@ -180,6 +180,24 @@ describe('DeepSeekFilesClient', () => {
      })
    })
  
@@ -2992,10 +2804,10 @@ index 1f014d387a..8679dcad1d 100644
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
-index 8dba978c31..bc6036f144 100644
+index de9f3e0e42..c36107f0fe 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
 +++ b/packages/llm/llm-pi-ai/src/adapter.ts
-@@ -39,11 +39,11 @@ import type {
+@@ -38,11 +38,11 @@ import type {
    ThinkingLevel,
  } from '@earendil-works/pi-ai'
  import {
@@ -3039,10 +2851,10 @@ index 2f9e563008..f526f4ce2a 100644
    /** Provider-neutral pi-ai reasoning level. */
    reasoning?: ModelThinkingLevel
 diff --git a/packages/llm/llm-pi-ai/src/discovery.ts b/packages/llm/llm-pi-ai/src/discovery.ts
-index 09be7b6207..691c73f0c5 100644
+index 77845db69e..b355cf60d2 100644
 --- a/packages/llm/llm-pi-ai/src/discovery.ts
 +++ b/packages/llm/llm-pi-ai/src/discovery.ts
-@@ -314,7 +314,14 @@ export async function discoverModels(
+@@ -315,7 +315,14 @@ export async function discoverModels(
    const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
    let response: Response
    try {
@@ -3058,7 +2870,7 @@ index 09be7b6207..691c73f0c5 100644
      headers.set('accept', 'application/json')
      if (api === 'anthropic-messages') {
        headers.set('anthropic-version', ANTHROPIC_VERSION)
-@@ -322,7 +329,6 @@ export async function discoverModels(
+@@ -323,7 +330,6 @@ export async function discoverModels(
      } else if (apiKey !== undefined) {
        headers.set('authorization', `Bearer ${apiKey}`)
      }
@@ -3067,7 +2879,7 @@ index 09be7b6207..691c73f0c5 100644
        method: 'GET',
        headers,
 diff --git a/packages/llm/llm-pi-ai/src/stream.ts b/packages/llm/llm-pi-ai/src/stream.ts
-index 380eec2ced..c8e480b2d0 100644
+index 30e9c79412..cda1728bc5 100644
 --- a/packages/llm/llm-pi-ai/src/stream.ts
 +++ b/packages/llm/llm-pi-ai/src/stream.ts
 @@ -41,7 +41,10 @@ export function mapUsage(usage: PiUsage): TokenUsage {
@@ -3380,10 +3192,10 @@ index 59dfe27fca..7531f13284 100644
    }
  }
 diff --git a/packages/subprocess/subprocess-local/src/process-inspector.ts b/packages/subprocess/subprocess-local/src/process-inspector.ts
-index 08cec3b4ab..6ae3bae68a 100644
+index 297843584a..ad05c67074 100644
 --- a/packages/subprocess/subprocess-local/src/process-inspector.ts
 +++ b/packages/subprocess/subprocess-local/src/process-inspector.ts
-@@ -530,7 +530,7 @@ export function createProcessInspector(
+@@ -544,7 +544,7 @@ export function createProcessInspector(
    arch: NodeJS.Architecture = process.arch,
    internals: ProcessInspectorInternals = DEFAULT_INTERNALS,
  ): ProcessInspector {
