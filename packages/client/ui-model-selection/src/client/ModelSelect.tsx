@@ -274,6 +274,7 @@ export function ModelSelect(
     )) return
     close()
   }
+  void onBlur
 
   const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
     if (result === undefined) return

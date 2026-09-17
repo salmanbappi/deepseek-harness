@@ -1313,7 +1313,7 @@ index b2cb715287..0431f0df42 100644
  .empty {
    padding: 10px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index b5a55f5bd4..393901c252 100644
+index b5a55f5bd4..6e95d7c09c 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 @@ -119,14 +119,14 @@ export function ModelSelect(
@@ -1334,7 +1334,15 @@ index b5a55f5bd4..393901c252 100644
    }, [open])
  
    // A pane switch unmounts the row that had focus, which drops focus onto the
-@@ -336,7 +336,7 @@ export function ModelSelect(
+@@ -274,6 +274,7 @@ export function ModelSelect(
+     )) return
+     close()
+   }
++  void onBlur
+ 
+   const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
+     if (result === undefined) return
+@@ -336,7 +337,7 @@ export function ModelSelect(
    }
  
    return (

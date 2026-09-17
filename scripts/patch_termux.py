@@ -472,6 +472,8 @@ def patch_model_select():
             modified = True
         if "onBlur={onBlur}" in c:
             c = c.replace(" onBlur={onBlur}", "")
+            if "void onBlur" not in c and "const onBlur" in c:
+                c = c.replace("    close()\n  }", "    close()\n  }\n  void onBlur")
             modified = True
         if modified:
             with open(tsx_path, "w", encoding="utf-8") as f:
