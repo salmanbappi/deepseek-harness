@@ -1228,12 +1228,12 @@ def patch_conversation_mobile():
         mobile_rules = """
 @media (max-width: 768px) {
   .header {
-    padding: 8px 16px 0 48px;
+    padding: 10px 16px 0 50px;
     min-height: 64px;
   }
 
   .titleRow {
-    min-height: 32px;
+    min-height: 36px;
   }
 
   .crumb {

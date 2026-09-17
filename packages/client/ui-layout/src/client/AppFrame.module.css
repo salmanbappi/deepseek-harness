@@ -220,8 +220,8 @@
     align-items: center;
     justify-content: center;
     position: fixed;
-    top: 8px;
-    left: 8px;
+    top: 12px;
+    left: 10px;
     z-index: 40;
     width: 32px;
     height: 32px;
@@ -245,7 +245,7 @@
 
   /* Prevent header content in center column from colliding with the floating mobile menu button */
   .frame[data-sidebar-collapsed] .centerCol :global(header) {
-    padding-left: 48px !important;
+    padding-left: 50px !important;
   }
 
   .handle {

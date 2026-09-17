@@ -1021,7 +1021,7 @@ index e06a9b949f..24267312b4 100644
 +  }
 +}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index 62a1991e57..c0c0c11148 100644
+index 62a1991e57..02467a189a 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 @@ -517,3 +517,19 @@
@@ -1031,12 +1031,12 @@ index 62a1991e57..c0c0c11148 100644
 +
 +@media (max-width: 768px) {
 +  .header {
-+    padding: 8px 16px 0 48px;
++    padding: 10px 16px 0 50px;
 +    min-height: 64px;
 +  }
 +
 +  .titleRow {
-+    min-height: 32px;
++    min-height: 36px;
 +  }
 +
 +  .crumb {
@@ -1155,7 +1155,7 @@ index 8cff6f2850..70c43bcc4d 100644
        caseName: 'edit omits old_string', name: 'edit',
        args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 54dd7f368c..c07a005416 100644
+index 54dd7f368c..cd1592e31c 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
 @@ -154,3 +154,106 @@
@@ -1228,8 +1228,8 @@ index 54dd7f368c..c07a005416 100644
 +    align-items: center;
 +    justify-content: center;
 +    position: fixed;
-+    top: 8px;
-+    left: 8px;
++    top: 12px;
++    left: 10px;
 +    z-index: 40;
 +    width: 32px;
 +    height: 32px;
@@ -1253,7 +1253,7 @@ index 54dd7f368c..c07a005416 100644
 +
 +  /* Prevent header content in center column from colliding with the floating mobile menu button */
 +  .frame[data-sidebar-collapsed] .centerCol :global(header) {
-+    padding-left: 48px !important;
++    padding-left: 50px !important;
 +  }
 +
 +  .handle {
