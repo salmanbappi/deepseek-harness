@@ -39,17 +39,21 @@
   text-align: center;
 }
 
+/* Portaled, fixed-position board: coordinates come from useAnchoredPosition
+   (clamped inside the viewport on both axes). Fixed keeps it clear of any
+   overflow-hidden ancestor (the conversation root); the width/height caps keep
+   the wide board on-screen when the header trigger sits near the right edge of
+   a phone. */
 .panel {
   --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 
-  position: absolute;
-  top: calc(100% + 5px);
-  left: 0;
+  position: fixed;
   z-index: 110;
   box-sizing: border-box;
   width: min(560px, calc(100vw - 32px));
   max-height: min(680px, calc(100vh - 120px));
+  max-height: min(680px, calc(100dvh - 120px));
   padding: 10px;
   overflow: auto;
   border: 0;

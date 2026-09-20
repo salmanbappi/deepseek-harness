@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {
   TeamMemberView as TeamRosterMember,
@@ -12,6 +13,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutline14, IconCloseOutline16, IconEditOutline16, IconPlusOutline16,
   IconRefreshOutline14, IconTrashOutline16, IconUserOutline16, StateDot,
+  useAnchoredPosition,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -58,6 +60,13 @@ interface Draft {
 }
 
 const EMPTY_DRAFT: Draft = { subject: '', description: '', blockers: '', scopes: '' }
+
+/**
+ * Pre-placement style: the portaled panel stays hidden but laid out at a fixed
+ * origin, so the first clamp measures its real width/height before anything
+ * paints (mirrors the Menu portal and the background-jobs list).
+ */
+const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
 
 function items(value: string): string[] {
   return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))]
@@ -110,7 +119,21 @@ export function TeamAction({
   const [pendingTasks, setPendingTasks] = useState<ReadonlySet<string>>(() => new Set())
   const sessionRef = useRef(sessionId)
   const refreshGeneration = useRef(0)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   sessionRef.current = sessionId
+
+  // Portal placement: a fixed, viewport-clamped panel anchored to the trigger,
+  // so a wide board opening near the header's right edge cannot run off a
+  // narrow (phone) viewport — the failure mode the in-place absolute panel had.
+  const panelPosition = useAnchoredPosition({
+    open,
+    anchorRef: triggerRef,
+    panelRef,
+    side: 'bottom',
+    gap: 5,
+    margin: 16,
+  })
 
   useEffect(() => {
     refreshGeneration.current += 1
@@ -246,6 +269,7 @@ export function TeamAction({
   return (
     <div className={css.root} data-team-action>
       <button
+        ref={triggerRef}
         type="button"
         className={css.trigger}
         aria-expanded={open}
@@ -259,8 +283,14 @@ export function TeamAction({
         <span>{t('trigger')}</span>
         {teammates.length > 0 && <span className={css.count}>{teammates.length}</span>}
       </button>
-      {open && (
-        <div className={css.panel} role="dialog" aria-label={t('trigger')}>
+      {open && createPortal((
+        <div
+          ref={panelRef}
+          className={css.panel}
+          style={panelPosition ?? MEASURE_STYLE}
+          role="dialog"
+          aria-label={t('trigger')}
+        >
           <div className={css.toolbar}>
             <strong>{t('trigger')}</strong>
             <span className={css.spacer} />
@@ -394,7 +424,7 @@ export function TeamAction({
             </>
           )}
         </div>
-      )}
+      ), document.body)}
     </div>
   )
 }
