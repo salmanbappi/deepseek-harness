@@ -27,14 +27,16 @@
   --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
 }
 
-/* Primary card is 218 wide in the design across both hosts. */
+/* Primary card is 218 wide in the design across both hosts. The viewport cap
+ * (12px portal MARGIN each side) keeps a narrow phone from forcing the portal
+ * clamp past an edge, which would crop the card. */
 .list {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   z-index: 100;
-  min-width: 218px;
-  max-width: 360px;
+  min-width: min(218px, calc(100vw - 24px));
+  max-width: min(360px, calc(100vw - 24px));
 }
 
 /* Portal mode: fixed in the viewport, coordinates supplied inline from the
@@ -63,9 +65,11 @@
  * (24 = 2 × the portal MARGIN in Menu.tsx) and taller content scrolls inside
  * .viewport, so a pinned .footer stays visible. Menus with submenu rows skip
  * this class — the overflow clip would crop the side card, so they rely on
- * staying short. */
+ * staying short. The dvh line supersedes vh where supported so a mobile
+ * browser's retracting toolbar cannot push the card's bottom off-screen. */
 .scrollable {
   max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
 }
 
 .viewport {

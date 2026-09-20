@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
+import { createPortal } from 'react-dom'
 import type { SessionJob as JobView } from '@deepseek-ai/dsh-api-session-controller/types'
-import { IconChevronDownOutline14, StateDot, useDismissOnOutsidePointer, type StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
+import {
+  IconChevronDownOutline14, StateDot, useAnchoredPosition, useDismissOnOutsidePointer, type StateDotState,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
 import { NS } from './locales.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -12,6 +15,13 @@ export type JobListActionProps =
 
 /** Stable empty list so a session with no jobs keeps one array identity. */
 const NO_TASKS: readonly JobView[] = []
+
+/**
+ * Pre-placement style: the portaled list stays hidden but laid out at a fixed
+ * origin, so the first clamp measures its real width/height before anything
+ * paints (mirrors the Menu portal and the Schedule catalog action).
+ */
+const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
 
 /** A job the registry still holds open, and whose duration therefore ticks. */
 function isLive(job: JobView): boolean {
@@ -97,11 +107,26 @@ export function JobListAction({ sessionId, useSessions, t }: JobListActionProps)
   const [now, setNow] = useState(() => Date.now())
   const rootRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLUListElement>(null)
 
   const rows = useMemo(() => ordered(jobs), [jobs])
   const liveCount = useMemo(() => jobs.filter(isLive).length, [jobs])
 
-  useDismissOnOutsidePointer(rootRef, open, setOpen)
+  // Portal placement: a fixed, viewport-clamped panel anchored to the trigger,
+  // so a list opening near the header's right edge can never run off a narrow
+  // (phone) viewport — the failure mode the in-place absolute menu had.
+  const menuPosition = useAnchoredPosition({
+    open,
+    anchorRef: triggerRef,
+    panelRef: menuRef,
+    side: 'bottom',
+    gap: 5,
+    margin: 16,
+  })
+
+  // The panel is portaled outside the root, so it must be handed to the
+  // dismissal check as an inside region (mirrors Menu's portal handling).
+  useDismissOnOutsidePointer(rootRef, open, setOpen, menuRef)
 
   // The clock only runs while an open list is showing something that moves.
   useEffect(() => {
@@ -153,8 +178,13 @@ export function JobListAction({ sessionId, useSessions, t }: JobListActionProps)
         <IconChevronDownOutline14 className={open ? css.triggerOpen : undefined} />
       </button>
       {open
-        ? (
-          <ul className={css.menu} aria-label={t('list.aria')}>
+        ? createPortal((
+          <ul
+            ref={menuRef}
+            className={css.menu}
+            style={menuPosition ?? MEASURE_STYLE}
+            aria-label={t('list.aria')}
+          >
             {rows.map((job) => {
               const live = isLive(job)
               const elapsed = live ? now - job.startedAt : (job.finishedAt ?? job.startedAt) - job.startedAt
@@ -176,7 +206,7 @@ export function JobListAction({ sessionId, useSessions, t }: JobListActionProps)
               )
             })}
           </ul>
-        )
+        ), document.body)
         : null}
     </div>
   )
