@@ -1,0 +1,76 @@
+diff --git a/patches/termux-environment.patch b/patches/termux-environment.patch
+index 9a3baca779..19fde8bba8 100644
+--- a/patches/termux-environment.patch
++++ b/patches/termux-environment.patch
+@@ -20034,14 +20034,14 @@ index 28613a2920..b1bc15324f 100644
+  
+  describe('result-time contextual diff (meta + presentResult)', () => {
+ diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
+-index 4490dd9b6e..bfdd20ec2e 100644
++index 4490dd9b6e..d77118de9a 100644
+ --- a/packages/llm/llm-deepseek/src/adapter.ts
+ +++ b/packages/llm/llm-deepseek/src/adapter.ts
+ @@ -1,6 +1,6 @@
+  /** Direct Messages transport with one cancellable lifecycle per model request. */
+  
+ -import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+-+import { attributionHeaders, LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+++import { LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+  import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+  import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+  import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+@@ -20171,14 +20171,14 @@ index 7d5bf4e8d1..f1dd325733 100644
+      })
+    }
+ diff --git a/packages/llm/llm-deepseek/src/files-api.ts b/packages/llm/llm-deepseek/src/files-api.ts
+-index 181580ce6f..3597f4f02e 100644
++index 181580ce6f..b66a78d586 100644
+ --- a/packages/llm/llm-deepseek/src/files-api.ts
+ +++ b/packages/llm/llm-deepseek/src/files-api.ts
+ @@ -1,6 +1,6 @@
+  /** DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
+  
+ -import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+-+import { attributionHeaders, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+++import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+  import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
+  import { DeepSeekFileId } from './file-id.ts'
+  import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
+diff --git a/patches/termux-mobile-suite.patch b/patches/termux-mobile-suite.patch
+index 9a3baca779..19fde8bba8 100644
+--- a/patches/termux-mobile-suite.patch
++++ b/patches/termux-mobile-suite.patch
+@@ -20034,14 +20034,14 @@ index 28613a2920..b1bc15324f 100644
+  
+  describe('result-time contextual diff (meta + presentResult)', () => {
+ diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
+-index 4490dd9b6e..bfdd20ec2e 100644
++index 4490dd9b6e..d77118de9a 100644
+ --- a/packages/llm/llm-deepseek/src/adapter.ts
+ +++ b/packages/llm/llm-deepseek/src/adapter.ts
+ @@ -1,6 +1,6 @@
+  /** Direct Messages transport with one cancellable lifecycle per model request. */
+  
+ -import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+-+import { attributionHeaders, LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+++import { LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+  import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+  import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+  import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+@@ -20171,14 +20171,14 @@ index 7d5bf4e8d1..f1dd325733 100644
+      })
+    }
+ diff --git a/packages/llm/llm-deepseek/src/files-api.ts b/packages/llm/llm-deepseek/src/files-api.ts
+-index 181580ce6f..3597f4f02e 100644
++index 181580ce6f..b66a78d586 100644
+ --- a/packages/llm/llm-deepseek/src/files-api.ts
+ +++ b/packages/llm/llm-deepseek/src/files-api.ts
+ @@ -1,6 +1,6 @@
+  /** DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
+  
+ -import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+-+import { attributionHeaders, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+++import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+  import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
+  import { DeepSeekFileId } from './file-id.ts'
+  import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
