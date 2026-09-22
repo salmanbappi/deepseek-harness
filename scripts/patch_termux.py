@@ -766,7 +766,7 @@ def patch_settings_mobile():
           <div className={css.mobileActions}>
             {renderSlot('settings.action', {})}
             <button type="button" className={css.mobileClose} onClick={onClose} aria-label="Close">
-              <IconCloseOutline16 size={16} />
+              <IconCloseOutlineRegular size={16} />
             </button>
           </div>
         </div>
