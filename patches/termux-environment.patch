@@ -20033,6 +20033,189 @@ index 28613a2920..b1bc15324f 100644
  })
  
  describe('result-time contextual diff (meta + presentResult)', () => {
+diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
+index 4490dd9b6e..bfdd20ec2e 100644
+--- a/packages/llm/llm-deepseek/src/adapter.ts
++++ b/packages/llm/llm-deepseek/src/adapter.ts
+@@ -1,6 +1,6 @@
+ /** Direct Messages transport with one cancellable lifecycle per model request. */
+ 
+-import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
++import { attributionHeaders, LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+ import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
+ import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+ import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
+@@ -84,6 +84,7 @@ export class DeepSeekAdapter extends LlmAdapter {
+     const key = accountToken ?? await this.dependencies.resolveApiKey(connection)
+     const files = new RequestFiles(this.files, {
+       baseURL: connection.baseURL, apiKey: key, accountCredential: accountToken !== undefined,
++      ...connection.headers === undefined ? {} : { headers: connection.headers },
+     },
+     connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
+     let inline = false
+@@ -113,7 +114,7 @@ export class DeepSeekAdapter extends LlmAdapter {
+       const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
+         method: 'POST', signal, body: extensions.payload, redirect: 'error',
+         headers: {
+-          ...attributionHeaders(),
++          ...requestHeaders(connection.headers),
+           'content-type': 'application/json', 'accept': 'text/event-stream',
+           ...accountToken === undefined ? { 'x-api-key': key } : { 'x-dsh-auth-token': accountToken },
+           'anthropic-version': '2023-06-01',
+diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
+index f2ba3bd23a..69e20a5387 100644
+--- a/packages/llm/llm-deepseek/src/config.ts
++++ b/packages/llm/llm-deepseek/src/config.ts
+@@ -30,6 +30,13 @@ export interface Config {
+   apiKeyEnv: Volatile<string>
+   /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
+   baseURL: Volatile<string | undefined>
++  /**
++   * Deployment headers sent on every provider request, chat and Files API
++   * alike. They are merged over the attribution `User-Agent`; the credential,
++   * content type, accept, and harness identity headers stay harness-owned. A
++   * gateway that admits only a recognized client needs this.
++   */
++  headers: Volatile<Record<string, string> | undefined>
+   /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
+   thinking: Volatile<'enabled' | 'disabled' | undefined>
+   /** Default thinking effort (default `high`); `off` disables thinking per request. */
+@@ -92,6 +99,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
+ export const Config = z.object({
+   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV).volatile(),
+   baseURL: z.string().volatile(),
++  headers: z.dict(z.string()).volatile(),
+   thinking: z.union(['enabled', 'disabled']).volatile(),
+   reasoningEffort: z.union(['off', 'low', 'high', 'max']).volatile(),
+   maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS).volatile(),
+@@ -198,6 +206,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
+   })
+ }
+ 
++/**
++ * An HTTP field name (RFC 9110 `tchar`).
++ */
++const HEADER_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/u
++
++/** Header values travel on one line; CR, LF, or NUL cannot mean what the section wrote. */
++const UNENCODABLE_HEADER_VALUE = /[\0\r\n]/u
++
++/**
++ * Validate and detach the deployment's request headers. Two spellings of one
++ * field name are rejected rather than resolved: HTTP field names are
++ * case-insensitive, so accepting both would send a joined value where the
++ * deployment meant one of them to replace the other.
++ * @param headers - configured headers, when the section declares any.
++ * @returns a detached map, or `undefined` when nothing is configured.
++ */
++function resolveHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> | undefined {
++  if (headers === undefined) return undefined
++  const resolved: Record<string, string> = {}
++  const spellings = new Map<string, string>()
++  for (const [name, value] of Object.entries(headers)) {
++    if (!HEADER_NAME.test(name)) {
++      throw new Error(`llm-deepseek: header name ${JSON.stringify(name)} is not a valid HTTP field name`)
++    }
++    if (UNENCODABLE_HEADER_VALUE.test(value)) {
++      throw new Error(`llm-deepseek: header "${name}" value must not contain CR, LF, or NUL`)
++    }
++    const lower = name.toLowerCase()
++    const previous = spellings.get(lower)
++    if (previous !== undefined) {
++      throw new Error(`llm-deepseek: header "${name}" repeats "${previous}"; HTTP field names are case-insensitive`)
++    }
++    spellings.set(lower, name)
++    resolved[name] = value
++  }
++  return Object.keys(resolved).length === 0 ? undefined : resolved
++}
++
+ /**
+  * The one explicit resolve step from raw config to validated connection
+  * facts. Programmatic construction may bypass Schemastery normalization, so
+@@ -215,6 +261,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+   if (Object.hasOwn(config, 'protocol')) {
+     throw new Error('llm-deepseek: protocol is not configurable; remove it and use a Messages-compatible baseURL')
+   }
++  const headers = resolveHeaders(config.headers)
+   if (config.thinking === 'disabled'
+     && config.reasoningEffort !== undefined
+     && config.reasoningEffort !== 'off') {
+@@ -304,6 +351,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+   return {
+     apiKeyEnv: credentialRef(config.apiKeyEnv ?? DEFAULT_API_KEY_ENV),
+     baseURL,
++    ...headers === undefined ? {} : { headers },
+     defaults: {
+       thinking: config.thinking,
+       reasoningEffort: config.reasoningEffort,
+diff --git a/packages/llm/llm-deepseek/src/file-store.ts b/packages/llm/llm-deepseek/src/file-store.ts
+index 7d5bf4e8d1..f1dd325733 100644
+--- a/packages/llm/llm-deepseek/src/file-store.ts
++++ b/packages/llm/llm-deepseek/src/file-store.ts
+@@ -25,6 +25,8 @@ export interface DeepSeekFileConnection {
+   apiKey: string
+   /** Use the DSH account header; omitted for ordinary API keys. */
+   accountCredential?: boolean
++  /** Deployment headers sent on every file request; the connection options carry the same map. */
++  headers?: Readonly<Record<string, string>>
+ }
+ 
+ /** Result of one file-id resolution. */
+@@ -139,6 +141,7 @@ export class DeepSeekFileStore {
+       baseURL: connection.baseURL,
+       apiKey: connection.apiKey,
+       ...connection.accountCredential === undefined ? {} : { accountCredential: connection.accountCredential },
++      ...connection.headers === undefined ? {} : { headers: connection.headers },
+       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
+     })
+   }
+diff --git a/packages/llm/llm-deepseek/src/files-api.ts b/packages/llm/llm-deepseek/src/files-api.ts
+index 181580ce6f..3597f4f02e 100644
+--- a/packages/llm/llm-deepseek/src/files-api.ts
++++ b/packages/llm/llm-deepseek/src/files-api.ts
+@@ -1,6 +1,6 @@
+ /** DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
+ 
+-import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
++import { attributionHeaders, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
+ import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
+ import { DeepSeekFileId } from './file-id.ts'
+ import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
+@@ -73,6 +73,8 @@ interface FilesApiOptions {
+   apiKey: string
+   /** Use the DSH account header; omitted for ordinary API keys. */
+   accountCredential?: boolean
++  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
++  headers?: Readonly<Record<string, string>>
+   fetch?: typeof fetch
+ }
+ 
+@@ -133,6 +135,7 @@ export class DeepSeekFilesClient {
+   private readonly baseURL: string
+   private readonly accountCredential: boolean
+   private readonly apiKey: string
++  private readonly headers: Readonly<Record<string, string>> | undefined
+   private readonly fetchImpl: typeof fetch
+ 
+   /**
+@@ -141,6 +144,7 @@ export class DeepSeekFilesClient {
+   constructor(options: FilesApiOptions) {
+     this.apiKey = options.apiKey
+     this.accountCredential = options.accountCredential === true
++    this.headers = options.headers
+     this.fetchImpl = options.fetch ?? globalThis.fetch
+     this.baseURL = messagesApiRoot(options.baseURL)
+   }
+@@ -148,7 +152,7 @@ export class DeepSeekFilesClient {
+   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+     let response: Response
+     try {
+-      const headers = new Headers(attributionHeaders())
++      const headers = new Headers(requestHeaders(this.headers))
+       headers.set(this.accountCredential ? 'x-dsh-auth-token' : 'x-api-key', this.apiKey)
+       headers.set('anthropic-version', '2023-06-01')
+       headers.set('anthropic-beta', MESSAGES_FILES_BETA)
 diff --git a/packages/llm/llm-deepseek/src/types.ts b/packages/llm/llm-deepseek/src/types.ts
 index cc623b0a50..5934989b50 100644
 --- a/packages/llm/llm-deepseek/src/types.ts
@@ -20051,7 +20234,7 @@ index cc623b0a50..5934989b50 100644
     * Credential reference of this same resolution, resolved per request.
     * Travelling with the endpoint is the point: a request can never pair one
 diff --git a/packages/llm/llm-deepseek/tests/file-store.spec.ts b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-index a671607788..6281b5f147 100644
+index a671607788..0b369356f3 100644
 --- a/packages/llm/llm-deepseek/tests/file-store.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/file-store.spec.ts
 @@ -153,6 +153,26 @@ describe('DeepSeekFileStore', () => {
@@ -20075,14 +20258,14 @@ index a671607788..6281b5f147 100644
 +    await store.ensureUploaded(VERSION, { ...CONNECTION, headers: { 'User-Agent': 'cline/3.5.0' } }, POLICY)
 +
 +    expect(seen[0]?.get('user-agent')).toBe('cline/3.5.0')
-+    expect(seen[0]?.get('authorization')).toBe('Bearer key')
++    expect(seen[0]?.get('x-api-key')).toBe('key')
 +  })
 +
    it('keeps a shared upload alive while another waiter remains', async () => {
      const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
      roots.push(dir)
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index e0d44d2625..bc00ed4d1a 100644
+index e0d44d2625..77e8ef02c0 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
 @@ -205,6 +205,24 @@ describe('DeepSeekFilesClient', () => {
@@ -20094,7 +20277,7 @@ index e0d44d2625..bc00ed4d1a 100644
 +      const headers = new Headers(init?.headers)
 +      expect(headers.get('user-agent')).toBe('cline/3.5.0')
 +      expect(headers.get('x-gateway-tenant')).toBe('acme')
-+      expect(headers.get('authorization')).toBe('Bearer key')
++      expect(headers.get('x-api-key')).toBe('key')
 +      return new Response(JSON.stringify(file()), { status: 200 })
 +    }) as typeof fetch
 +    const client = new DeepSeekFilesClient({
@@ -20110,6 +20293,72 @@ index e0d44d2625..bc00ed4d1a 100644
    it('validates list, retrieve, and delete responses', async () => {
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
+diff --git a/packages/llm/llm-deepseek/tests/runtime.spec.ts b/packages/llm/llm-deepseek/tests/runtime.spec.ts
+index 4d657ec263..e803df7f5a 100644
+--- a/packages/llm/llm-deepseek/tests/runtime.spec.ts
++++ b/packages/llm/llm-deepseek/tests/runtime.spec.ts
+@@ -21,8 +21,8 @@ import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/d
+ import { SessionId } from '@deepseek-ai/dsh-session'
+ import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+ import type { PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+-import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
+-import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
++import * as LlmDeepSeek from '../src/index.ts'
++import { DeepSeekAdapter, resolveAdapterOptions } from '../src/index.ts'
+ import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+ import { providerError } from '../src/transport.ts'
+ import { resolveRequestImageTarget } from '../src/request-pricing.ts'
+@@ -382,6 +382,30 @@ describe('DeepSeekAdapter against a mock server', () => {
+     expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
+   })
+ 
++  it('sends configured deployment headers on the chat request and keeps harness-owned fields', async () => {
++    const server = await mockServer([{ kind: 'sse', events: textEvents }])
++    const adapter = adapterOf({
++      baseURL: server.url,
++      headers: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
++    })
++
++    await drain(adapter.stream({
++      provider: 'deepseek-official',
++      model: 'deepseek-v4-pro',
++      messages: [createUserMessage({
++        content: [{ type: 'text', text: 'hi' }],
++        source: { kind: 'user' },
++      })],
++    }))
++
++    // The deployment's User-Agent replaces attribution rather than joining it,
++    // while the credential and harness identity stay harness-owned.
++    expect(server.headers[0]?.['user-agent']).toBe('cline/3.5.0')
++    expect(server.headers[0]?.['x-gateway-tenant']).toBe('acme')
++    expect(server.headers[0]?.['x-api-key']).toBe('k')
++    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(TEST_USER_ID)
++  })
++
+   it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
+     const server = await mockServer([{ kind: 'sse', events: textEvents }])
+     const signalSeen: (AbortSignal | undefined)[] = []
+@@ -1678,6 +1702,19 @@ describe('plugin registration and config', () => {
+     expect(() => resolveAdapterOptions(retired)).toThrow(/protocol/)
+   })
+ 
++  it('validates configured deployment headers before any request', () => {
++    expect(() => resolveAdapterOptions({ headers: { 'bad name': 'x' } }))
++      .toThrow(/header name "bad name" is not a valid HTTP field name/)
++    expect(() => resolveAdapterOptions({ headers: { 'x-test': 'a\nb' } }))
++      .toThrow(/header "x-test" value must not contain CR, LF, or NUL/)
++    expect(() => resolveAdapterOptions({ headers: { 'X-Test': 'a', 'x-test': 'b' } }))
++      .toThrow(/header "x-test" repeats "X-Test"; HTTP field names are case-insensitive/)
++    // An empty section is absent facts, not an empty header map.
++    expect(resolveAdapterOptions({ headers: {} })).not.toHaveProperty('headers')
++    expect(resolveAdapterOptions({ headers: { 'X-Tenant': 'acme' } }))
++      .toMatchObject({ headers: { 'X-Tenant': 'acme' } })
++  })
++
+   it('keeps wire helpers off the package root', () => {
+     for (const helper of [
+       'httpErrorCode',
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
 index de9f3e0e42..c36107f0fe 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
