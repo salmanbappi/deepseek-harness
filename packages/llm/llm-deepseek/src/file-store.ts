@@ -25,6 +25,8 @@ export interface DeepSeekFileConnection {
   apiKey: string
   /** Use the DSH account header; omitted for ordinary API keys. */
   accountCredential?: boolean
+  /** Deployment headers sent on every file request; the connection options carry the same map. */
+  headers?: Readonly<Record<string, string>>
 }
 
 /** Result of one file-id resolution. */
@@ -139,6 +141,7 @@ export class DeepSeekFileStore {
       baseURL: connection.baseURL,
       apiKey: connection.apiKey,
       ...connection.accountCredential === undefined ? {} : { accountCredential: connection.accountCredential },
+      ...connection.headers === undefined ? {} : { headers: connection.headers },
       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
     })
   }

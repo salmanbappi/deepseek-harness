@@ -21,8 +21,8 @@ import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/d
 import { SessionId } from '@deepseek-ai/dsh-session'
 import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import type { PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
-import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
-import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
+import * as LlmDeepSeek from '../src/index.ts'
+import { DeepSeekAdapter, resolveAdapterOptions } from '../src/index.ts'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { providerError } from '../src/transport.ts'
 import { resolveRequestImageTarget } from '../src/request-pricing.ts'
@@ -380,6 +380,30 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(server.headers[0]).not.toHaveProperty('x-openrouter-title')
     expect(server.headers[0]).not.toHaveProperty('x-openrouter-categories')
     expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
+  })
+
+  it('sends configured deployment headers on the chat request and keeps harness-owned fields', async () => {
+    const server = await mockServer([{ kind: 'sse', events: textEvents }])
+    const adapter = adapterOf({
+      baseURL: server.url,
+      headers: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
+    })
+
+    await drain(adapter.stream({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-pro',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'hi' }],
+        source: { kind: 'user' },
+      })],
+    }))
+
+    // The deployment's User-Agent replaces attribution rather than joining it,
+    // while the credential and harness identity stay harness-owned.
+    expect(server.headers[0]?.['user-agent']).toBe('cline/3.5.0')
+    expect(server.headers[0]?.['x-gateway-tenant']).toBe('acme')
+    expect(server.headers[0]?.['x-api-key']).toBe('k')
+    expect(server.headers[0]?.['x-deepseek-harness-user-id']).toBe(TEST_USER_ID)
   })
 
   it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
@@ -1676,6 +1700,19 @@ describe('plugin registration and config', () => {
     }
     const retired = { protocol: 'messages', baseURL: 'https://gateway.example' }
     expect(() => resolveAdapterOptions(retired)).toThrow(/protocol/)
+  })
+
+  it('validates configured deployment headers before any request', () => {
+    expect(() => resolveAdapterOptions({ headers: { 'bad name': 'x' } }))
+      .toThrow(/header name "bad name" is not a valid HTTP field name/)
+    expect(() => resolveAdapterOptions({ headers: { 'x-test': 'a\nb' } }))
+      .toThrow(/header "x-test" value must not contain CR, LF, or NUL/)
+    expect(() => resolveAdapterOptions({ headers: { 'X-Test': 'a', 'x-test': 'b' } }))
+      .toThrow(/header "x-test" repeats "X-Test"; HTTP field names are case-insensitive/)
+    // An empty section is absent facts, not an empty header map.
+    expect(resolveAdapterOptions({ headers: {} })).not.toHaveProperty('headers')
+    expect(resolveAdapterOptions({ headers: { 'X-Tenant': 'acme' } }))
+      .toMatchObject({ headers: { 'X-Tenant': 'acme' } })
   })
 
   it('keeps wire helpers off the package root', () => {

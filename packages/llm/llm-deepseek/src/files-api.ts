@@ -1,6 +1,6 @@
 /** DeepSeek Files API transport. @module dsh-llm-deepseek/files-api */
 
-import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { DeepSeekFileId } from './file-id.ts'
 import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
@@ -73,6 +73,8 @@ interface FilesApiOptions {
   apiKey: string
   /** Use the DSH account header; omitted for ordinary API keys. */
   accountCredential?: boolean
+  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
+  headers?: Readonly<Record<string, string>>
   fetch?: typeof fetch
 }
 
@@ -133,6 +135,7 @@ export class DeepSeekFilesClient {
   private readonly baseURL: string
   private readonly accountCredential: boolean
   private readonly apiKey: string
+  private readonly headers: Readonly<Record<string, string>> | undefined
   private readonly fetchImpl: typeof fetch
 
   /**
@@ -141,6 +144,7 @@ export class DeepSeekFilesClient {
   constructor(options: FilesApiOptions) {
     this.apiKey = options.apiKey
     this.accountCredential = options.accountCredential === true
+    this.headers = options.headers
     this.fetchImpl = options.fetch ?? globalThis.fetch
     this.baseURL = messagesApiRoot(options.baseURL)
   }
@@ -148,7 +152,7 @@ export class DeepSeekFilesClient {
   private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
     let response: Response
     try {
-      const headers = new Headers(attributionHeaders())
+      const headers = new Headers(requestHeaders(this.headers))
       headers.set(this.accountCredential ? 'x-dsh-auth-token' : 'x-api-key', this.apiKey)
       headers.set('anthropic-version', '2023-06-01')
       headers.set('anthropic-beta', MESSAGES_FILES_BETA)

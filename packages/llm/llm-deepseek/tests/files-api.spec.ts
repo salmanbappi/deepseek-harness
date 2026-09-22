@@ -210,7 +210,7 @@ describe('DeepSeekFilesClient', () => {
       const headers = new Headers(init?.headers)
       expect(headers.get('user-agent')).toBe('cline/3.5.0')
       expect(headers.get('x-gateway-tenant')).toBe('acme')
-      expect(headers.get('authorization')).toBe('Bearer key')
+      expect(headers.get('x-api-key')).toBe('key')
       return new Response(JSON.stringify(file()), { status: 200 })
     }) as typeof fetch
     const client = new DeepSeekFilesClient({

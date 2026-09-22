@@ -170,7 +170,7 @@ describe('DeepSeekFileStore', () => {
     await store.ensureUploaded(VERSION, { ...CONNECTION, headers: { 'User-Agent': 'cline/3.5.0' } }, POLICY)
 
     expect(seen[0]?.get('user-agent')).toBe('cline/3.5.0')
-    expect(seen[0]?.get('authorization')).toBe('Bearer key')
+    expect(seen[0]?.get('x-api-key')).toBe('key')
   })
 
   it('keeps a shared upload alive while another waiter remains', async () => {

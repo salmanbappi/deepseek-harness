@@ -1,6 +1,6 @@
 /** Direct Messages transport with one cancellable lifecycle per model request. */
 
-import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -84,6 +84,7 @@ export class DeepSeekAdapter extends LlmAdapter {
     const key = accountToken ?? await this.dependencies.resolveApiKey(connection)
     const files = new RequestFiles(this.files, {
       baseURL: connection.baseURL, apiKey: key, accountCredential: accountToken !== undefined,
+      ...connection.headers === undefined ? {} : { headers: connection.headers },
     },
     connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
     let inline = false
@@ -113,7 +114,7 @@ export class DeepSeekAdapter extends LlmAdapter {
       const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
         method: 'POST', signal, body: extensions.payload, redirect: 'error',
         headers: {
-          ...attributionHeaders(),
+          ...requestHeaders(connection.headers),
           'content-type': 'application/json', 'accept': 'text/event-stream',
           ...accountToken === undefined ? { 'x-api-key': key } : { 'x-dsh-auth-token': accountToken },
           'anthropic-version': '2023-06-01',
