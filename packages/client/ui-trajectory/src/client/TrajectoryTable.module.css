@@ -1984,6 +1984,8 @@
     max-width: 100% !important;
     border-left: none;
     box-shadow: none;
+    --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   }
 
   .detailsResizeHandle {
@@ -2012,8 +2014,52 @@
     font-size: 13px;
   }
 
+  .detailBody {
+    scrollbar-gutter: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .detailBodySummary {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: calc(24px + var(--dsh-trajectory-bottom-clearance, 168px));
+  }
+
+  .detailBodySummary > .overview {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .detailBodySummary > .compactedSummary {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .overviewSections {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .overviewSection {
+    flex: none;
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .summaryScrollRegion {
+    --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  }
+
+  .tablePane {
+    -webkit-overflow-scrolling: touch;
   }
 
   .overview {
@@ -2034,6 +2080,7 @@
   .overviewPreview {
     max-height: 320px;
     overscroll-behavior: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .payload {

@@ -524,3 +524,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
   expect(h.viewport.preserving).toBe(false)
   expect(h.scroller.scrollTop).toBe(80)
 })
+
+it('notifies interact on pointerdown on an interactive element in transcript without active paging', () => {
+  const h = nestedFixture(200, 400)
+  const button = document.createElement('button')
+  button.type = 'button'
+  h.content.append(button)
+  const interact = vi.fn()
+  h.viewport.connect({ scroll: () => {}, scrollEnd: () => {}, resize: () => {}, interact })
+  button.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  expect(interact).toHaveBeenCalledTimes(1)
+})
+
+it('does not notify interact on pointerdown on to-bottom button', () => {
+  const h = nestedFixture(200, 400)
+  const toBottom = document.createElement('button')
+  toBottom.dataset.chatToBottom = ''
+  h.scroller.append(toBottom)
+  const interact = vi.fn()
+  h.viewport.connect({ scroll: () => {}, scrollEnd: () => {}, resize: () => {}, interact })
+  toBottom.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+  expect(interact).not.toHaveBeenCalled()
+})

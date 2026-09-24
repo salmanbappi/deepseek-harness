@@ -388,10 +388,11 @@ export class SettingsForms extends Service {
       if (path.length && !isVolatilePath(schema, path)) throw new Error(`Config field "${path.join('.')}" is not volatile`)
     }
     await this.ownerContext.configEditor.edit(entry, (raw, inherited) => {
-      const descriptor = this.describe().find(row => row.ns === ns)
-      if (descriptor === undefined) throw new Error(`Plugin entry "${ns}" is no longer configurable`)
-      if (expected !== undefined && descriptor.revision !== expected) {
-        throw new SettingsConflictError(ns as SettingsNamespace, expected, descriptor.revision)
+      const cached = this.revisions.get(entry.id)
+      const currentRevision = cached === undefined ? this.describe().find(row => row.ns === ns)?.revision : cached.revision
+      if (currentRevision === undefined) throw new Error(`Plugin entry "${ns}" is no longer configurable`)
+      if (expected !== undefined && currentRevision !== expected) {
+        throw new SettingsConflictError(ns as SettingsNamespace, expected, currentRevision)
       }
       const current = projectForm(form, raw) as Record<string, unknown>
       const base = projectForm(form, inherited) as Record<string, unknown>
@@ -419,6 +420,7 @@ export class SettingsForms extends Service {
       }
       return mergeLayers(strip(raw, form), next) as Record<string, unknown>
     })
+    this.scheduled = false
     this.describe()
   }
 

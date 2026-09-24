@@ -407,6 +407,7 @@ button.crumb:hover {
      gutter moves the input card sideways by the bar's width whenever the two
      differ ([decision](../../../../../../.agents/notes/archived/bug-fix/2026-08-04-composer-tab-gutter-reservation.md)). */
   scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 /* The bar also stops 2px short of the scroller's ends, matching its 2px edge

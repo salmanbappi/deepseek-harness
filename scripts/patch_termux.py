@@ -384,7 +384,7 @@ def patch_app_frame():
         if old_svg in c:
             c = c.replace(old_svg, new_svg)
             edits.append("modernize mobile toggle icon")
-    if "const isMobile" in c and "mobileBackdrop" in c and not edits:
+    if "const isMobile" in c and "mobileBackdrop" in c and "collapsed: isMobile ? false : sidebarCollapsed" in c and not edits:
         return  # already patched, nothing stale to migrate
 
     # 1. Define isMobile next to the narrow breakpoint (anchor survives across
@@ -400,11 +400,25 @@ def patch_app_frame():
             edits.append("isMobile definition")
 
     # 2. Sidebar slot: drawer always expanded, fixed 280px width on mobile.
-    old_slot = "{renderSlot('sidebar', {\n          collapsed: sidebarCollapsed,\n          width: cols.sidebar,\n        })}"
-    new_slot = "{renderSlot('sidebar', {\n          collapsed: isMobile ? false : sidebarCollapsed,\n          width: isMobile ? 280 : cols.sidebar,\n        })}"
-    if old_slot in c:
-        c = c.replace(old_slot, new_slot, 1)
-        edits.append("sidebar slot params")
+    if "collapsed: isMobile ? false : sidebarCollapsed" not in c:
+        old_slot_memo = """  const sidebar = useMemo(() => renderSlot('sidebar', {
+    collapsed: sidebarCollapsed,
+    width: cols.sidebar,
+  }), [renderSlot, sidebarCollapsed, cols.sidebar])"""
+        new_slot_memo = """  const sidebar = useMemo(() => renderSlot('sidebar', {
+    collapsed: isMobile ? false : sidebarCollapsed,
+    width: isMobile ? 280 : cols.sidebar,
+  }), [renderSlot, sidebarCollapsed, cols.sidebar, isMobile])"""
+
+        old_slot_jsx = "{renderSlot('sidebar', {\n          collapsed: sidebarCollapsed,\n          width: cols.sidebar,\n        })}"
+        new_slot_jsx = "{renderSlot('sidebar', {\n          collapsed: isMobile ? false : sidebarCollapsed,\n          width: isMobile ? 280 : cols.sidebar,\n        })}"
+
+        if old_slot_memo in c:
+            c = c.replace(old_slot_memo, new_slot_memo, 1)
+            edits.append("sidebar slot params (useMemo)")
+        elif old_slot_jsx in c:
+            c = c.replace(old_slot_jsx, new_slot_jsx, 1)
+            edits.append("sidebar slot params (jsx)")
 
     # 3. Backdrop + collapsed-state toggle button. The right panel closed on
     #    backdrop tap uses whichever close action upstream currently ships.
@@ -1087,9 +1101,10 @@ def patch_trajectory_mobile():
             changed = True
             applied.append("overviewPreview touch scroll")
 
-    # 4. Mobile details full-width overlay and z-index 20
-    if "z-index: 20;\n    top: 0;\n    right: 0;\n    bottom: 0;\n    left: 0;\n    width: 100% !important;" not in c:
-        old_details = """@media (max-width: 760px) {
+    # 4. Mobile details full-width overlay, touch scrolling, and visible scroll handles
+    if "--dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);" not in c or ".detailBodySummary > .overview" not in c:
+        old_details_variants = [
+            """@media (max-width: 760px) {
   .details {
     position: absolute;
     z-index: 5;
@@ -1101,8 +1116,8 @@ def patch_trajectory_mobile():
     border-left-color: var(--dsw-alias-border-l3);
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.14);
   }
-}"""
-        new_details = """@media (max-width: 760px) {
+}""",
+            """@media (max-width: 760px) {
   .details {
     position: absolute;
     z-index: 20;
@@ -1202,10 +1217,160 @@ def patch_trajectory_mobile():
     padding: 4px 12px 1px;
   }
 }"""
-        if old_details in c:
-            c = c.replace(old_details, new_details, 1)
-            changed = True
-            applied.append("mobile full-width details & z-index 20")
+        ]
+        new_details = """@media (max-width: 760px) {
+  .details {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    border-left: none;
+    box-shadow: none;
+    --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  }
+
+  .detailsResizeHandle {
+    display: none;
+  }
+
+  .detailsHeader {
+    height: 44px;
+    padding: 0 8px 0 12px;
+  }
+
+  .close {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    line-height: 20px;
+  }
+
+  .detailTabs {
+    height: 38px;
+    padding: 0 4px;
+  }
+
+  .detailTab {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .detailBody {
+    scrollbar-gutter: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .detailBodySummary {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(24px + var(--dsh-trajectory-bottom-clearance, 168px));
+  }
+
+  .detailBodySummary > .overview {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .detailBodySummary > .compactedSummary {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .overviewSections {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .overviewSection {
+    flex: none;
+    min-height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .summaryScrollRegion {
+    --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+  }
+
+  .tablePane {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .overview {
+    padding: 8px 0;
+  }
+
+  .overview > div {
+    grid-template-columns: 88px minmax(0, 1fr);
+    padding: 3px 12px;
+    gap: 8px;
+  }
+
+  .overviewHeading {
+    min-height: 30px;
+    padding: 4px 12px;
+  }
+
+  .overviewPreview {
+    max-height: 320px;
+    overscroll-behavior: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .payload {
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .resultBlocks {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .resultBlockText {
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .schemaIntro {
+    padding: 10px 12px 6px;
+  }
+
+  .schemaParametersTitle {
+    padding: 4px 12px 2px;
+  }
+
+  .markdownPayload {
+    padding: 12px;
+  }
+
+  .markdownPreview {
+    padding: 6px 12px 8px;
+  }
+
+  .usageHeading {
+    padding: 4px 12px 1px;
+  }
+}"""
+        for v in old_details_variants:
+            if v in c:
+                c = c.replace(v, new_details, 1)
+                changed = True
+                applied.append("mobile full-width details, touch scrolling & scroll handle")
+                break
 
     if changed:
         with open(css_path, "w", encoding="utf-8") as f:
@@ -1400,7 +1565,13 @@ def check_status():
     if os.path.exists(traj_path):
         with open(traj_path, "r", encoding="utf-8") as f:
             c = f.read()
-        traj_ok = "isolation: isolate" in c and "z-index: 20" in c and "white-space: normal" in c
+        traj_ok = (
+            "isolation: isolate" in c
+            and "z-index: 20" in c
+            and "white-space: normal" in c
+            and "--dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2)" in c
+            and ".detailBodySummary > .overview" in c
+        )
     print(f"[*] Mobile Trajectory Summary & View:  {'[PASS]' if traj_ok else '[FAIL]'}")
 
     print("==================================================")
@@ -1420,8 +1591,7 @@ def ensure_workspace_symlinks():
         if not os.path.exists(base):
             continue
         for root, subdirs, files in os.walk(base):
-            if "node_modules" in root:
-                continue
+            subdirs[:] = [d for d in subdirs if d not in ("node_modules", ".git", "dist", "lib")]
             if "package.json" in files:
                 pj = os.path.join(root, "package.json")
                 try:

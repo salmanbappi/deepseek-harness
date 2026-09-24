@@ -4,8 +4,8 @@ window.__ModuleLoader__.load({
 		var module = { exports: {} };
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
+		let react_jsx_runtime = require("react/jsx-runtime");
 		let _deepseek_ai_dsh_client_store = require("@deepseek-ai/dsh-client-store");
 		/** Viewport width below which the sidebar auto-collapses to the rail (deepsuite
 		* LG breakpoint); a manual toggle below it re-expands over the squeezed center
@@ -46,7 +46,7 @@ window.__ModuleLoader__.load({
 			};
 		}
 		//#endregion
-		//#region lib/types/client/DocumentTitle.js
+		//#region src/client/DocumentTitle.tsx
 		/** Browser title selection follows the active main panel without subscribing the frame. */
 		/**
 		* Project the selected durable session title into the browser title and
@@ -69,8 +69,8 @@ window.__ModuleLoader__.load({
 			return null;
 		}
 		//#endregion
-		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-layout/src/client/AppFrame.module.css.mjs
-		const css = ".pI_x6G_frame{background:var(--dsw-alias-bg-base);height:100%;transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out);grid-template-rows:100%;display:grid;position:relative;overflow:hidden}.pI_x6G_frame[data-dragging]{transition:none}[data-windows-titlebar] .pI_x6G_frame{--dsh-windows-content-radius:16px;box-sizing:border-box;padding-top:var(--dsh-windows-titlebar-height);background:var(--dsw-specific-sidebar-fill);grid-template-rows:minmax(0,1fr)}[data-windows-titlebar] .pI_x6G_centerCol{background:var(--dsw-alias-bg-base);border-radius:var(--dsh-windows-content-radius) 0 0 0;corner-shape:round}[data-windows-titlebar] .pI_x6G_frame:before{content:\"\";height:var(--dsh-windows-titlebar-height);background:var(--dsw-specific-sidebar-fill);-webkit-app-region:drag;position:absolute;inset:0 0 auto}[data-windows-titlebar] .pI_x6G_sidebarCol{border-right:none}[data-windows-titlebar] .pI_x6G_handle{top:var(--dsh-windows-titlebar-height)}@media (prefers-reduced-motion:reduce){.pI_x6G_frame{transition:none}}.pI_x6G_sidebarCol{background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);min-width:0;overflow:hidden}.pI_x6G_centerCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}[data-platform=darwin] .pI_x6G_frame{background:0 0}[data-platform=darwin] .pI_x6G_sidebarCol{background:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 60%, transparent);border-right:none}[data-platform=darwin] .pI_x6G_centerCol{background:var(--dsw-alias-bg-base);border-left:.5px solid var(--dsw-alias-border-l3)}[data-platform=darwin] [data-sidebar-collapsed] .pI_x6G_centerCol{border-left:none}.pI_x6G_handle{cursor:col-resize;z-index:11;touch-action:none;width:8px;transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out);margin-left:-4px;position:absolute;top:0;bottom:0}.pI_x6G_frame[data-dragging] .pI_x6G_handle,.pI_x6G_frame[data-rightbar-fullscreen],.pI_x6G_frame[data-rightbar-fullscreen] .pI_x6G_handle,.pI_x6G_frame[data-rightbar-instant],.pI_x6G_frame[data-rightbar-instant] .pI_x6G_handle{transition:none}@media (prefers-reduced-motion:reduce){.pI_x6G_handle{transition:none}}.pI_x6G_rightbarCol{min-width:0;position:relative;overflow:visible}.pI_x6G_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.pI_x6G_overlayLayer>*{pointer-events:auto}.pI_x6G_mobileBackdrop,.pI_x6G_mobileSidebarToggle{display:none}@media (width<=768px){.pI_x6G_frame{flex-direction:column;width:100%;height:100%;display:flex}.pI_x6G_centerCol{flex:100%;width:100%;min-width:0;height:100%;overflow:hidden}.pI_x6G_sidebarCol{z-index:100;width:min(300px,85vw);height:100%;box-shadow:var(--dsw-shadow-lv3,0 8px 30px #00000059);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);position:fixed;top:0;bottom:0;left:0;transform:translate(0)}.pI_x6G_frame[data-sidebar-collapsed] .pI_x6G_sidebarCol{pointer-events:none;transform:translate(-100%)}.pI_x6G_mobileBackdrop{z-index:95;-webkit-backdrop-filter:blur(2px);background:#00000073;animation:.2s pI_x6G_mobile-backdrop-fade;display:block;position:fixed;inset:0}.pI_x6G_mobileSidebarToggle{z-index:40;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);width:32px;height:32px;color:var(--dsw-alias-label-secondary);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;border-radius:8px;justify-content:center;align-items:center;padding:0;transition:background-color .15s,color .15s,transform .1s;display:flex;position:fixed;top:12px;left:10px;box-shadow:0 1px 3px #00000014}.pI_x6G_mobileSidebarToggle:active{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);transform:scale(.94)}.pI_x6G_frame[data-sidebar-collapsed] .pI_x6G_centerCol header{padding-left:50px!important}.pI_x6G_handle{display:none!important}}@keyframes pI_x6G_mobile-backdrop-fade{0%{opacity:0}to{opacity:1}}";
+		//#region \0dsh-css:/data/data/com.termux/files/home/deepseek-harness/packages/client/ui-layout/src/client/AppFrame.module.css.mjs
+		const css = ".qm3Ffq_frame{background:var(--dsw-alias-bg-base);grid-template-rows:100%;height:100%;display:grid;position:relative;overflow:hidden}.qm3Ffq_frame[data-animating]{transition:grid-template-columns var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.qm3Ffq_frame[data-dragging]{transition:none}[data-windows-titlebar] .qm3Ffq_frame{--dsh-windows-content-radius:16px;box-sizing:border-box;padding-top:var(--dsh-windows-titlebar-height);background:var(--dsw-specific-sidebar-fill);grid-template-rows:minmax(0,1fr)}[data-windows-titlebar] .qm3Ffq_centerCol{background:var(--dsw-alias-bg-base);border-radius:var(--dsh-windows-content-radius) 0 0 0;corner-shape:round}[data-windows-titlebar] .qm3Ffq_frame:before{content:\"\";height:var(--dsh-windows-titlebar-height);background:var(--dsw-specific-sidebar-fill);-webkit-app-region:drag;position:absolute;inset:0 0 auto}[data-windows-titlebar] .qm3Ffq_sidebarCol{border-right:none}[data-windows-titlebar] .qm3Ffq_handle{top:var(--dsh-windows-titlebar-height)}@media (prefers-reduced-motion:reduce){.qm3Ffq_frame[data-animating]{transition:none}}.qm3Ffq_sidebarCol{background:var(--dsw-specific-sidebar-fill);border-right:.5px solid var(--dsw-alias-border-l3);min-width:0;overflow:hidden}.qm3Ffq_centerCol{flex-direction:column;min-width:0;display:flex;overflow:hidden}[data-platform=darwin] .qm3Ffq_frame{background:0 0}html[data-platform=darwin]{--dsh-frame-top-clearance:48px}[data-platform=darwin] .qm3Ffq_sidebarCol{background:linear-gradient(to bottom, #7a9bf01a, #7a9bf000 35%, #8f89b800 68%, #8f89b817), color-mix(in srgb, color-mix(in srgb, var(--dsw-specific-sidebar-fill) 97%, #7a9bf0) 40%, transparent);border-right:none}[data-platform=darwin] [data-ds-dark-theme] .qm3Ffq_sidebarCol{background:linear-gradient(to bottom, #7a9bf014, #7a9bf000 35%, #8f89b800 68%, #8f89b812), color-mix(in srgb, var(--dsw-specific-sidebar-fill) 50%, transparent)}@media (prefers-reduced-transparency:reduce){[data-platform=darwin] .qm3Ffq_sidebarCol,[data-platform=darwin] [data-ds-dark-theme] .qm3Ffq_sidebarCol{background:color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent)}}[data-platform=darwin] .qm3Ffq_centerCol{background:var(--dsw-alias-bg-base);border-left:.5px solid var(--dsw-alias-border-l3)}[data-platform=darwin] .qm3Ffq_rightbarCol{background:var(--dsw-alias-bg-base)}[data-platform=darwin] [data-sidebar-collapsed] .qm3Ffq_centerCol{border-left:none}[data-platform=darwin] .qm3Ffq_frame[data-sidebar-collapsed]{--dsh-frame-leading-clearance:160px}[data-platform=darwin][data-fullscreen] .qm3Ffq_frame[data-sidebar-collapsed]{--dsh-frame-leading-clearance:84px}[data-platform=darwin][data-fullscreen] .qm3Ffq_leadingSeat{left:12px}.qm3Ffq_leadingBand{pointer-events:none;-webkit-app-region:drag;height:52px;position:absolute;top:0;left:0;right:0}.qm3Ffq_frame[data-panel-conversation]:has([data-conversation-tabs]) .qm3Ffq_leadingBand{height:76px}.qm3Ffq_leadingSeat{z-index:15;-webkit-app-region:no-drag;align-items:center;display:flex;position:absolute;top:11px;left:88px}.qm3Ffq_handle{cursor:col-resize;z-index:11;touch-action:none;width:8px;margin-left:-4px;position:absolute;top:0;bottom:0}.qm3Ffq_frame[data-animating] .qm3Ffq_handle{transition:left var(--ds-transition-duration-slow) var(--ds-ease-in-out)}.qm3Ffq_frame[data-dragging] .qm3Ffq_handle,.qm3Ffq_frame[data-rightbar-fullscreen],.qm3Ffq_frame[data-rightbar-fullscreen] .qm3Ffq_handle,.qm3Ffq_frame[data-rightbar-instant],.qm3Ffq_frame[data-rightbar-instant] .qm3Ffq_handle{transition:none}@media (prefers-reduced-motion:reduce){.qm3Ffq_frame[data-animating] .qm3Ffq_handle{transition:none}}.qm3Ffq_rightbarCol{min-width:0;position:relative;overflow:visible}.qm3Ffq_overlayLayer{z-index:20;pointer-events:none;position:absolute;inset:0}.qm3Ffq_overlayLayer>*{pointer-events:auto}.qm3Ffq_mobileBackdrop,.qm3Ffq_mobileSidebarToggle{display:none}@media (max-width:768px){.qm3Ffq_frame{flex-direction:column;width:100%;height:100%;display:flex}.qm3Ffq_centerCol{flex:100%;width:100%;min-width:0;height:100%;overflow:hidden}.qm3Ffq_sidebarCol{z-index:100;background:var(--dsw-specific-sidebar-fill,#18181b);width:min(300px,85vw);height:100%;box-shadow:var(--dsw-shadow-lv3,0 8px 30px #00000059);transition:transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);position:fixed;top:0;bottom:0;left:0;transform:translate(0);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}.qm3Ffq_sidebarCol>*{box-sizing:border-box!important;width:100%!important;height:100%!important}.qm3Ffq_frame[data-sidebar-collapsed] .qm3Ffq_sidebarCol{pointer-events:none;transform:translate(-100%)}.qm3Ffq_rightbarCol{position:fixed;inset:0;pointer-events:none;z-index:120}.qm3Ffq_rightbarCol>*{pointer-events:auto}.qm3Ffq_mobileBackdrop{z-index:95;-webkit-backdrop-filter:blur(2px);background:#00000073;animation:.2s qm3Ffq_mobile-backdrop-fade;display:block;position:fixed;inset:0;touch-action:none}.qm3Ffq_mobileSidebarToggle{z-index:40;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base);width:32px;height:32px;color:var(--dsw-alias-label-secondary);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;border-radius:8px;justify-content:center;align-items:center;padding:0;transition:background-color .15s,color .15s,transform .1s;display:flex;position:fixed;top:12px;left:10px;box-shadow:0 1px 3px #00000014}.qm3Ffq_mobileSidebarToggle:active{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);transform:scale(.94)}.qm3Ffq_frame[data-sidebar-collapsed] .qm3Ffq_centerCol header{padding-left:50px!important}.qm3Ffq_handle{display:none!important}}@keyframes qm3Ffq_mobile-backdrop-fade{0%{opacity:0}to{opacity:1}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-layout/AppFrame.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
 			const tag = document.createElement("style");
@@ -80,18 +80,20 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(tag);
 		}
 		var AppFrame_module_css_default = {
-			"centerCol": "pI_x6G_centerCol",
-			"frame": "pI_x6G_frame",
-			"handle": "pI_x6G_handle",
-			"mobile-backdrop-fade": "pI_x6G_mobile-backdrop-fade",
-			"mobileBackdrop": "pI_x6G_mobileBackdrop",
-			"mobileSidebarToggle": "pI_x6G_mobileSidebarToggle",
-			"overlayLayer": "pI_x6G_overlayLayer",
-			"rightbarCol": "pI_x6G_rightbarCol",
-			"sidebarCol": "pI_x6G_sidebarCol"
+			"centerCol": "qm3Ffq_centerCol",
+			"frame": "qm3Ffq_frame",
+			"handle": "qm3Ffq_handle",
+			"leadingBand": "qm3Ffq_leadingBand",
+			"leadingSeat": "qm3Ffq_leadingSeat",
+			"mobile-backdrop-fade": "qm3Ffq_mobile-backdrop-fade",
+			"mobileBackdrop": "qm3Ffq_mobileBackdrop",
+			"mobileSidebarToggle": "qm3Ffq_mobileSidebarToggle",
+			"overlayLayer": "qm3Ffq_overlayLayer",
+			"rightbarCol": "qm3Ffq_rightbarCol",
+			"sidebarCol": "qm3Ffq_sidebarCol"
 		};
 		//#endregion
-		//#region lib/types/client/AppFrame.js
+		//#region src/client/AppFrame.tsx
 		/**
 		* Three-column shell frame, registered into the built-in 'root' slot (the web
 		* shell renders only 'root'). Owns the grid tracks (sidebar | center |
@@ -110,7 +112,7 @@ window.__ModuleLoader__.load({
 		*/
 		/** Center column grid item (session-body building block). */
 		function CenterColumn(props) {
-			return (0, react_jsx_runtime.jsx)("div", {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				className: AppFrame_module_css_default.centerCol,
 				children: props.children
 			});
@@ -120,12 +122,29 @@ window.__ModuleLoader__.load({
 			return renderSlot("main", {}, { entryKey: usePanelInfo((info) => info.activePanelId) ?? "conversation" });
 		}
 		/**
+		* Marks the frame while the Conversation is selected — the deepened drag band
+		* (AppFrame.module.css) keys off the attribute. A DOM write from a child keeps
+		* the frame itself out of the panel subscription: selecting a panel must not
+		* re-render the columns.
+		*/
+		function ConversationMarker({ usePanelInfo, frameRef }) {
+			const conversationActive = usePanelInfo((info) => info.activePanelId === null);
+			(0, react.useLayoutEffect)(() => {
+				const frame = frameRef.current;
+				/* v8 ignore next -- the ref is attached by effect time: the marker renders inside the frame div. */
+				if (frame === null) return;
+				if (conversationActive) frame.setAttribute("data-panel-conversation", "");
+				else frame.removeAttribute("data-panel-conversation");
+			}, [conversationActive, frameRef]);
+			return null;
+		}
+		/**
 		* Right column grid item. Zero-width unless the occupant asked for a track; the
 		* occupant's panel is positioned against the column's right edge, which never
 		* moves, so it can hang over the centre when there is no track.
 		*/
 		function RightbarColumn(props) {
-			return (0, react_jsx_runtime.jsx)("div", {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				className: AppFrame_module_css_default.rightbarCol,
 				"data-rightbar-col": true,
 				children: props.children
@@ -193,7 +212,7 @@ window.__ModuleLoader__.load({
 			const onPointerCancel = (0, react.useCallback)((e) => {
 				if (capture.current?.id === e.pointerId) endDrag();
 			}, [endDrag]);
-			return (0, react_jsx_runtime.jsx)("div", {
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				className: AppFrame_module_css_default.handle,
 				style: { left: props.left },
 				"data-side": props.side,
@@ -217,7 +236,7 @@ window.__ModuleLoader__.load({
 				let raf = null;
 				let disposed = false;
 				const measure = () => {
-					const width = el.getBoundingClientRect().width;
+					const width = Math.round(el.getBoundingClientRect().width);
 					if (width > 0) actions.setViewportWidth(width);
 				};
 				measure();
@@ -240,7 +259,8 @@ window.__ModuleLoader__.load({
 			const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0;
 			const sidebarPreference = sidebarCollapsed ? 0 : layoutInfo.sidebar === 0 ? 280 : layoutInfo.sidebar;
 			const rightbarPreference = layoutInfo.rightbar ?? viewport * .45;
-			const collapsedWidth = document.documentElement.dataset.platform === "darwin" || document.documentElement.hasAttribute("data-windows-titlebar") ? 0 : 56;
+			const darwin = document.documentElement.dataset.platform === "darwin";
+			const collapsedWidth = darwin || document.documentElement.hasAttribute("data-windows-titlebar") ? 0 : 56;
 			const normal = computeColumns(viewport, !layoutInfo.rightbarShown && narrow ? 0 : sidebarPreference, rightbarPreference, collapsedWidth);
 			const cols = computeColumns(viewport, sidebarPreference, layoutInfo.rightbarTrack ? rightbarPreference : 0, collapsedWidth);
 			const colsRef = (0, react.useRef)(cols);
@@ -250,6 +270,36 @@ window.__ModuleLoader__.load({
 			const sidebarBase = (0, react.useRef)(0);
 			const rightbarBase = (0, react.useRef)(0);
 			const [dragging, setDragging] = (0, react.useState)(false);
+			const [animating, setAnimating] = (0, react.useState)(0);
+			const trackToggle = `${sidebarCollapsed}:${layoutInfo.rightbarTrack}`;
+			const previousToggle = (0, react.useRef)(trackToggle);
+			const previousViewport = (0, react.useRef)(viewport);
+			(0, react.useLayoutEffect)(() => {
+				const viewportChanged = previousViewport.current !== viewport;
+				previousViewport.current = viewport;
+				if (previousToggle.current === trackToggle) return;
+				previousToggle.current = trackToggle;
+				if (viewportChanged) return;
+				setAnimating((token) => token + 1);
+			}, [trackToggle, viewport]);
+			(0, react.useEffect)(() => {
+				if (animating === 0) return;
+				const frame = frameRef.current;
+				/* v8 ignore next -- the ref is always attached by effect time: the frame div renders unconditionally. */
+				if (frame === null) return;
+				const settle = () => {
+					setAnimating(0);
+				};
+				const onTransitionEnd = (event) => {
+					if (event.target === frame && event.propertyName === "grid-template-columns") settle();
+				};
+				frame.addEventListener("transitionend", onTransitionEnd);
+				const timer = setTimeout(settle, 600);
+				return () => {
+					frame.removeEventListener("transitionend", onTransitionEnd);
+					clearTimeout(timer);
+				};
+			}, [animating]);
 			const onDragEnd = (0, react.useCallback)(() => {
 				setDragging(false);
 			}, []);
@@ -268,38 +318,77 @@ window.__ModuleLoader__.load({
 				actions.setRightbar(rightbarBase.current - dx);
 			}, [actions]);
 			const productTitle = {}.DSH_CLIENT_TITLE ?? t("brand.localBuild");
+			const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, 300, viewport * RIGHTBAR_MAX_RATIO);
 			const sidebar = (0, react.useMemo)(() => renderSlot("sidebar", {
-				collapsed: sidebarCollapsed,
-				width: cols.sidebar
+				collapsed: isMobile ? false : sidebarCollapsed,
+				width: isMobile ? 280 : cols.sidebar
 			}), [
 				renderSlot,
 				sidebarCollapsed,
-				cols.sidebar
+				cols.sidebar,
+				isMobile
 			]);
-			const main = (0, react.useMemo)(() => (0, react_jsx_runtime.jsx)(MainPanel, {
+			const main = (0, react.useMemo)(() => /* @__PURE__ */ (0, react_jsx_runtime.jsx)(MainPanel, {
 				usePanelInfo,
 				renderSlot
 			}), [usePanelInfo, renderSlot]);
 			const overlays = (0, react.useMemo)(() => renderSlot("shell.overlay", {}), [renderSlot]);
-			return (0, react_jsx_runtime.jsxs)("div", {
+			const leading = (0, react.useMemo)(() => renderSlot("shell.leading", {}), [renderSlot]);
+			const leadingMounted = darwin && sidebarCollapsed;
+			const onSidebarColClick = (0, react.useCallback)((e) => {
+				if (!isMobile || sidebarCollapsed) return;
+				const target = e.target;
+				if (!target || typeof target.closest !== "function") return;
+				if (target.closest("input, textarea, select")) return;
+				if (target.closest('button[class*="toggle"]')) return;
+				const sessionRow = target.closest('[data-row-key^="session:"]');
+				if (sessionRow) {
+					actions.toggleSidebar();
+					return;
+				}
+				const isNewSession = target.closest('button[class*="newSession"]') ||
+					target.closest('button[aria-label*="session" i]') ||
+					target.closest('button[class*="brand"]');
+				if (isNewSession) {
+					actions.toggleSidebar();
+					return;
+				}
+				const isPanel = target.closest('button[class*="panelRow"]') ||
+					target.closest('button[data-panel-id]') ||
+					target.closest('nav[aria-label*="panel" i] button');
+				if (isPanel) {
+					actions.toggleSidebar();
+					return;
+				}
+			}, [isMobile, sidebarCollapsed, actions]);
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				ref: frameRef,
 				className: AppFrame_module_css_default.frame,
 				style: {
 					...document.documentElement.hasAttribute("data-windows-titlebar") ? { "--dsh-windows-sidebar-width": `${cols.sidebar}px` } : {},
-					gridTemplateColumns: `${cols.sidebar}px minmax(0, 1fr) ${cols.rightbar}px`
+					gridTemplateColumns: `${cols.sidebar}px minmax(${cols.rightbar === 0 ? 0 : 400}px, 1fr) minmax(0px, ${rightbarMax}px)`
 				},
 				"data-sidebar-collapsed": sidebarCollapsed || void 0,
 				"data-rightbar-collapsed": cols.rightbar === 0 || void 0,
 				"data-rightbar-fullscreen": layoutInfo.rightbarFullscreen || void 0,
 				"data-rightbar-instant": layoutInfo.rightbarInstant || void 0,
 				"data-dragging": dragging || void 0,
+				"data-animating": animating > 0 || void 0,
 				children: [
-					(0, react_jsx_runtime.jsx)(DocumentTitle, {
+					darwin && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: AppFrame_module_css_default.leadingBand,
+						"data-shell-leading-band": true
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(ConversationMarker, {
+						usePanelInfo,
+						frameRef
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)(DocumentTitle, {
 						productTitle,
 						useSessions,
 						usePanelInfo
 					}),
-					isMobile && (!sidebarCollapsed || cols.rightbar > 0) && (0, react_jsx_runtime.jsx)("div", {
+					isMobile && (!sidebarCollapsed || cols.rightbar > 0) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: AppFrame_module_css_default.mobileBackdrop,
 						onClick: () => {
 							if (!sidebarCollapsed) actions.toggleSidebar();
@@ -307,14 +396,14 @@ window.__ModuleLoader__.load({
 						},
 						"aria-hidden": "true"
 					}),
-					isMobile && sidebarCollapsed && (0, react_jsx_runtime.jsx)("button", {
+					isMobile && sidebarCollapsed && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
 						type: "button",
 						className: AppFrame_module_css_default.mobileSidebarToggle,
 						"aria-label": "Toggle sidebar",
 						onClick: () => {
 							actions.toggleSidebar();
 						},
-						children: (0, react_jsx_runtime.jsxs)("svg", {
+						children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("svg", {
 							width: "16",
 							height: "16",
 							viewBox: "0 0 16 16",
@@ -323,19 +412,19 @@ window.__ModuleLoader__.load({
 							strokeWidth: "1.7",
 							strokeLinecap: "round",
 							children: [
-								(0, react_jsx_runtime.jsx)("line", {
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("line", {
 									x1: "2.5",
 									y1: "4",
 									x2: "13.5",
 									y2: "4"
 								}),
-								(0, react_jsx_runtime.jsx)("line", {
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("line", {
 									x1: "2.5",
 									y1: "8",
 									x2: "13.5",
 									y2: "8"
 								}),
-								(0, react_jsx_runtime.jsx)("line", {
+								/* @__PURE__ */ (0, react_jsx_runtime.jsx)("line", {
 									x1: "2.5",
 									y1: "12",
 									x2: "13.5",
@@ -344,28 +433,34 @@ window.__ModuleLoader__.load({
 							]
 						})
 					}),
-					(0, react_jsx_runtime.jsx)("div", {
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: AppFrame_module_css_default.sidebarCol,
+						onClick: onSidebarColClick,
 						children: sidebar
 					}),
-					(0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsx)(CenterColumn, { children: main }), (0, react_jsx_runtime.jsx)(RightbarColumn, { children: renderSlot("rightbar", {
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)(CenterColumn, { children: main }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)(RightbarColumn, { children: renderSlot("rightbar", {
 						width: normal.rightbar,
 						viewportWidth: viewport,
 						canShow: normal.rightbar > 0
 					}) })] }),
-					(0, react_jsx_runtime.jsx)("div", {
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 						className: AppFrame_module_css_default.overlayLayer,
 						"data-shell-overlay": true,
 						children: overlays
 					}),
-					!sidebarCollapsed && !isMobile && (0, react_jsx_runtime.jsx)(DragHandle, {
+					leadingMounted && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: AppFrame_module_css_default.leadingSeat,
+						"data-shell-leading": true,
+						children: leading
+					}),
+					!sidebarCollapsed && !isMobile && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
 						side: "sidebar",
 						left: cols.sidebar,
 						onStart: onSidebarStart,
 						onDrag: onSidebarDrag,
 						onEnd: onDragEnd
 					}),
-					layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (0, react_jsx_runtime.jsx)(DragHandle, {
+					layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)(DragHandle, {
 						side: "rightbar",
 						left: viewport - normal.rightbar,
 						onStart: onRightbarStart,
@@ -376,7 +471,7 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region lib/types/client/stores.js
+		//#region src/client/stores.ts
 		/**
 		* Root-owned frame measurement, panel preferences, and presentation reports.
 		* The registration supplies a fresh store and binds its actions to ctx.layout.
@@ -449,7 +544,7 @@ window.__ModuleLoader__.load({
 			});
 		}
 		//#endregion
-		//#region lib/types/client/service.js
+		//#region src/client/service.ts
 		/** Cross-plugin panel-action face (ctx.layout). */
 		var LayoutController = class {
 			panels;
@@ -493,7 +588,7 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region lib/types/client/theme-presenter.js
+		//#region src/client/theme-presenter.ts
 		/** Body attribute selecting the dark base palette in the token stylesheets. */
 		const DARK_ATTRIBUTE = "data-ds-dark-theme";
 		/**
@@ -559,7 +654,7 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region lib/types/client/index.js
+		//#region src/client/index.ts
 		/** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 		const inject = [
 			"slots",
@@ -568,7 +663,7 @@ window.__ModuleLoader__.load({
 		];
 		/**
 		* Client plugin body: provide ctx.layout, then one register() call — AppFrame
-		* into 'root' with the four child-slot declarations, the layout store seat,
+		* into 'root' with the five child-slot declarations, the layout store seat,
 		* and the shared root instance supplying commands and the panel-info source.
 		* @param ctx - client root context.
 		*/
@@ -607,6 +702,10 @@ window.__ModuleLoader__.load({
 						},
 						"shell.overlay": {
 							kind: "list",
+							scope: "root"
+						},
+						"shell.leading": {
+							kind: "single",
 							scope: "root"
 						}
 					},

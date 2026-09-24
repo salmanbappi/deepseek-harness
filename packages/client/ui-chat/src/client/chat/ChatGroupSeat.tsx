@@ -119,7 +119,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
   const activity = data.closed ? data.summary.counts[0]?.kind ?? 'thinking' : live.activity
   return (
     <button type="button" className={css.title} aria-expanded={open} aria-controls={bodyId}
-      data-process-activity={activity} onClick={(event) => { event.currentTarget.focus(); toggle() }}>
+      data-process-activity={activity} onClick={() => { toggle() }}>
       <span className={css.leading} aria-hidden="true">
         <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
         <span className={css.chevron} data-step-process-chevron>

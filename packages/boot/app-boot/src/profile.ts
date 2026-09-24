@@ -636,6 +636,8 @@ export function resolveBundleDir(
  * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
  * @returns the successfully loaded bundle layers and optional user patch layer.
  */
+const bundleLayerCache = new Map<string, ProfileLayer>()
+
 export function loadProfileDirectory(
   binName: string,
   dir: string,
@@ -648,14 +650,19 @@ export function loadProfileDirectory(
   for (const packageName of bundles) {
     try {
       const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
-      const bundleManifest = readProfileManifest(binName, packageDir)
-      const bundle = bundleManifest.dsh?.bundle
-      if (bundle === undefined) {
-        throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
+      let cachedLayer = bundleLayerCache.get(packageDir)
+      if (cachedLayer === undefined) {
+        const bundleManifest = readProfileManifest(binName, packageDir)
+        const bundle = bundleManifest.dsh?.bundle
+        if (bundle === undefined) {
+          throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
+        }
+        const patchPaths = bundlePatchPaths(packageDir, bundle)
+        const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
+        cachedLayer = { packageName, packageDir, patchPaths, patches }
+        bundleLayerCache.set(packageDir, cachedLayer)
       }
-      const patchPaths = bundlePatchPaths(packageDir, bundle)
-      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
-      layers.push({ packageName, packageDir, patchPaths, patches })
+      layers.push(cachedLayer)
     } catch (error) {
       process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${String(error)}\n`)
     }

@@ -49,12 +49,23 @@ export class ConfigEditor extends Service {
   configuration(): Array<{ entry: Entry; inherited: Record<string, unknown>; override: Record<string, unknown> }> {
     const profile = this.ownerContext.profileContext
     const loaded = loadProfileDirectory('dsh', profile.dir, profile.installAnchor)
-    return this.entries().map(entry => ({
-      entry, inherited: this.inherited(entry, loaded),
-      override: structuredClone((loaded.patches.findLast(
-        row => row.id === entry.options.id && row.config !== undefined,
-      )?.config ?? {}) as Record<string, unknown>),
-    }))
+    const baseLayersPatches = loaded.layers.map(layer => layer.patches)
+    const baseComposed = flatten(composeEntries([...baseLayersPatches, loaded.patches]))
+    const baseMap = new Map<string, Record<string, unknown>>()
+    for (const row of baseComposed) {
+      if (row.id) baseMap.set(row.id, (row.config ?? {}) as Record<string, unknown>)
+    }
+    return this.entries().map(entry => {
+      const hasOverride = loaded.patches.some(row => row.id === entry.options.id && row.config !== undefined && row.insert === undefined)
+      const inherited = hasOverride ? this.inherited(entry, loaded) : structuredClone(baseMap.get(entry.options.id) ?? {})
+      return {
+        entry,
+        inherited,
+        override: structuredClone((loaded.patches.findLast(
+          row => row.id === entry.options.id && row.config !== undefined,
+        )?.config ?? {}) as Record<string, unknown>),
+      }
+    })
   }
 
   private inherited(entry: Entry, loaded: ReturnType<typeof loadProfileDirectory>): Record<string, unknown> {
@@ -81,7 +92,11 @@ export class ConfigEditor extends Service {
       await withFileLock(join(this.ownerContext.profileContext.dir, 'package.json'), async () => {
         if (!this.entries().includes(entry) || entry.fiber === undefined) throw new Error('Configuration entry is no longer available')
         const beforePatches = readProfilePatches('dsh', this.ownerContext.profileContext)
-        await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
+        const includeEntry = [...this.ownerContext.loader.entries()].find(e => e.parent.tree.ctx.fiber.entry?.id === 'include' || e.id === 'include')
+        const currentPatches = (includeEntry?.options.config as { patches?: PatchOptions[] } | undefined)?.patches
+        if (!isDeepStrictEqual(beforePatches, currentPatches)) {
+          await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
+        }
         if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
         const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
         const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))

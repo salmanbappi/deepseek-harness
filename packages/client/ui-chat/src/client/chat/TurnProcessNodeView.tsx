@@ -56,7 +56,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
         disabled={!canCollapse}
         aria-expanded={turnProcess.hasContent ? open : undefined}
         onClick={(event) => {
-          event.currentTarget.focus()
+          event.currentTarget.focus({ preventScroll: true })
           turnProcess.setOpen(!open)
         }}
       >

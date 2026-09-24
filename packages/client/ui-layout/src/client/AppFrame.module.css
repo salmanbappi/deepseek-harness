@@ -323,9 +323,16 @@
     width: min(300px, 85vw);
     height: 100%;
     z-index: 100;
+    background: var(--dsw-specific-sidebar-fill, #18181b);
     box-shadow: var(--dsw-shadow-lv3, 0 8px 30px rgba(0, 0, 0, 0.35));
     transform: translateX(0);
     transition: transform var(--ds-transition-duration-slow) var(--ds-ease-in-out);
+  }
+
+  .sidebarCol > * {
+    width: 100% !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .frame[data-sidebar-collapsed] .sidebarCol {
@@ -333,12 +340,17 @@
     pointer-events: none;
   }
 
-  /* NOTE: the right column gets NO drawer styles on phones. 0.1.5 handles
-     narrow viewports natively — SidebarRight auto-fullscreens below 768px
-     (fixed, full-width, with its own collapse chrome). Forcing drawer
-     geometry here broke it: data-rightbar-collapsed means "no grid track"
-     (always true on phones — the concession math never fits), and an
-     ancestor transform relocates the panel's fixed subtree off-screen. */
+  /* On phones, the right column spans the viewport so fullscreen panels can cover the screen */
+  .rightbarCol {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 120;
+  }
+
+  .rightbarCol > * {
+    pointer-events: auto;
+  }
 
   .mobileBackdrop {
     display: block;
@@ -349,6 +361,7 @@
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
     animation: mobile-backdrop-fade 200ms ease;
+    touch-action: none;
   }
 
   .mobileSidebarToggle {

@@ -156,7 +156,7 @@ export function AppFrame({
     let raf: number | null = null
     let disposed = false
     const measure = () => {
-      const width = el.getBoundingClientRect().width
+      const width = Math.round(el.getBoundingClientRect().width)
       if (width > 0) actions.setViewportWidth(width)
     }
     measure()
@@ -259,9 +259,9 @@ export function AppFrame({
   // the discrete decisions (track present, collapse state) and the drag base.
   const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)
   const sidebar = useMemo(() => renderSlot('sidebar', {
-    collapsed: sidebarCollapsed,
-    width: cols.sidebar,
-  }), [renderSlot, sidebarCollapsed, cols.sidebar])
+    collapsed: isMobile ? false : sidebarCollapsed,
+    width: isMobile ? 280 : cols.sidebar,
+  }), [renderSlot, sidebarCollapsed, cols.sidebar, isMobile])
   const main = useMemo(() => (
     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
   ), [usePanelInfo, renderSlot])
@@ -273,6 +273,37 @@ export function AppFrame({
   // --dsh-frame-leading-clearance under the same collapsed condition.
   const leading = useMemo(() => renderSlot('shell.leading', {}), [renderSlot])
   const leadingMounted = darwin && sidebarCollapsed
+
+  // Mobile sidebar click delegation: close sidebar when tapping an active/other session, new session, or panel
+  const onSidebarColClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMobile || sidebarCollapsed) return
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    if (target.closest('input, textarea, select')) return
+    if (target.closest('button[class*="toggle"]')) return
+
+    const sessionRow = target.closest('[data-row-key^="session:"]')
+    if (sessionRow) {
+      actions.toggleSidebar()
+      return
+    }
+
+    const isNewSession = target.closest('button[class*="newSession"]') ||
+      target.closest('button[aria-label*="session" i]') ||
+      target.closest('button[class*="brand"]')
+    if (isNewSession) {
+      actions.toggleSidebar()
+      return
+    }
+
+    const isPanel = target.closest('button[class*="panelRow"]') ||
+      target.closest('button[data-panel-id]') ||
+      target.closest('nav[aria-label*="panel" i] button')
+    if (isPanel) {
+      actions.toggleSidebar()
+      return
+    }
+  }, [isMobile, sidebarCollapsed, actions])
 
   return (
     <div
@@ -329,7 +360,7 @@ export function AppFrame({
         </button>
       )}
 
-      <div className={css.sidebarCol}>
+      <div className={css.sidebarCol} onClick={onSidebarColClick}>
         {sidebar}
       </div>
       <>

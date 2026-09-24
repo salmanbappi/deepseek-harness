@@ -77,6 +77,7 @@
   overflow-y: auto;
   overscroll-behavior-y: auto;
   scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 .label {

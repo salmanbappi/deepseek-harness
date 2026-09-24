@@ -126,7 +126,11 @@ export function ModelSelect(
       setOpen(false)
     }
     document.addEventListener('pointerdown', closeOutside)
-    return () => { document.removeEventListener('pointerdown', closeOutside) }
+    document.addEventListener('mousedown', closeOutside)
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside)
+      document.removeEventListener('mousedown', closeOutside)
+    }
   }, [open])
 
   // A pane switch unmounts the row that had focus, which drops focus onto the

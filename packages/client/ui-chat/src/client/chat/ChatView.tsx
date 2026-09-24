@@ -262,6 +262,7 @@ export function ChatView({
             <button
               type="button"
               className={css.toBottom}
+              data-chat-to-bottom=""
               aria-label={t('chat.toBottom')}
               onClick={scroll.returnToBottom}
             >

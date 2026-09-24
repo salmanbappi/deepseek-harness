@@ -91,7 +91,10 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
         reading.onScrollEnd()
         navigation.readerSettled()
       },
-      interact: () => { navigation.cancel() },
+      interact: () => {
+        navigation.cancel()
+        reading.pauseFollowing()
+      },
       resize: () => {
         if (!navigation.contentCommitted()) reading.onResize()
         navigation.reconcile()

@@ -143,7 +143,7 @@ export class ChatViewport {
     if (metrics === null) return null
     return {
       metrics,
-      movedByReader: Math.abs(metrics.top - Math.min(this.observation.top, metrics.floor)) > 0.5,
+      movedByReader: Math.abs(metrics.top - Math.min(this.observation.top, metrics.floor)) > 1.5,
     }
   }
 
@@ -416,7 +416,7 @@ export class ChatViewport {
 
   private readonly onScroll = (event: Event): void => {
     if (this.elements === null || event.target !== this.elements.scroller) return
-    if (this.observation.landing !== null && this.elements.scroller.scrollTop === this.observation.top) return
+    if (Math.abs(this.elements.scroller.scrollTop - this.observation.top) <= 1.5) return
     this.invalidate()
     if (this.paging !== null) {
       this.events?.resize()
@@ -433,11 +433,21 @@ export class ChatViewport {
 
   private readonly onIntent = (event: Event): void => {
     if (event.type === 'keydown' || event.type === 'pointerdown') {
-      if (event.target instanceof Element && event.target.closest('[data-composer-seat]') !== null) return
-      if (event.type === 'keydown' && (!(event instanceof KeyboardEvent) || !SCROLL_KEYS.has(event.key))) return
+      if (event.target instanceof Element && (
+        event.target.closest('[data-composer-seat]') !== null
+        || event.target.closest('[data-chat-to-bottom]') !== null
+      )) return
+      if (event.type === 'keydown' && (!(event instanceof KeyboardEvent) || !SCROLL_KEYS.has(event.key))) {
+        if (event.target instanceof Element && event.target.closest('button, [role="button"], a') !== null) {
+          // Explicit user activation of interactive controls in the transcript.
+        } else {
+          return
+        }
+      }
     }
-    if (this.paging === null) return
-    this.stopPreserving()
+    if (this.paging !== null) {
+      this.stopPreserving()
+    }
     this.events?.interact()
   }
 }
