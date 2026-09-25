@@ -54,7 +54,7 @@
   overflow: auto;
   overflow-anchor: none;
   border: 0.5px solid var(--dsw-alias-border-l1);
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-markdown-code-block);
   color: var(--dsw-alias-label-primary);
   font: var(--dsw-font-markdown-code-block-small);

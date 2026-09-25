@@ -22,11 +22,10 @@ export interface DeepSeekFilePolicy {
 /** Connection facts needed by file operations. */
 export interface DeepSeekFileConnection {
   baseURL: string
-  apiKey: string
-  /** Use the DSH account header; omitted for ordinary API keys. */
-  accountCredential?: boolean
+  /** Provider-resolved authentication headers for this endpoint. */
+  headers: Readonly<Record<string, string>>
   /** Deployment headers sent on every file request; the connection options carry the same map. */
-  headers?: Readonly<Record<string, string>>
+  deploymentHeaders?: Readonly<Record<string, string>>
 }
 
 /** Result of one file-id resolution. */
@@ -52,7 +51,7 @@ interface SharedUpload {
 function fileScope(connection: DeepSeekFileConnection) {
   return deepSeekFileScope(
     messagesApiRoot(connection.baseURL),
-    connection.apiKey,
+    JSON.stringify(Object.entries(connection.headers).sort(([left], [right]) => left.localeCompare(right))),
   )
 }
 
@@ -139,9 +138,8 @@ export class DeepSeekFileStore {
   private client(connection: DeepSeekFileConnection): DeepSeekFilesClient {
     return new DeepSeekFilesClient({
       baseURL: connection.baseURL,
-      apiKey: connection.apiKey,
-      ...connection.accountCredential === undefined ? {} : { accountCredential: connection.accountCredential },
-      ...connection.headers === undefined ? {} : { headers: connection.headers },
+      headers: connection.headers,
+      ...connection.deploymentHeaders === undefined ? {} : { deploymentHeaders: connection.deploymentHeaders },
       ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
     })
   }
