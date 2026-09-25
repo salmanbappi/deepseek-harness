@@ -215,8 +215,8 @@ describe('DeepSeekFilesClient', () => {
     }) as typeof fetch
     const client = new DeepSeekFilesClient({
       baseURL: 'https://api.deepseek.com',
-      apiKey: 'key',
-      headers: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
+      headers: { 'x-api-key': 'key' },
+      deploymentHeaders: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
       fetch: fetchImpl,
     })
 

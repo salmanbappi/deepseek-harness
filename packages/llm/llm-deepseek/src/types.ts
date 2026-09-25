@@ -57,13 +57,6 @@ export interface DeepSeekConnectionOptions {
    * content type, accept, and harness identity headers stay harness-owned.
    */
   headers?: Readonly<Record<string, string>>
-  /**
-   * Credential reference of this same resolution, resolved per request.
-   * Travelling with the endpoint is the point: a request can never pair one
-   * generation's URL with another generation's secret. Configuration carries
-   * only this name — a literal key is not a configuration value.
-   */
-  apiKeyEnv: CredentialRef
   /** Request defaults applied to every call (thinking mode, effort). */
   defaults: RequestDefaults
   /** Default per-request output cap; explicit request values win. */
