@@ -26,10 +26,10 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index f4986626ef..9a2c3b363b 100644
+index 81a370d4c4..fa62b2b57b 100644
 --- a/package.json
 +++ b/package.json
-@@ -195,7 +195,7 @@
+@@ -194,7 +194,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -38,7 +38,7 @@ index f4986626ef..9a2c3b363b 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -203,6 +203,9 @@
+@@ -202,6 +202,9 @@
      "dev:web": "tsx scripts/dev-web.ts --poll",
      "postinstall": "node scripts/install-lefthook.mjs"
    },
@@ -46,28 +46,8 @@ index f4986626ef..9a2c3b363b 100644
 +    "@img/sharp-wasm32": "^0.35.4"
 +  },
    "devDependencies": {
-     "@deepseek-ai/dsh-agent": "workspace:^",
-     "@deepseek-ai/dsh-browser-use": "workspace:^",
-diff --git a/packages/api/session-controller/src/commands.ts b/packages/api/session-controller/src/commands.ts
-index 03c697734b..cc9aad6b8a 100644
---- a/packages/api/session-controller/src/commands.ts
-+++ b/packages/api/session-controller/src/commands.ts
-@@ -166,13 +166,11 @@ export class SessionCommandController {
-             : { reasoningEffort: resolved.reasoningEffort }),
-         }
-         this.agents.selectForNextRequest(agent, selected)
--        try {
--          await this.ctx.agentDefaultModel.saveSelection(selected)
--        } catch (error) {
-+        void this.ctx.agentDefaultModel.saveSelection(selected).catch((error) => {
-           this.ctx.logger.warn(
-             `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
-           )
--        }
-+        })
-         return { selected: { ...selected } }
-       } catch (error) {
-         if (remoteErrorOf(error) !== undefined) throw error
+     "@deepseek-ai/dsh-agent": "workspace:*",
+     "@deepseek-ai/dsh-browser-use": "workspace:*",
 diff --git a/packages/attachment/attachment-local/src/store.ts b/packages/attachment/attachment-local/src/store.ts
 index 7fab679e34..77e14abcb0 100644
 --- a/packages/attachment/attachment-local/src/store.ts
@@ -203,10 +183,10 @@ index 82c2b9f3ba..3ef3919554 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
-index 305e74aaff..c7d7f58342 100644
+index da580c762e..4f71410e7d 100644
 --- a/packages/boot/app-boot/src/profile.ts
 +++ b/packages/boot/app-boot/src/profile.ts
-@@ -636,6 +636,8 @@ export function resolveBundleDir(
+@@ -651,6 +651,8 @@ export function resolveBundleDir(
   * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
   * @returns the successfully loaded bundle layers and optional user patch layer.
   */
@@ -215,7 +195,7 @@ index 305e74aaff..c7d7f58342 100644
  export function loadProfileDirectory(
    binName: string,
    dir: string,
-@@ -648,14 +650,19 @@ export function loadProfileDirectory(
+@@ -665,17 +667,22 @@ export function loadProfileDirectory(
    for (const packageName of bundles) {
      try {
        const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
@@ -230,17 +210,23 @@ index 305e74aaff..c7d7f58342 100644
 +        if (bundle === undefined) {
 +          throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
 +        }
++        // A bundle is not a plugin row, so row admission never reads its own peers.
++        const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
++        if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
 +        const patchPaths = bundlePatchPaths(packageDir, bundle)
 +        const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
 +        cachedLayer = { packageName, packageDir, patchPaths, patches }
 +        bundleLayerCache.set(packageDir, cachedLayer)
        }
+-      // A bundle is not a plugin row, so row admission never reads its own peers.
+-      const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
+-      if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
 -      const patchPaths = bundlePatchPaths(packageDir, bundle)
 -      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
 -      layers.push({ packageName, packageDir, patchPaths, patches })
 +      layers.push(cachedLayer)
      } catch (error) {
-       process.stderr.write(`${binName}: skipping profile bundle ${JSON.stringify(packageName)}: ${String(error)}\n`)
+       skippedBundles.push({ packageName, reason: String(error) })
      }
 diff --git a/packages/boot/config-editor/src/index.ts b/packages/boot/config-editor/src/index.ts
 index 8caad69562..db52889182 100644
@@ -289,6 +275,21 @@ index 8caad69562..db52889182 100644
          if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
          const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
          const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
+diff --git a/packages/client/AGENTS.md b/packages/client/AGENTS.md
+index 605a9fcde3..1a729d3fa5 100644
+--- a/packages/client/AGENTS.md
++++ b/packages/client/AGENTS.md
+@@ -110,9 +110,7 @@ One UI feature = one plugin package (`src/client/` browser half). A multi-domain
+ 
+ ## Styling and localization
+ 
+-[docs/web-styling.md](../../docs/web-styling.md) is authoritative. Shared `--dsw-*` tokens and global sheets live in `ui-theme/src/styles/`; feature components consume semantic aliases through CSS Modules and `clsx`, with no literal colors, component library, or Tailwind. Code comments are English. Design judgment beyond those rules — feedback surfaces, loading states, overlay safety, platform window adaptation — follows [dsh-client-ui-ux](../../.agents/skills/dsh-client-ui-ux/SKILL.md).
+-
+-Menus use `Menu` or `MenuSurface`, including custom listboxes, except the explicitly listed schedule containers. Preserve the shared transparency and blur ([rules](../../docs/web-styling.md#component-rules)).
++[docs/web-styling.md](../../docs/web-styling.md) is authoritative. Shared `--dsw-*` tokens and global sheets live in `ui-theme/src/styles/`; feature components consume semantic aliases through CSS Modules and `clsx`, with no literal colors, component library, or Tailwind. Code comments are English.
+ 
+ Every product-visible string—including text, accessibility names, tooltips, placeholders, status/unit formatters, and primitive chrome—lives in a typed locale dictionary and reaches components through the standard `t` seat or an already-localized prop. Cordis-free primitives require complete label props and own no fallback copy. Keep user/model/wire data and code tokens verbatim; internal matching uses discriminants or stable ids, never localized text. `pnpm run verify-client-ui-i18n` enforces source ownership ([decision](../../.agents/notes/implemented/architecture/2026-08-23-locale-owned-client-ui-copy.md)).
+ 
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
 index 5691180d96..15447357dc 100644
 --- a/packages/client/connection/src/browser-auth.ts
@@ -332,7 +333,7 @@ index 5691180d96..15447357dc 100644
      if (authority === undefined || rawCookie === undefined) return false
      const value = cookieValue(rawCookie, cookieName(authority))
 diff --git a/packages/client/locale/src/client/LanguageRow.module.css b/packages/client/locale/src/client/LanguageRow.module.css
-index 3003c782b9..5291ea3342 100644
+index af02724b4f..72ffdc81cc 100644
 --- a/packages/client/locale/src/client/LanguageRow.module.css
 +++ b/packages/client/locale/src/client/LanguageRow.module.css
 @@ -49,3 +49,13 @@
@@ -362,10 +363,10 @@ index 56687cd84e..359de9b7d8 100644
  
  .label {
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-index d56d652db8..c61a5d1bd2 100644
+index e09a0d9504..0c388d5b32 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-@@ -119,7 +119,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
+@@ -113,7 +113,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
    const activity = data.closed ? data.summary.counts[0]?.kind ?? 'thinking' : live.activity
    return (
      <button type="button" className={css.title} aria-expanded={open} aria-controls={bodyId}
@@ -375,19 +376,105 @@ index d56d652db8..c61a5d1bd2 100644
          <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
          <span className={css.chevron} data-step-process-chevron>
 diff --git a/packages/client/ui-chat/src/client/chat/ChatView.tsx b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-index 69f2d58286..26c55329a0 100644
+index 0514068aed..9ab1f16bc5 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-@@ -262,6 +262,7 @@ export function ChatView({
-             <button
-               type="button"
-               className={css.toBottom}
+@@ -219,6 +219,85 @@ export function ChatView({
+   })
+ 
+   return (
++<<<<<<< HEAD
++    <div className={css.root} data-chat-following-tail={scroll.followingTail ? '' : undefined}>
++      <div ref={scroll.listRef} className={css.scroll}>
++        {scroll.initialized && (
++          <TurnNavigator
++            items={railItems}
++            activeTurn={scroll.activeTurn}
++            busyTurn={scroll.busyTurn}
++            onNavigate={scroll.navigateToTurn}
++            t={t}
++          />
++        )}
++        <div ref={scroll.columnRef} className={css.column} data-chat-flow="">
++          {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
++          {openState === 'error' && openError !== null && (
++            <div className={css.openError}>
++              {t('chat.loadError', { message: openError.message, code: openError.code })}
++            </div>
++          )}
++          {hasMore && (
++            <div className={css.older}>
++              <button type="button" disabled={loadingOlder} onClick={scroll.loadEarlier}>
++                {loadingOlder ? t('loading') : t('chat.loadOlder')}
++              </button>
++            </div>
++          )}
++          <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile}>
++            <ChatNodeList
++              entries={entries}
++              nodeStore={nodeStore}
++              useChatGroup={useChatGroup}
++              useChatNode={useChatNode}
++              useChatNodeProcess={useChatNodeProcess}
++              usePresentation={usePresentation}
++              useStore={useStore}
++              actions={actions}
++              cwd={cwd}
++              openFile={requestOpenFile}
++              openSkill={openSkill}
++              inspectCall={inspectCall}
++              forkAt={forkAt}
++              loadImage={loadImage}
++              renderMessageImages={renderMessageImages}
++              fileMentions={fileMentions}
++              renderSlot={renderSlot}
++              t={t}
++            />
++          </MarkdownDelegateProvider>
++          {/* No pending placeholders: questions (ui-user-questions) and approvals
++              (ApprovalPanel) both take over the composer, so a flow card would
++              double-render the same wait. */}
++          {pendingInputs.map(item => 'requestId' in item ? (
++            <PendingSubmissionBubble
++              key={item.requestId}
++              submission={item}
++              renderMessageImages={renderMessageImages}
++              t={t}
++            />
++          ) : (
++            <PendingSteeringBubble
++              key={item.id}
++              content={item.content}
++              renderMessageImages={renderMessageImages}
++              t={t}
++            />
++          ))}
++        </div>
++        {!scroll.followingTail && (
++          <div className={css.toBottomSlot}>
++            <button
++              type="button"
++              className={css.toBottom}
 +              data-chat-to-bottom=""
-               aria-label={t('chat.toBottom')}
-               onClick={scroll.returnToBottom}
-             >
++              aria-label={t('chat.toBottom')}
++              onClick={scroll.returnToBottom}
++            >
++              <IconChevronDownOutlineRegular />
++            </button>
++=======
+     <div className={css.frame}>
+       {scroll.initialized && (
+         <TurnNavigator
+@@ -280,6 +359,7 @@ export function ChatView({
+           <button
+             type="button"
+             className={css.toBottom}
++            data-chat-to-bottom=""
+             aria-label={t('chat.toBottom')}
+             onClick={scroll.returnToBottom}
+           >
 diff --git a/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css b/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css
-index a4bb6ef0cc..de3edbe8d5 100644
+index 6ef58c908d..21ef889592 100644
 --- a/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css
 +++ b/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css
 @@ -52,6 +52,7 @@
@@ -396,10 +483,10 @@ index a4bb6ef0cc..de3edbe8d5 100644
    overflow: auto;
 +  overflow-anchor: none;
    border: 0.5px solid var(--dsw-alias-border-l1);
-   border-radius: 12px;
+   border-radius: var(--dsw-radius-lg);
    background: var(--dsw-alias-markdown-code-block);
 diff --git a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
-index c5234236f6..34a1ed66c3 100644
+index 29c1c9e713..6e000ce7c3 100644
 --- a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
 +++ b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
 @@ -110,3 +110,40 @@
@@ -489,7 +576,7 @@ index 0000000000..78d71928fa
 +}
 +
 diff --git a/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
-index 2224cd2873..a0b3705831 100644
+index 71dc44693b..4a1a2dde8c 100644
 --- a/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
 @@ -56,7 +56,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
@@ -524,10 +611,10 @@ index bfa386d31c..a8e20d19cb 100644
 +}
 +
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-reading.ts b/packages/client/ui-chat/src/client/chat/use-chat-reading.ts
-index 8c4bcec675..f998a31e53 100644
+index 010b49de0d..f9cf4f343e 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-reading.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-reading.ts
-@@ -123,7 +123,7 @@ export class ChatReading {
+@@ -125,7 +125,7 @@ export class ChatReading {
     */
    readonly onScroll = (scroll: ViewportScroll): void => {
      if ((!scroll.movedByReader && this.state.followingTail)
@@ -553,10 +640,10 @@ index cdf14ed5e7..4cace2ff9e 100644
          if (!navigation.contentCommitted()) reading.onResize()
          navigation.reconcile()
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-index e61020e8ff..21b12b91c8 100644
+index f74153097c..34a8b8add5 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-@@ -143,7 +143,7 @@ export class ChatViewport {
+@@ -138,7 +138,7 @@ export class ChatViewport {
      if (metrics === null) return null
      return {
        metrics,
@@ -565,7 +652,7 @@ index e61020e8ff..21b12b91c8 100644
      }
    }
  
-@@ -416,7 +416,7 @@ export class ChatViewport {
+@@ -426,7 +426,7 @@ export class ChatViewport {
  
    private readonly onScroll = (event: Event): void => {
      if (this.elements === null || event.target !== this.elements.scroller) return
@@ -574,7 +661,7 @@ index e61020e8ff..21b12b91c8 100644
      this.invalidate()
      if (this.paging !== null) {
        this.events?.resize()
-@@ -433,11 +433,21 @@ export class ChatViewport {
+@@ -443,11 +443,21 @@ export class ChatViewport {
  
    private readonly onIntent = (event: Event): void => {
      if (event.type === 'keydown' || event.type === 'pointerdown') {
@@ -601,10 +688,10 @@ index e61020e8ff..21b12b91c8 100644
    }
  }
 diff --git a/packages/client/ui-chat/tests/chat-viewport.client.spec.ts b/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
-index a7e42c0f33..60b8a126bc 100644
+index 7dd39a8698..97460c799e 100644
 --- a/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
 +++ b/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
-@@ -524,3 +524,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
+@@ -551,3 +551,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
    expect(h.viewport.preserving).toBe(false)
    expect(h.scroller.scrollTop).toBe(80)
  })
@@ -19228,7 +19315,7 @@ index 0000000000..b8ff2e40ab
 +}
 +
 diff --git a/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css b/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
-index e06a9b949f..24267312b4 100644
+index 0b5450cc95..b81c24f64f 100644
 --- a/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
 +++ b/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
 @@ -54,3 +54,13 @@
@@ -19246,10 +19333,10 @@ index e06a9b949f..24267312b4 100644
 +  }
 +}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index cabe3711ae..50a2035d76 100644
+index 3aa0a9d1f9..1d9036801d 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-@@ -407,6 +407,7 @@ button.crumb:hover {
+@@ -413,6 +413,7 @@ button.crumb:hover {
       gutter moves the input card sideways by the bar's width whenever the two
       differ ([decision](../../../../../../.agents/notes/archived/bug-fix/2026-08-04-composer-tab-gutter-reservation.md)). */
    scrollbar-gutter: stable;
@@ -19257,7 +19344,7 @@ index cabe3711ae..50a2035d76 100644
  }
  
  /* The bar also stops 2px short of the scroller's ends, matching its 2px edge
-@@ -537,3 +538,19 @@ button.crumb:hover {
+@@ -543,3 +544,19 @@ button.crumb:hover {
  .embeddedBody[data-content-phase='settling'] .composerSeat {
    visibility: hidden;
  }
@@ -19278,10 +19365,10 @@ index cabe3711ae..50a2035d76 100644
 +}
 +
 diff --git a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
-index d47e0bfe2f..81a13ac97c 100644
+index aac6a5cf61..5a6a04682d 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
-@@ -229,3 +229,27 @@
+@@ -230,3 +230,27 @@
    line-height: 18px;
    color: var(--dsw-alias-state-error-primary);
  }
@@ -19332,7 +19419,7 @@ index 7eb765ec2b..62e24cecfc 100644
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
 diff --git a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-index 498cef3458..9ce81a02e0 100644
+index 09dfa6a74c..1ca99b07bc 100644
 --- a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
 +++ b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
 @@ -240,27 +240,32 @@ describe('produced-file Turn data', () => {
@@ -20139,10 +20226,10 @@ index 0000000000..fbbf8f283f
 +//# sourceMappingURL=client.js.map
 \ No newline at end of file
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 8983d4f7c2..2e37d103b5 100644
+index 4f450df3c9..b0a49d2382 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -290,3 +290,119 @@
+@@ -266,3 +266,119 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -20263,10 +20350,10 @@ index 8983d4f7c2..2e37d103b5 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index e9ed81aa47..349de4581b 100644
+index 841f9f72aa..a20fb8b389 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
-@@ -156,7 +156,7 @@ export function AppFrame({
+@@ -138,7 +138,7 @@ export function AppFrame({
      let raf: number | null = null
      let disposed = false
      const measure = () => {
@@ -20275,7 +20362,7 @@ index e9ed81aa47..349de4581b 100644
        if (width > 0) actions.setViewportWidth(width)
      }
      measure()
-@@ -176,6 +176,7 @@ export function AppFrame({
+@@ -158,6 +158,7 @@ export function AppFrame({
    }, [actions])
  
    const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
@@ -20283,7 +20370,7 @@ index e9ed81aa47..349de4581b 100644
    const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
    const sidebarPreference = sidebarCollapsed
      ? 0
-@@ -258,9 +259,9 @@ export function AppFrame({
+@@ -240,9 +241,9 @@ export function AppFrame({
    // the discrete decisions (track present, collapse state) and the drag base.
    const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)
    const sidebar = useMemo(() => renderSlot('sidebar', {
@@ -20296,7 +20383,7 @@ index e9ed81aa47..349de4581b 100644
    const main = useMemo(() => (
      <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
    ), [usePanelInfo, renderSlot])
-@@ -273,6 +274,37 @@ export function AppFrame({
+@@ -255,6 +256,37 @@ export function AppFrame({
    const leading = useMemo(() => renderSlot('shell.leading', {}), [renderSlot])
    const leadingMounted = darwin && sidebarCollapsed
  
@@ -20334,7 +20421,7 @@ index e9ed81aa47..349de4581b 100644
    return (
      <div
        ref={frameRef}
-@@ -300,7 +332,35 @@ export function AppFrame({
+@@ -277,7 +309,35 @@ export function AppFrame({
          useSessions={useSessions}
          usePanelInfo={usePanelInfo}
        />
@@ -20371,7 +20458,7 @@ index e9ed81aa47..349de4581b 100644
          {sidebar}
        </div>
        <>
-@@ -318,7 +378,7 @@ export function AppFrame({
+@@ -295,7 +355,7 @@ export function AppFrame({
          </div>
        )}
        {/* The collapsed rail is fixed-width: no resize handle while closed. */}
@@ -20381,10 +20468,10 @@ index e9ed81aa47..349de4581b 100644
          <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
        )}
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-index b3a60fb6ec..73d1658eec 100644
+index 74b3311cdb..a6a52d33aa 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-@@ -119,6 +119,19 @@
+@@ -116,6 +116,19 @@
    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
  }
  
@@ -20405,10 +20492,10 @@ index b3a60fb6ec..73d1658eec 100644
  .empty {
    padding: 8px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index b9c8993563..14a9eead10 100644
+index 28e4bfa800..e867ac5ee8 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -119,14 +119,18 @@ export function ModelSelect(
+@@ -126,14 +126,18 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -20429,7 +20516,7 @@ index b9c8993563..14a9eead10 100644
    }, [open])
  
    // A pane switch unmounts the row that had focus, which drops focus onto the
-@@ -274,6 +278,7 @@ export function ModelSelect(
+@@ -283,6 +287,7 @@ export function ModelSelect(
      )) return
      close()
    }
@@ -20437,17 +20524,16 @@ index b9c8993563..14a9eead10 100644
  
    const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
      if (result === undefined) return
-@@ -336,7 +341,7 @@ export function ModelSelect(
-   }
- 
-   return (
--    <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown} onBlur={onBlur}>
-+    <div ref={rootRef} className={css.root} onKeyDown={onRootKeyDown}>
-       <button
-         ref={triggerRef}
-         type="button"
+@@ -354,7 +359,6 @@ export function ModelSelect(
+       ref={rootRef}
+       className={css.root}
+       onKeyDown={onRootKeyDown}
+-      onBlur={onBlur}
+       onMouseDown={(event) => {
+         // WebKit blurs a focused row before click unless the button's mousedown keeps focus.
+         if (event.target instanceof Element && event.target.closest('button') !== null) event.preventDefault()
 diff --git a/packages/client/ui-permission-presets/src/client/PermissionRow.module.css b/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
-index 9c64981afe..6436c6c6df 100644
+index a40d0959cd..fdc1d90272 100644
 --- a/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
 +++ b/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
 @@ -58,3 +58,13 @@
@@ -20465,10 +20551,10 @@ index 9c64981afe..6436c6c6df 100644
 +  }
 +}
 diff --git a/packages/client/ui-primitives/src/Modal.module.css b/packages/client/ui-primitives/src/Modal.module.css
-index 8611494214..bff2e10742 100644
+index 8f7dc22fff..8b45262180 100644
 --- a/packages/client/ui-primitives/src/Modal.module.css
 +++ b/packages/client/ui-primitives/src/Modal.module.css
-@@ -105,3 +105,25 @@
+@@ -126,3 +126,25 @@
    gap: 8px;
    padding: 0 24px;
  }
@@ -20495,28 +20581,25 @@ index 8611494214..bff2e10742 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index 5791636067..6739f056d6 100644
+index 43400c8c30..92d156a5ff 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
-@@ -66,8 +66,10 @@
-     "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
-     "@deepseek-ai/dsh-remote-mock": "workspace:^",
+@@ -67,6 +67,7 @@
+     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
+     "@deepseek-ai/dsh-remote-mock": "workspace:*",
      "@types/react": "~18.3.1",
 +    "@types/react-dom": "~18.3.1",
+     "@types/react-dom": "~18.3.0",
      "clsx": "^2.0.0",
      "react": "^18.2.0",
-+    "react-dom": "^18.2.0",
-     "@deepseek-ai/dsh-settings": "workspace:^"
-   },
-   "files": [
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index 2aff6dc924..afdfb027c5 100644
+index 74502b5cb3..6a5f419480 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-@@ -243,3 +243,197 @@
- :global([data-platform='darwin']) .overlay {
-   -webkit-app-region: no-drag;
- }
+@@ -246,3 +246,197 @@
+    ui-web base.css's `body > :not(#root)` subtraction covers it wherever it
+    overlaps a chrome row's drag — including above every column, which an in-root
+    overlay could not promise once a chrome row declares drag itself. */
 +
 +/* Mobile top bar: hidden on desktop, replaces the dual-column header on mobile. */
 +.mobileHeader {
@@ -20712,26 +20795,18 @@ index 2aff6dc924..afdfb027c5 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index 7a1f4fb920..6f88035490 100644
+index 761ae2dc0f..7c8eace6c5 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-@@ -11,6 +11,7 @@
-  * to the step, so a mounted-but-deciding step paints nothing here.
-  */
- import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-+import { createPortal } from 'react-dom'
- import clsx from 'clsx'
- import {
-   ConnectionIndicator,
-@@ -47,14 +48,15 @@ type PanelProps = {
+@@ -46,16 +46,17 @@ type PanelProps = {
+   onClose: () => void
+ }
  
++/**
  /**
-  * The modal layer: full-viewport mask + centered panel. Close paths: the
-- * header button, a mask click, and document-level Escape (mounted only while
-- * open, so the listener lifetime is the panel's).
-+ * mask click, the top-right X, Esc, or selection within a section that
-+ * calls its close prop. Section options render through slots scoped by
-+ * active section id.
+  * Body-portaled modal layer: full-viewport mask + centered panel. Close paths: the
+  * header button, a mask click, and document-level Escape (mounted only while
+  * open, so the listener lifetime is the panel's).
   */
  function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelProps) {
 +  const titleId = useId()
@@ -20740,17 +20815,12 @@ index 7a1f4fb920..6f88035490 100644
    const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
 -  const titleId = useId()
  
-   useEffect(() => {
-     const onKeyDown = (e: KeyboardEvent) => {
-@@ -68,10 +70,19 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
-   const closeButton = useRef<HTMLButtonElement | null>(null)
-   useEffect(() => { closeButton.current?.focus() }, [])
- 
--  return (
-+  const panel = (
+   const panel = useRef<HTMLDivElement>(null)
+   useModalLayer(panel, true, onClose)
+@@ -68,6 +69,15 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
      <div className={css.overlay} role="presentation">
        <div className={css.mask} aria-hidden="true" onClick={onClose} />
-       <div className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+       <div ref={panel} tabIndex={-1} data-shortcut-modal="settings" className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
 +        <div className={css.mobileHeader}>
 +          <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
 +          <div className={css.mobileActions}>
@@ -20761,22 +20831,10 @@ index 7a1f4fb920..6f88035490 100644
 +          </div>
 +        </div>
          <nav className={css.nav}>
-           <div className={css.navTitle} id={titleId}>{renderSlot('settings.header', {})}</div>
-           <div className={css.navList}>
-@@ -104,6 +115,11 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
-       </div>
-     </div>
-   )
-+
-+  if (typeof document !== 'undefined') {
-+    return createPortal(panel, document.body)
-+  }
-+  return panel
- }
- 
- /**
+           <div className={css.navTitle} id={titleId} tabIndex={-1}
+             data-modal-autofocus={active === undefined ? '' : undefined}>{renderSlot('settings.header', {})}</div>
 diff --git a/packages/client/ui-theme/src/styles/base.css b/packages/client/ui-theme/src/styles/base.css
-index 4c801b8d4d..06fd5afb65 100644
+index 23be07f678..446133aba8 100644
 --- a/packages/client/ui-theme/src/styles/base.css
 +++ b/packages/client/ui-theme/src/styles/base.css
 @@ -1,3 +1,11 @@
@@ -20792,7 +20850,7 @@ index 4c801b8d4d..06fd5afb65 100644
   * upstream (deepsuite theme/global.css) — supplied here so the composite
   * --dsw-font-* variables resolve and motion rides the upstream curve. Code
 diff --git a/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css b/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
-index 824bd18fde..7d0a55d48b 100644
+index de9133c467..e93bf7638d 100644
 --- a/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
 +++ b/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
 @@ -14,6 +14,7 @@
@@ -20878,7 +20936,7 @@ index 5343472cd0..2eb7d30403 100644
    return { card: { diffs: applied } }
  }
 diff --git a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
-index 9ef5b4b829..ca24437168 100644
+index c58a5df600..563cc7a872 100644
 --- a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 +++ b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 @@ -41,6 +41,7 @@
@@ -20890,7 +20948,7 @@ index 9ef5b4b829..ca24437168 100644
  
  .ioSection::-webkit-scrollbar-thumb {
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index ca0dff809c..0f62e3b588 100644
+index a80446e058..bfd7c85b99 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 @@ -55,6 +55,50 @@ describe('diffCardModel', () => {
@@ -20945,7 +21003,7 @@ index ca0dff809c..0f62e3b588 100644
      {
        command: 'create',
 diff --git a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
-index b07fbe48a2..e3010636e8 100644
+index 12b03b1c51..64d60a84c4 100644
 --- a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 +++ b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 @@ -20,6 +20,7 @@
@@ -20986,7 +21044,7 @@ index b07fbe48a2..e3010636e8 100644
    background: var(--dsw-alias-bg-layer-1);
  }
  
-@@ -1972,13 +1975,147 @@
+@@ -1972,14 +1975,148 @@
  @media (max-width: 760px) {
    .details {
      position: absolute;
@@ -21139,8 +21197,9 @@ index b07fbe48a2..e3010636e8 100644
 +    padding: 4px 12px 1px;
    }
  }
+ 
 diff --git a/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css b/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
-index ed9a8cae5f..3515432344 100644
+index 67b302e3b5..0fa71c89f8 100644
 --- a/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
 +++ b/packages/client/ui-user-questions/src/client/PlanReviewPanel.module.css
 @@ -92,14 +92,40 @@
@@ -21153,7 +21212,7 @@ index ed9a8cae5f..3515432344 100644
 +  }
 +
    .card {
-     border-radius: 16px;
+     border-radius: var(--dsw-radius-xl);
    }
  
    .footer {
@@ -21186,7 +21245,7 @@ index ed9a8cae5f..3515432344 100644
  
  .previewActions {
 diff --git a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
-index 10d108d3df..e044db0a9d 100644
+index f2fe1755f1..bb3a585786 100644
 --- a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
 +++ b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
 @@ -420,6 +420,11 @@
@@ -21199,7 +21258,7 @@ index 10d108d3df..e044db0a9d 100644
 +  }
 +
    .card {
-     border-radius: 16px;
+     border-radius: var(--dsw-radius-xl);
    }
 @@ -443,12 +448,31 @@
    }
@@ -21235,7 +21294,7 @@ index 10d108d3df..e044db0a9d 100644
  }
  
 diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
-index 805a74e9fb..aadcb304a1 100644
+index af74988cf1..52cf158cfa 100644
 --- a/packages/client/web/src/base.css
 +++ b/packages/client/web/src/base.css
 @@ -1,5 +1,13 @@
@@ -21452,7 +21511,7 @@ index e3105925a5..4884eef3e4 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 28613a2920..b1bc15324f 100644
+index f9cd0f36e1..e19b11d153 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
 @@ -101,7 +101,14 @@ class FakeFs extends FileSystem {
@@ -21538,7 +21597,7 @@ index 28613a2920..b1bc15324f 100644
  
  describe('result-time contextual diff (meta + presentResult)', () => {
 diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
-index 4490dd9b6e..d77118de9a 100644
+index 20e899788e..e16921190e 100644
 --- a/packages/llm/llm-deepseek/src/adapter.ts
 +++ b/packages/llm/llm-deepseek/src/adapter.ts
 @@ -1,6 +1,6 @@
@@ -21549,29 +21608,29 @@ index 4490dd9b6e..d77118de9a 100644
  import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
  import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
  import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
-@@ -84,6 +84,7 @@ export class DeepSeekAdapter extends LlmAdapter {
-     const key = accountToken ?? await this.dependencies.resolveApiKey(connection)
-     const files = new RequestFiles(this.files, {
-       baseURL: connection.baseURL, apiKey: key, accountCredential: accountToken !== undefined,
-+      ...connection.headers === undefined ? {} : { headers: connection.headers },
-     },
-     connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
-     let inline = false
-@@ -113,7 +114,7 @@ export class DeepSeekAdapter extends LlmAdapter {
-       const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
-         method: 'POST', signal, body: extensions.payload, redirect: 'error',
-         headers: {
--          ...attributionHeaders(),
-+          ...requestHeaders(connection.headers),
-           'content-type': 'application/json', 'accept': 'text/event-stream',
-           ...accountToken === undefined ? { 'x-api-key': key } : { 'x-dsh-auth-token': accountToken },
-           'anthropic-version': '2023-06-01',
+@@ -83,6 +83,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
+     try {
+       const files = new RequestFiles(this.files, {
+         baseURL: connection.baseURL, headers: auth.headers,
++        ...connection.headers === undefined ? {} : { deploymentHeaders: connection.headers },
+       },
+       connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
+       let inline = false
+@@ -120,7 +121,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
+         const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
+           method: 'POST', signal, body: extensions.payload, redirect: 'error',
+           headers: {
+-            ...attributionHeaders(),
++            ...requestHeaders(connection.headers),
+             'content-type': 'application/json', 'accept': 'text/event-stream',
+             ...auth.headers,
+             'anthropic-version': '2023-06-01',
 diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
-index f2ba3bd23a..69e20a5387 100644
+index 5996645b7e..48378efedb 100644
 --- a/packages/llm/llm-deepseek/src/config.ts
 +++ b/packages/llm/llm-deepseek/src/config.ts
-@@ -30,6 +30,13 @@ export interface Config {
-   apiKeyEnv: Volatile<string>
+@@ -18,6 +18,13 @@ const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModa
+ export interface Config {
    /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
    baseURL: Volatile<string | undefined>
 +  /**
@@ -21584,15 +21643,15 @@ index f2ba3bd23a..69e20a5387 100644
    /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
    thinking: Volatile<'enabled' | 'disabled' | undefined>
    /** Default thinking effort (default `high`); `off` disables thinking per request. */
-@@ -92,6 +99,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
- export const Config = z.object({
-   apiKeyEnv: z.string().role('credential-ref').default(DEFAULT_API_KEY_ENV).volatile(),
+@@ -81,6 +88,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
+ /** Shared schema fields for Messages protocol options. */
+ export const deepSeekConfigFields = {
    baseURL: z.string().volatile(),
 +  headers: z.dict(z.string()).volatile(),
    thinking: z.union(['enabled', 'disabled']).volatile(),
    reasoningEffort: z.union(['off', 'low', 'high', 'max']).volatile(),
    maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS).volatile(),
-@@ -198,6 +206,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
+@@ -189,6 +197,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
    })
  }
  
@@ -21635,9 +21694,9 @@ index f2ba3bd23a..69e20a5387 100644
 +}
 +
  /**
-  * The one explicit resolve step from raw config to validated connection
-  * facts. Programmatic construction may bypass Schemastery normalization, so
-@@ -215,6 +261,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+  * The one explicit resolve step from raw config to validated protocol
+  * settings. Programmatic construction may bypass Schemastery normalization, so
+@@ -206,6 +252,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
    if (Object.hasOwn(config, 'protocol')) {
      throw new Error('llm-deepseek: protocol is not configurable; remove it and use a Messages-compatible baseURL')
    }
@@ -21645,37 +21704,37 @@ index f2ba3bd23a..69e20a5387 100644
    if (config.thinking === 'disabled'
      && config.reasoningEffort !== undefined
      && config.reasoningEffort !== 'off') {
-@@ -304,6 +351,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+@@ -294,6 +341,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+   }
    return {
-     apiKeyEnv: credentialRef(config.apiKeyEnv ?? DEFAULT_API_KEY_ENV),
      baseURL,
 +    ...headers === undefined ? {} : { headers },
      defaults: {
        thinking: config.thinking,
        reasoningEffort: config.reasoningEffort,
 diff --git a/packages/llm/llm-deepseek/src/file-store.ts b/packages/llm/llm-deepseek/src/file-store.ts
-index 7d5bf4e8d1..f1dd325733 100644
+index cebff0809b..c007653b5c 100644
 --- a/packages/llm/llm-deepseek/src/file-store.ts
 +++ b/packages/llm/llm-deepseek/src/file-store.ts
-@@ -25,6 +25,8 @@ export interface DeepSeekFileConnection {
-   apiKey: string
-   /** Use the DSH account header; omitted for ordinary API keys. */
-   accountCredential?: boolean
+@@ -24,6 +24,8 @@ export interface DeepSeekFileConnection {
+   baseURL: string
+   /** Provider-resolved authentication headers for this endpoint. */
+   headers: Readonly<Record<string, string>>
 +  /** Deployment headers sent on every file request; the connection options carry the same map. */
-+  headers?: Readonly<Record<string, string>>
++  deploymentHeaders?: Readonly<Record<string, string>>
  }
  
  /** Result of one file-id resolution. */
-@@ -139,6 +141,7 @@ export class DeepSeekFileStore {
+@@ -137,6 +139,7 @@ export class DeepSeekFileStore {
+     return new DeepSeekFilesClient({
        baseURL: connection.baseURL,
-       apiKey: connection.apiKey,
-       ...connection.accountCredential === undefined ? {} : { accountCredential: connection.accountCredential },
-+      ...connection.headers === undefined ? {} : { headers: connection.headers },
+       headers: connection.headers,
++      ...connection.deploymentHeaders === undefined ? {} : { deploymentHeaders: connection.deploymentHeaders },
        ...this.fetchImpl === undefined ? {} : { fetch: this.fetchImpl },
      })
    }
 diff --git a/packages/llm/llm-deepseek/src/files-api.ts b/packages/llm/llm-deepseek/src/files-api.ts
-index 181580ce6f..b66a78d586 100644
+index 9aa1f005d7..417968869c 100644
 --- a/packages/llm/llm-deepseek/src/files-api.ts
 +++ b/packages/llm/llm-deepseek/src/files-api.ts
 @@ -1,6 +1,6 @@
@@ -21686,45 +21745,45 @@ index 181580ce6f..b66a78d586 100644
  import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
  import { DeepSeekFileId } from './file-id.ts'
  import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
-@@ -73,6 +73,8 @@ interface FilesApiOptions {
-   apiKey: string
-   /** Use the DSH account header; omitted for ordinary API keys. */
-   accountCredential?: boolean
+@@ -72,6 +72,8 @@ interface FilesApiOptions {
+   baseURL: string
+   /** Provider-resolved authentication headers for this endpoint. */
+   headers: Readonly<Record<string, string>>
 +  /** Deployment headers sent on every Files API request; a name here replaces the attribution header of the same name. */
-+  headers?: Readonly<Record<string, string>>
++  deploymentHeaders?: Readonly<Record<string, string>>
    fetch?: typeof fetch
  }
  
-@@ -133,6 +135,7 @@ export class DeepSeekFilesClient {
+@@ -131,6 +133,7 @@ function providerErrorDetail(value: unknown): { message?: string; detail: string
+ export class DeepSeekFilesClient {
    private readonly baseURL: string
-   private readonly accountCredential: boolean
-   private readonly apiKey: string
-+  private readonly headers: Readonly<Record<string, string>> | undefined
+   private readonly authHeaders: Readonly<Record<string, string>>
++  private readonly deploymentHeaders: Readonly<Record<string, string>> | undefined
    private readonly fetchImpl: typeof fetch
  
    /**
-@@ -141,6 +144,7 @@ export class DeepSeekFilesClient {
+@@ -138,6 +141,7 @@ export class DeepSeekFilesClient {
+    */
    constructor(options: FilesApiOptions) {
-     this.apiKey = options.apiKey
-     this.accountCredential = options.accountCredential === true
-+    this.headers = options.headers
+     this.authHeaders = options.headers
++    this.deploymentHeaders = options.deploymentHeaders
      this.fetchImpl = options.fetch ?? globalThis.fetch
      this.baseURL = messagesApiRoot(options.baseURL)
    }
-@@ -148,7 +152,7 @@ export class DeepSeekFilesClient {
+@@ -145,7 +149,7 @@ export class DeepSeekFilesClient {
    private async request(path: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
      let response: Response
      try {
 -      const headers = new Headers(attributionHeaders())
-+      const headers = new Headers(requestHeaders(this.headers))
-       headers.set(this.accountCredential ? 'x-dsh-auth-token' : 'x-api-key', this.apiKey)
++      const headers = new Headers(requestHeaders(this.deploymentHeaders))
+       for (const [name, value] of Object.entries(this.authHeaders)) headers.set(name, value)
        headers.set('anthropic-version', '2023-06-01')
        headers.set('anthropic-beta', MESSAGES_FILES_BETA)
 diff --git a/packages/llm/llm-deepseek/src/types.ts b/packages/llm/llm-deepseek/src/types.ts
-index cc623b0a50..5934989b50 100644
+index f8ecb1b3c6..bab248e945 100644
 --- a/packages/llm/llm-deepseek/src/types.ts
 +++ b/packages/llm/llm-deepseek/src/types.ts
-@@ -45,6 +45,12 @@ export interface DeepSeekCatalogModel {
+@@ -51,6 +51,19 @@ export interface DeepSeekCatalogModel {
  export interface DeepSeekConnectionOptions {
    /** Messages API root; custom paths remain unchanged. */
    baseURL: string
@@ -21734,14 +21793,21 @@ index cc623b0a50..5934989b50 100644
 +   * content type, accept, and harness identity headers stay harness-owned.
 +   */
 +  headers?: Readonly<Record<string, string>>
-   /**
-    * Credential reference of this same resolution, resolved per request.
-    * Travelling with the endpoint is the point: a request can never pair one
++  /**
++   * Credential reference of this same resolution, resolved per request.
++   * Travelling with the endpoint is the point: a request can never pair one
++   * generation's URL with another generation's secret. Configuration carries
++   * only this name — a literal key is not a configuration value.
++   */
++  apiKeyEnv: CredentialRef
+   /** Request defaults applied to every call (thinking mode, effort). */
+   defaults: RequestDefaults
+   /** Default per-request output cap; explicit request values win. */
 diff --git a/packages/llm/llm-deepseek/tests/file-store.spec.ts b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-index a671607788..0b369356f3 100644
+index b821304c02..5f9527878f 100644
 --- a/packages/llm/llm-deepseek/tests/file-store.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-@@ -153,6 +153,26 @@ describe('DeepSeekFileStore', () => {
+@@ -169,6 +169,26 @@ describe('DeepSeekFileStore', () => {
      expect(remote.uploads()).toBe(1)
    })
  
@@ -21769,7 +21835,7 @@ index a671607788..0b369356f3 100644
      const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
      roots.push(dir)
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index e0d44d2625..77e8ef02c0 100644
+index 48126befb6..79b6265181 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
 @@ -205,6 +205,24 @@ describe('DeepSeekFilesClient', () => {
@@ -21798,21 +21864,10 @@ index e0d44d2625..77e8ef02c0 100644
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
 diff --git a/packages/llm/llm-deepseek/tests/runtime.spec.ts b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-index 4d657ec263..e803df7f5a 100644
+index 4c505e1fe2..af0eb8cf6a 100644
 --- a/packages/llm/llm-deepseek/tests/runtime.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-@@ -21,8 +21,8 @@ import { getOrCreateAnonymousUserId, type AnonymousUserId } from '@deepseek-ai/d
- import { SessionId } from '@deepseek-ai/dsh-session'
- import DeepSeekLlmApiExtensionRegistry from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
- import type { PreparedDeepSeekLlmApiExtensions } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
--import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
--import { DeepSeekAdapter, resolveAdapterOptions } from '@deepseek-ai/dsh-llm-deepseek'
-+import * as LlmDeepSeek from '../src/index.ts'
-+import { DeepSeekAdapter, resolveAdapterOptions } from '../src/index.ts'
- import type { ContextFormed } from '@deepseek-ai/dsh-llm'
- import { providerError } from '../src/transport.ts'
- import { resolveRequestImageTarget } from '../src/request-pricing.ts'
-@@ -382,6 +382,30 @@ describe('DeepSeekAdapter against a mock server', () => {
+@@ -383,6 +383,30 @@ describe('DeepSeekAdapter against a mock server', () => {
      expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
    })
  
@@ -21843,7 +21898,7 @@ index 4d657ec263..e803df7f5a 100644
    it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
      const server = await mockServer([{ kind: 'sse', events: textEvents }])
      const signalSeen: (AbortSignal | undefined)[] = []
-@@ -1678,6 +1702,19 @@ describe('plugin registration and config', () => {
+@@ -1679,6 +1703,19 @@ describe('plugin registration and config', () => {
      expect(() => resolveAdapterOptions(retired)).toThrow(/protocol/)
    })
  
@@ -22003,10 +22058,10 @@ index 42980939cc..dcb0db1a36 100644
 +  }
 +}
 diff --git a/packages/llm/llm/src/error.ts b/packages/llm/llm/src/error.ts
-index 477735d178..4cbbb80978 100644
+index 430f031ea1..27c6c425b7 100644
 --- a/packages/llm/llm/src/error.ts
 +++ b/packages/llm/llm/src/error.ts
-@@ -93,9 +93,9 @@ export function isContextWindowExceededError(detail: string): boolean {
+@@ -96,9 +96,9 @@ export function isContextWindowExceededError(detail: string): boolean {
   */
  export function isQuotaExceededError(detail: string): boolean {
    return /\binsufficient[\s_-]+(?:quota|balance|credits?)\b/i.test(detail)
@@ -22026,6 +22081,27 @@ index 0000000000..2131a5c92f
 @@ -0,0 +1 @@
 +/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
 \ No newline at end of file
+diff --git a/packages/schedule/AGENTS.md b/packages/schedule/AGENTS.md
+index 172ce1bd2c..aea5557cd6 100644
+--- a/packages/schedule/AGENTS.md
++++ b/packages/schedule/AGENTS.md
+@@ -2,10 +2,9 @@
+ 
+ These rules supplement the repository and package instructions for `packages/schedule/*`.
+ 
+-- The Host `schedule` storage domain owns active and ended tasks. Store each record with its original Session id and a globally unique task id; only explicit deletion removes a task. Browser and Agent management use the same service; read and delete must not activate a Session.
+-- One Host runtime scans active tasks at startup and schedules their next target; ended tasks never rearm. Resume due Sessions through the existing Session controller so preset composition and concurrent activation retain one owner.
+-- Preserve `after`, `at`, `every`, `daily`, `weekly`, and `cron`. Daily rules retain an explicit time and IANA zone; they are not fixed 86,400-second intervals. Skip missing local dates/times and select the earlier overlap once per date. Recurring tasks contribute only their latest missed occurrence and advance to a future target; due recurring tasks in one Session share a message.
+-- Enqueue with producer kind `schedule`, await Session persistence, then retire or advance the task. These writes are not atomic: a crash between them may duplicate delivery. Do not describe enqueue as model completion or add an execution-record state machine.
+-- Failed delivery leaves the task stored and reports the failure. Do not add a generic retry loop. Shutdown drains accepted work before closing storage.
+-- Historical `schedule/change` events retain the original three-kind `LegacyScheduleRecord`; the current Host decoder owns additional rule kinds. Warn when loading a Session with active historical reminders; do not scan or migrate all historical Sessions implicitly, or infer daily intent from an existing one-shot prompt.
+-- Keep recurrence arithmetic pure. Production uses platform wall time and segmented timers; tests use explicit samples or restored fake timers.
++- The owning Session's versioned `schedule/change` stream is the only durable Schedule state. Folds validate every durable JSON boundary and derive active records; timers, idle waiters, and tool values remain disposable projections.
++- A normal Session folds its complete log. A fork derives active Schedule state only from events at or after the Session's exact `inheritedEventCount`; it never inherits an active parent reminder.
++- Every Schedule management operation that reads or decides from the fold first awaits `ctx.sessions.flush(session)`. Create and an actual delete await a second barrier after append; a failed barrier returns the stable uncertainty result instead of inferring durability from the live log.
++- Runtime owners attach only to future live root Agents while the plugin is loaded. They do not scan persisted Sessions, adopt already-published roots, wake cold Sessions, register global tools, or delete durable records during teardown.
++- Due handling rechecks the wall clock and exact live owner, claims the idle maintenance phase through the public Agent seam, constructs the complete escaped framing before `followup()`, appends dispatch only after synchronous enqueue returns, releases maintenance, and then awaits durability. A synchronous framing/enqueue failure appends no dispatch; a later model failure does not roll one back.
++- Rule math and durable transition logic stay pure and deterministic. Production uses the platform wall clock and segmented timers; tests supply explicit samples or fake timers without adding a production clock service.
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
 index 1a89b76d29..1c336d332f 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
