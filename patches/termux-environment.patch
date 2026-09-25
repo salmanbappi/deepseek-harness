@@ -376,96 +376,10 @@ index e09a0d9504..0c388d5b32 100644
          <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
          <span className={css.chevron} data-step-process-chevron>
 diff --git a/packages/client/ui-chat/src/client/chat/ChatView.tsx b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-index 0514068aed..9ab1f16bc5 100644
+index 0514068aed..a26eed82d8 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-@@ -219,6 +219,85 @@ export function ChatView({
-   })
- 
-   return (
-+<<<<<<< HEAD
-+    <div className={css.root} data-chat-following-tail={scroll.followingTail ? '' : undefined}>
-+      <div ref={scroll.listRef} className={css.scroll}>
-+        {scroll.initialized && (
-+          <TurnNavigator
-+            items={railItems}
-+            activeTurn={scroll.activeTurn}
-+            busyTurn={scroll.busyTurn}
-+            onNavigate={scroll.navigateToTurn}
-+            t={t}
-+          />
-+        )}
-+        <div ref={scroll.columnRef} className={css.column} data-chat-flow="">
-+          {openState === 'loading' && <div className={css.hint}>{t('chat.loadingHistory')}</div>}
-+          {openState === 'error' && openError !== null && (
-+            <div className={css.openError}>
-+              {t('chat.loadError', { message: openError.message, code: openError.code })}
-+            </div>
-+          )}
-+          {hasMore && (
-+            <div className={css.older}>
-+              <button type="button" disabled={loadingOlder} onClick={scroll.loadEarlier}>
-+                {loadingOlder ? t('loading') : t('chat.loadOlder')}
-+              </button>
-+            </div>
-+          )}
-+          <MarkdownDelegateProvider openExternalLink={openExternalLink} openFile={requestOpenFile}>
-+            <ChatNodeList
-+              entries={entries}
-+              nodeStore={nodeStore}
-+              useChatGroup={useChatGroup}
-+              useChatNode={useChatNode}
-+              useChatNodeProcess={useChatNodeProcess}
-+              usePresentation={usePresentation}
-+              useStore={useStore}
-+              actions={actions}
-+              cwd={cwd}
-+              openFile={requestOpenFile}
-+              openSkill={openSkill}
-+              inspectCall={inspectCall}
-+              forkAt={forkAt}
-+              loadImage={loadImage}
-+              renderMessageImages={renderMessageImages}
-+              fileMentions={fileMentions}
-+              renderSlot={renderSlot}
-+              t={t}
-+            />
-+          </MarkdownDelegateProvider>
-+          {/* No pending placeholders: questions (ui-user-questions) and approvals
-+              (ApprovalPanel) both take over the composer, so a flow card would
-+              double-render the same wait. */}
-+          {pendingInputs.map(item => 'requestId' in item ? (
-+            <PendingSubmissionBubble
-+              key={item.requestId}
-+              submission={item}
-+              renderMessageImages={renderMessageImages}
-+              t={t}
-+            />
-+          ) : (
-+            <PendingSteeringBubble
-+              key={item.id}
-+              content={item.content}
-+              renderMessageImages={renderMessageImages}
-+              t={t}
-+            />
-+          ))}
-+        </div>
-+        {!scroll.followingTail && (
-+          <div className={css.toBottomSlot}>
-+            <button
-+              type="button"
-+              className={css.toBottom}
-+              data-chat-to-bottom=""
-+              aria-label={t('chat.toBottom')}
-+              onClick={scroll.returnToBottom}
-+            >
-+              <IconChevronDownOutlineRegular />
-+            </button>
-+=======
-     <div className={css.frame}>
-       {scroll.initialized && (
-         <TurnNavigator
-@@ -280,6 +359,7 @@ export function ChatView({
+@@ -280,6 +280,7 @@ export function ChatView({
            <button
              type="button"
              className={css.toBottom}
@@ -20581,17 +20495,18 @@ index 8f7dc22fff..8b45262180 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index 43400c8c30..92d156a5ff 100644
+index 43400c8c30..a0a331849c 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
-@@ -67,6 +67,7 @@
+@@ -67,7 +67,7 @@
      "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
      "@deepseek-ai/dsh-remote-mock": "workspace:*",
      "@types/react": "~18.3.1",
+-    "@types/react-dom": "~18.3.0",
 +    "@types/react-dom": "~18.3.1",
-     "@types/react-dom": "~18.3.0",
      "clsx": "^2.0.0",
      "react": "^18.2.0",
+     "@deepseek-ai/dsh-settings": "workspace:*",
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 index 74502b5cb3..6a5f419480 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
@@ -21780,10 +21695,10 @@ index 9aa1f005d7..417968869c 100644
        headers.set('anthropic-version', '2023-06-01')
        headers.set('anthropic-beta', MESSAGES_FILES_BETA)
 diff --git a/packages/llm/llm-deepseek/src/types.ts b/packages/llm/llm-deepseek/src/types.ts
-index f8ecb1b3c6..bab248e945 100644
+index f8ecb1b3c6..1ace6f004f 100644
 --- a/packages/llm/llm-deepseek/src/types.ts
 +++ b/packages/llm/llm-deepseek/src/types.ts
-@@ -51,6 +51,19 @@ export interface DeepSeekCatalogModel {
+@@ -51,6 +51,12 @@ export interface DeepSeekCatalogModel {
  export interface DeepSeekConnectionOptions {
    /** Messages API root; custom paths remain unchanged. */
    baseURL: string
@@ -21793,13 +21708,6 @@ index f8ecb1b3c6..bab248e945 100644
 +   * content type, accept, and harness identity headers stay harness-owned.
 +   */
 +  headers?: Readonly<Record<string, string>>
-+  /**
-+   * Credential reference of this same resolution, resolved per request.
-+   * Travelling with the endpoint is the point: a request can never pair one
-+   * generation's URL with another generation's secret. Configuration carries
-+   * only this name — a literal key is not a configuration value.
-+   */
-+  apiKeyEnv: CredentialRef
    /** Request defaults applied to every call (thinking mode, effort). */
    defaults: RequestDefaults
    /** Default per-request output cap; explicit request values win. */
@@ -21835,7 +21743,7 @@ index b821304c02..5f9527878f 100644
      const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
      roots.push(dir)
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index 48126befb6..79b6265181 100644
+index 48126befb6..47a86a1df4 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
 @@ -205,6 +205,24 @@ describe('DeepSeekFilesClient', () => {
@@ -21852,8 +21760,8 @@ index 48126befb6..79b6265181 100644
 +    }) as typeof fetch
 +    const client = new DeepSeekFilesClient({
 +      baseURL: 'https://api.deepseek.com',
-+      apiKey: 'key',
-+      headers: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
++      headers: { 'x-api-key': 'key' },
++      deploymentHeaders: { 'User-Agent': 'cline/3.5.0', 'X-Gateway-Tenant': 'acme' },
 +      fetch: fetchImpl,
 +    })
 +
