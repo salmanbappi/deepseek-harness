@@ -754,6 +754,123 @@ def patch_ripgrep():
         print(f"  [+] Linked Termux ripgrep into {count} @vscode/ripgrep copy(ies).")
 
 
+def patch_speech_to_text():
+    """Patches SenseVoice speech-to-text runtime for android-arm64 and installs native sherpa addon."""
+    # 1. Source TS runtime
+    src_runtime = os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice", "src", "runtime.ts")
+    if os.path.exists(src_runtime):
+        try:
+            with open(src_runtime, "r", encoding="utf-8") as f:
+                c = f.read()
+            if "android-arm64" not in c and "supported = [" in c:
+                c = c.replace(
+                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']",
+                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64', 'android-arm64']",
+                )
+                with open(src_runtime, "w", encoding="utf-8") as f:
+                    f.write(c)
+                print("  [+] Patched SenseVoice runtime.ts for android-arm64.")
+        except Exception as e:
+            print(f"  [!] SenseVoice runtime.ts patch notice: {e}")
+
+    # 2. Compiled JS runtime
+    lib_index = os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice", "lib", "index.js")
+    if os.path.exists(lib_index):
+        try:
+            with open(lib_index, "r", encoding="utf-8") as f:
+                c = f.read()
+            if "android-arm64" not in c:
+                old_list = '"win32-x64"\n\t].includes'
+                new_list = '"win32-x64",\n\t\t"android-arm64"\n\t].includes'
+                if old_list in c:
+                    c = c.replace(old_list, new_list, 1)
+                    with open(lib_index, "w", encoding="utf-8") as f:
+                        f.write(c)
+                    print("  [+] Patched compiled SenseVoice lib/index.js for android-arm64.")
+        except Exception as e:
+            print(f"  [!] SenseVoice lib/index.js patch notice: {e}")
+
+    lib_types_runtime = os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice", "lib", "types", "runtime.js")
+    if os.path.exists(lib_types_runtime):
+        try:
+            with open(lib_types_runtime, "r", encoding="utf-8") as f:
+                c = f.read()
+            if "android-arm64" not in c and "supported = [" in c:
+                c = c.replace(
+                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']",
+                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64', 'android-arm64']",
+                )
+                with open(lib_types_runtime, "w", encoding="utf-8") as f:
+                    f.write(c)
+        except Exception:
+            pass
+
+    # 3. Native addon: restore from cache ~/.dsh/native/android-arm64/sherpa
+    sherpa_cache = os.path.join(NATIVE_CACHE_DIR, "sherpa")
+    cached_node = os.path.join(sherpa_cache, "sherpa-onnx.node")
+    if not os.path.exists(cached_node):
+        return
+
+    # Ensure rpath is exclusively $ORIGIN so it never picks broken system onnxruntime
+    patchelf_bin = "/data/data/com.termux/files/usr/bin/patchelf"
+    if os.path.exists(patchelf_bin):
+        for lib in ["libsherpa-onnx-c-api.so", "libsherpa-onnx-cxx-api.so", "sherpa-onnx.node"]:
+            lp = os.path.join(sherpa_cache, lib)
+            if os.path.exists(lp):
+                subprocess.run([patchelf_bin, "--set-rpath", "$ORIGIN", lp], check=False, capture_output=True)
+
+    node_modules = os.path.join(REPO_DIR, "node_modules")
+    manifest = (
+        '{\n'
+        '  "name": "sherpa-onnx-android-arm64",\n'
+        '  "version": "1.13.8",\n'
+        '  "description": "Prebuilt native binaries for sherpa-onnx on Android arm64",\n'
+        '  "main": "sherpa-onnx.node",\n'
+        '  "os": ["android"],\n'
+        '  "cpu": ["arm64"]\n'
+        '}\n'
+    )
+
+    targets = [os.path.join(node_modules, "sherpa-onnx-android-arm64")]
+    pnpm_dir = os.path.join(node_modules, ".pnpm")
+    sherpa_node_dirs = []
+    if os.path.exists(pnpm_dir):
+        for root, dirs, files in os.walk(pnpm_dir):
+            if os.path.basename(root) == "sherpa-onnx-node":
+                sherpa_node_dirs.append(root)
+                targets.append(os.path.join(root, "node_modules", "sherpa-onnx-android-arm64"))
+            elif "sherpa-onnx-node" in root and root.endswith("node_modules"):
+                targets.append(os.path.join(root, "sherpa-onnx-android-arm64"))
+
+    count = 0
+    for target in set(targets):
+        bin_path = os.path.join(target, "sherpa-onnx.node")
+        if not os.path.exists(bin_path):
+            try:
+                os.makedirs(target, exist_ok=True)
+                for f in os.listdir(sherpa_cache):
+                    subprocess.run(["cp", "-f", os.path.join(sherpa_cache, f), os.path.join(target, f)], check=True)
+                with open(os.path.join(target, "package.json"), "w", encoding="utf-8") as pf:
+                    pf.write(manifest)
+                count += 1
+            except Exception as e:
+                print(f"  [!] Failed to restore sherpa-onnx into {target}: {e}")
+
+    # Also place directly in sherpa-onnx-node directory root as immediate candidate
+    for snd in sherpa_node_dirs:
+        bin_path = os.path.join(snd, "sherpa-onnx.node")
+        if not os.path.exists(bin_path):
+            try:
+                for f in os.listdir(sherpa_cache):
+                    subprocess.run(["cp", "-f", os.path.join(sherpa_cache, f), os.path.join(snd, f)], check=True)
+            except Exception:
+                pass
+
+    if count > 0:
+        print(f"  [+] Restored sherpa-onnx-android-arm64 into {count} location(s).")
+
+
+
 def patch_settings_mobile():
     """Reapplies the mobile settings sheet to packages/client/ui-settings-general.
 
@@ -1574,8 +1691,17 @@ def check_status():
         )
     print(f"[*] Mobile Trajectory Summary & View:  {'[PASS]' if traj_ok else '[FAIL]'}")
 
+    # 11. Local Speech Recognition (SenseVoice Android ARM64)
+    speech_path = os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice", "src", "runtime.ts")
+    speech_ok = False
+    if os.path.exists(speech_path):
+        with open(speech_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        speech_ok = "android-arm64" in c
+    print(f"[*] Local Speech (SenseVoice Android): {'[PASS]' if speech_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok
     return all_ok
 
 
@@ -1634,6 +1760,7 @@ def apply_all():
     patch_user_questions_mobile()
     patch_trajectory_mobile()
     patch_conversation_mobile()
+    patch_speech_to_text()
     
     print("[+] All Termux & Mobile UX patches verified and active.")
     export_patch()

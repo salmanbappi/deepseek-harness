@@ -1,0 +1,183 @@
+name: sherpa-onnx prebuild (Termux android-arm64)
+
+# The Termux prebuilt-bundle workflow ships compiled lib/ TypeScript, but
+# sherpa-onnx-node ships no android-arm64 native package on npm.
+# This workflow compiles the official Next-gen Kaldi sherpa-onnx Node-API addon
+# against Android bionic/aarch64 using the official Termux sherpa-onnx libraries
+# and uploads the verified prebuilt bundle for installation on Termux.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sherpa_version:
+        description: sherpa-onnx release version to compile
+        required: false
+        default: 1.13.8
+  push:
+    branches:
+      - master
+      - 'termux/**'
+    paths:
+      - '.github/workflows/build-termux-sherpa.yml'
+      - 'scripts/install-sherpa-prebuild.sh'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SHERPA_VERSION: ${{ inputs.sherpa_version || '1.13.8' }}
+  ANDROID_API: '24'
+
+jobs:
+  build:
+    name: Sherpa-ONNX Node-API Addon (Android arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch official Sherpa-ONNX Termux shared libraries
+        run: |
+          set -euxo pipefail
+          mkdir -p work/shared && cd work
+          URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/v${SHERPA_VERSION}/sherpa-onnx-v${SHERPA_VERSION}-android-aarch64-termux-shared.tar.bz2"
+          curl -sSL "$URL" -o sherpa-termux.tar.bz2
+          tar -xjf sherpa-termux.tar.bz2 -C shared --strip-components=1
+          test -f shared/lib/libsherpa-onnx-c-api.so
+          test -f shared/lib/libonnxruntime.so
+          test -f shared/include/sherpa-onnx/c-api/c-api.h
+
+      - name: Fetch Sherpa-ONNX Node-API addon source
+        run: |
+          set -euxo pipefail
+          cd work
+          git clone --depth 1 --branch "v${SHERPA_VERSION}" https://github.com/k2-fsa/sherpa-onnx.git repo
+          mkdir -p addon-src/src
+          # Copy real C++ files from harmony-os (which backing node-addon-api symlinks)
+          cp repo/harmony-os/SherpaOnnxHar/sherpa_onnx/src/main/cpp/*.cc addon-src/src/
+          cp repo/harmony-os/SherpaOnnxHar/sherpa_onnx/src/main/cpp/*.h addon-src/src/
+          test -f addon-src/src/sherpa-onnx-node-addon-api.cc
+
+      - name: Fetch node-addon-api & Node.js headers
+        run: |
+          set -euxo pipefail
+          cd work
+          npm init -y
+          npm install node-addon-api@8.3.0
+          NODE_INC="$(node -p "require('node-addon-api').include")"
+          echo "NODE_ADDON_API_INC=$NODE_INC" >> $GITHUB_ENV
+
+          # Download Node.js v22 headers for N-API
+          curl -sSL "https://nodejs.org/dist/v22.14.0/node-v22.14.0-headers.tar.gz" -o node-headers.tar.gz
+          mkdir -p node-headers
+          tar -xzf node-headers.tar.gz -C node-headers --strip-components=1
+          echo "NODE_HEADERS_INC=$PWD/node-headers/include/node" >> $GITHUB_ENV
+
+      - name: Cross-compile sherpa-onnx.node with Android NDK
+        working-directory: work
+        run: |
+          set -euxo pipefail
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
+          [ -n "$NDK" ] && [ -d "$NDK" ] || { echo "::error::Android NDK not found on runner"; exit 1; }
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CXX="$TC/aarch64-linux-android${ANDROID_API}-clang++"
+          STRIP="$TC/llvm-strip"
+
+          SRCS=(
+            addon-src/src/audio-tagging.cc
+            addon-src/src/keyword-spotting.cc
+            addon-src/src/non-streaming-asr.cc
+            addon-src/src/non-streaming-speaker-diarization.cc
+            addon-src/src/non-streaming-speech-denoiser.cc
+            addon-src/src/non-streaming-tts.cc
+            addon-src/src/offline-punctuation.cc
+            addon-src/src/online-punctuation.cc
+            addon-src/src/streaming-speech-denoiser.cc
+            addon-src/src/sherpa-onnx-node-addon-api.cc
+            addon-src/src/speaker-identification.cc
+            addon-src/src/spoken-language-identification.cc
+            addon-src/src/streaming-asr.cc
+            addon-src/src/vad.cc
+            addon-src/src/version.cc
+            addon-src/src/wave-reader.cc
+            addon-src/src/wave-writer.cc
+            addon-src/src/resampler.cc
+          )
+
+          "$CXX" -std=c++17 -O3 -fPIC -shared \
+            -I"$NODE_HEADERS_INC" \
+            -I"$NODE_ADDON_API_INC" \
+            -I"shared/include" \
+            "${SRCS[@]}" \
+            -L"shared/lib" \
+            -lsherpa-onnx-c-api -lonnxruntime \
+            -Wl,-rpath,'$ORIGIN' \
+            -o sherpa-onnx.node
+
+          "$STRIP" --strip-unneeded sherpa-onnx.node
+          test -f sherpa-onnx.node
+
+      - name: Verify ELF targets bionic/aarch64
+        working-directory: work
+        run: |
+          set -euo pipefail
+          file sherpa-onnx.node
+          readelf -h sherpa-onnx.node | grep -E 'Class|Machine|Type'
+          readelf -d sherpa-onnx.node | grep -E 'NEEDED|SONAME|RPATH' || true
+          if readelf -W --dyn-syms sherpa-onnx.node | grep -q 'GLIBC_'; then
+            echo "::error::binary imports glibc symbols; it cannot load under bionic"
+            exit 1
+          fi
+
+      - name: Package prebuilt bundle
+        working-directory: work
+        run: |
+          set -euo pipefail
+          OUT="../out/sherpa-android-arm64"
+          mkdir -p "$OUT"
+          cp sherpa-onnx.node "$OUT/"
+          cp shared/lib/libsherpa-onnx-c-api.so "$OUT/"
+          cp shared/lib/libonnxruntime.so "$OUT/"
+          cp shared/lib/libsherpa-onnx-cxx-api.so "$OUT/"
+
+          cat << 'EOF' > "$OUT/package.json"
+          {
+            "name": "sherpa-onnx-android-arm64",
+            "version": "${{ env.SHERPA_VERSION }}",
+            "description": "Prebuilt native binaries for sherpa-onnx on Android arm64",
+            "main": "sherpa-onnx.node",
+            "os": ["android"],
+            "cpu": ["arm64"]
+          }
+          EOF
+
+          cat << EOF > "$OUT/manifest.json"
+          {
+            "sherpa_version": "${{ env.SHERPA_VERSION }}",
+            "arch": "android-arm64",
+            "built_at": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+            "files": {
+              "sherpa-onnx.node": "$(sha256sum "$OUT/sherpa-onnx.node" | cut -d' ' -f1)",
+              "libsherpa-onnx-c-api.so": "$(sha256sum "$OUT/libsherpa-onnx-c-api.so" | cut -d' ' -f1)",
+              "libonnxruntime.so": "$(sha256sum "$OUT/libonnxruntime.so" | cut -d' ' -f1)"
+            }
+          }
+          EOF
+
+          cd ../out
+          tar -czvf sherpa-onnx-android-arm64.tar.gz sherpa-android-arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sherpa-android-arm64
+          path: out/sherpa-android-arm64/
+          if-no-files-found: error
