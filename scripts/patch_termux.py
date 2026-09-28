@@ -907,19 +907,20 @@ def patch_settings_mobile():
     react_import = "import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'\n"
     panel_tail = "      </div>\n    </div>\n  )\n}\n"
 
+    has_portal = "createPortal" in tsx
     for marker, upstream, patched, label in (
         ("from 'react-dom'", react_import, react_import + "import { createPortal } from 'react-dom'\n", "react-dom import"),
-        # The panel becomes a value so it can be portalled to document.body.
+        # The panel becomes a value so it can be portalled to document.body (unless already portalled).
         ("const panel = (", panel_open, panel_open.replace("  return (", "  const panel = ("), "panel binding"),
         ("css.mobileHeader", nav_open, header_jsx + nav_open, "mobile header row"),
         (
-            "createPortal(panel, document.body)",
+            "createPortal",
             panel_tail,
             "      </div>\n    </div>\n  )\n\n  if (typeof document !== 'undefined') {\n    return createPortal(panel, document.body)\n  }\n  return panel\n}\n",
             "portal render",
         ),
     ):
-        if marker in tsx:
+        if marker in tsx or (has_portal and label in ("panel binding", "portal render")):
             continue
         if upstream not in tsx:
             print(f"  [!] settings sheet: {label} anchor did not match — reapply by hand against SettingsRoot.tsx")

@@ -26,7 +26,7 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index 81a370d4c4..fa62b2b57b 100644
+index 591fbb4a12..20883563a5 100644
 --- a/package.json
 +++ b/package.json
 @@ -194,7 +194,7 @@
@@ -183,10 +183,10 @@ index 82c2b9f3ba..3ef3919554 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
-index da580c762e..4f71410e7d 100644
+index e17e125a75..3ccfe7d388 100644
 --- a/packages/boot/app-boot/src/profile.ts
 +++ b/packages/boot/app-boot/src/profile.ts
-@@ -651,6 +651,8 @@ export function resolveBundleDir(
+@@ -652,6 +652,8 @@ export function resolveBundleDir(
   * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
   * @returns the successfully loaded bundle layers and optional user patch layer.
   */
@@ -195,7 +195,7 @@ index da580c762e..4f71410e7d 100644
  export function loadProfileDirectory(
    binName: string,
    dir: string,
-@@ -665,17 +667,22 @@ export function loadProfileDirectory(
+@@ -666,17 +668,22 @@ export function loadProfileDirectory(
    for (const packageName of bundles) {
      try {
        const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
@@ -229,40 +229,10 @@ index da580c762e..4f71410e7d 100644
        skippedBundles.push({ packageName, reason: String(error) })
      }
 diff --git a/packages/boot/config-editor/src/index.ts b/packages/boot/config-editor/src/index.ts
-index 8caad69562..db52889182 100644
+index ffec879f40..090919bebc 100644
 --- a/packages/boot/config-editor/src/index.ts
 +++ b/packages/boot/config-editor/src/index.ts
-@@ -49,12 +49,23 @@ export class ConfigEditor extends Service {
-   configuration(): Array<{ entry: Entry; inherited: Record<string, unknown>; override: Record<string, unknown> }> {
-     const profile = this.ownerContext.profileContext
-     const loaded = loadProfileDirectory('dsh', profile.dir, profile.installAnchor)
--    return this.entries().map(entry => ({
--      entry, inherited: this.inherited(entry, loaded),
--      override: structuredClone((loaded.patches.findLast(
--        row => row.id === entry.options.id && row.config !== undefined,
--      )?.config ?? {}) as Record<string, unknown>),
--    }))
-+    const baseLayersPatches = loaded.layers.map(layer => layer.patches)
-+    const baseComposed = flatten(composeEntries([...baseLayersPatches, loaded.patches]))
-+    const baseMap = new Map<string, Record<string, unknown>>()
-+    for (const row of baseComposed) {
-+      if (row.id) baseMap.set(row.id, (row.config ?? {}) as Record<string, unknown>)
-+    }
-+    return this.entries().map(entry => {
-+      const hasOverride = loaded.patches.some(row => row.id === entry.options.id && row.config !== undefined && row.insert === undefined)
-+      const inherited = hasOverride ? this.inherited(entry, loaded) : structuredClone(baseMap.get(entry.options.id) ?? {})
-+      return {
-+        entry,
-+        inherited,
-+        override: structuredClone((loaded.patches.findLast(
-+          row => row.id === entry.options.id && row.config !== undefined,
-+        )?.config ?? {}) as Record<string, unknown>),
-+      }
-+    })
-   }
- 
-   private inherited(entry: Entry, loaded: ReturnType<typeof loadProfileDirectory>): Record<string, unknown> {
-@@ -81,7 +92,11 @@ export class ConfigEditor extends Service {
+@@ -93,7 +93,11 @@ export class ConfigEditor extends Service {
        await withFileLock(join(this.ownerContext.profileContext.dir, 'package.json'), async () => {
          if (!this.entries().includes(entry) || entry.fiber === undefined) throw new Error('Configuration entry is no longer available')
          const beforePatches = readProfilePatches('dsh', this.ownerContext.profileContext)
@@ -351,7 +321,7 @@ index af02724b4f..72ffdc81cc 100644
 +  }
 +}
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
-index 56687cd84e..359de9b7d8 100644
+index 3fd38dc21a..46f40e9da3 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
 @@ -77,6 +77,7 @@
@@ -363,7 +333,7 @@ index 56687cd84e..359de9b7d8 100644
  
  .label {
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-index e09a0d9504..0c388d5b32 100644
+index 443cb0407a..98682121f5 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
 @@ -113,7 +113,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
@@ -376,10 +346,10 @@ index e09a0d9504..0c388d5b32 100644
          <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
          <span className={css.chevron} data-step-process-chevron>
 diff --git a/packages/client/ui-chat/src/client/chat/ChatView.tsx b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-index 0514068aed..a26eed82d8 100644
+index 460f98b014..229cc243ce 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-@@ -280,6 +280,7 @@ export function ChatView({
+@@ -289,6 +289,7 @@ export function ChatView({
            <button
              type="button"
              className={css.toBottom}
@@ -490,10 +460,10 @@ index 0000000000..78d71928fa
 +}
 +
 diff --git a/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
-index 71dc44693b..4a1a2dde8c 100644
+index d1e0fc5eae..75145ad73b 100644
 --- a/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
-@@ -56,7 +56,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
+@@ -44,7 +44,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
          disabled={!canCollapse}
          aria-expanded={turnProcess.hasContent ? open : undefined}
          onClick={(event) => {
@@ -20499,10 +20469,10 @@ index 0000000000..752fe87893
 +//# sourceMappingURL=client.js.map
 \ No newline at end of file
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 4f450df3c9..b0a49d2382 100644
+index 56494a90ee..8e2d4019b7 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -266,3 +266,119 @@
+@@ -284,3 +284,119 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -20824,10 +20794,10 @@ index a40d0959cd..fdc1d90272 100644
 +  }
 +}
 diff --git a/packages/client/ui-primitives/src/Modal.module.css b/packages/client/ui-primitives/src/Modal.module.css
-index 8f7dc22fff..8b45262180 100644
+index be4b832d23..ea5ef84ff2 100644
 --- a/packages/client/ui-primitives/src/Modal.module.css
 +++ b/packages/client/ui-primitives/src/Modal.module.css
-@@ -126,3 +126,25 @@
+@@ -127,3 +127,25 @@
    gap: 8px;
    padding: 0 24px;
  }
@@ -20854,7 +20824,7 @@ index 8f7dc22fff..8b45262180 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index 43400c8c30..a0a331849c 100644
+index df3de834d4..816cabb463 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -67,7 +67,7 @@
@@ -20867,7 +20837,7 @@ index 43400c8c30..a0a331849c 100644
      "react": "^18.2.0",
      "@deepseek-ai/dsh-settings": "workspace:*",
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index 74502b5cb3..6a5f419480 100644
+index 0f695de58a..1b44619f34 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 @@ -246,3 +246,197 @@
@@ -22000,7 +21970,7 @@ index 5996645b7e..48378efedb 100644
        thinking: config.thinking,
        reasoningEffort: config.reasoningEffort,
 diff --git a/packages/llm/llm-deepseek/src/file-store.ts b/packages/llm/llm-deepseek/src/file-store.ts
-index cebff0809b..c007653b5c 100644
+index da6f87654a..b3400facd3 100644
 --- a/packages/llm/llm-deepseek/src/file-store.ts
 +++ b/packages/llm/llm-deepseek/src/file-store.ts
 @@ -24,6 +24,8 @@ export interface DeepSeekFileConnection {
@@ -22084,7 +22054,7 @@ index f8ecb1b3c6..1ace6f004f 100644
    defaults: RequestDefaults
    /** Default per-request output cap; explicit request values win. */
 diff --git a/packages/llm/llm-deepseek/tests/file-store.spec.ts b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-index b821304c02..5f9527878f 100644
+index a8cb1458a4..b432cc88c5 100644
 --- a/packages/llm/llm-deepseek/tests/file-store.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/file-store.spec.ts
 @@ -169,6 +169,26 @@ describe('DeepSeekFileStore', () => {
@@ -22144,7 +22114,7 @@ index 48126befb6..47a86a1df4 100644
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
 diff --git a/packages/llm/llm-deepseek/tests/runtime.spec.ts b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-index 4c505e1fe2..af0eb8cf6a 100644
+index e051f6f909..31021dc49b 100644
 --- a/packages/llm/llm-deepseek/tests/runtime.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/runtime.spec.ts
 @@ -383,6 +383,30 @@ describe('DeepSeekAdapter against a mock server', () => {
@@ -22178,7 +22148,7 @@ index 4c505e1fe2..af0eb8cf6a 100644
    it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
      const server = await mockServer([{ kind: 'sse', events: textEvents }])
      const signalSeen: (AbortSignal | undefined)[] = []
-@@ -1679,6 +1703,19 @@ describe('plugin registration and config', () => {
+@@ -1730,6 +1754,19 @@ describe('plugin registration and config', () => {
      expect(() => resolveAdapterOptions(retired)).toThrow(/protocol/)
    })
  
@@ -22617,7 +22587,7 @@ index 297843584a..ad05c67074 100644
    if (platform === 'win32') return createWindowsProcessInspector()
    throw new Error(`subprocess-local: terminal inspection is unsupported on platform ${platform}`)
 diff --git a/packages/terminal/terminal-bash/src/config.ts b/packages/terminal/terminal-bash/src/config.ts
-index 9a13bd9f90..c32d6649c3 100644
+index 7cb37f1be7..155546861f 100644
 --- a/packages/terminal/terminal-bash/src/config.ts
 +++ b/packages/terminal/terminal-bash/src/config.ts
 @@ -1,5 +1,6 @@
@@ -22627,7 +22597,7 @@ index 9a13bd9f90..c32d6649c3 100644
  import z from '@deepseek-ai/schemastery'
  import { resolvePwshPath } from '@deepseek-ai/dsh-pwsh-local'
  
-@@ -50,8 +51,21 @@ export type ResolvedConfig = Omit<Required<Config>, 'shellDialect' | 'shellPath'
+@@ -59,8 +60,21 @@ export type ResolvedConfig = Omit<Required<Config>, 'shellDialect' | 'shellPath'
    shellArgs: string[]
  }
  
