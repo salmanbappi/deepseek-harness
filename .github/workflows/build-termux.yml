@@ -141,18 +141,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v${VERSION}"
-          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
-          gh release create "$TAG" "$ARCHIVE_NAME" \
-            --title "DeepSeek Harness v${VERSION} — Termux Prebuilt" \
-            --notes "## Termux Prebuilt — v${VERSION}
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists. Uploading $ARCHIVE_NAME..."
+            gh release upload "$TAG" "$ARCHIVE_NAME" --clobber
+          else
+            echo "Creating release $TAG..."
+            gh release create "$TAG" "$ARCHIVE_NAME" \
+              --title "DeepSeek Harness v${VERSION}" \
+              --notes "## DeepSeek Harness — v${VERSION}
 
-          Pre-compiled \`lib/\` outputs for every workspace package. Built on GitHub Actions — no local \`tsc\` needed on Termux.
+          Multi-platform prebuilt binaries and bundles.
 
-          ### Apply on Termux
+          ### Android / Termux
           \`\`\`bash
           bash ~/deepseek-harness/scripts/install-prebuilt.sh
-          dsh-web
+          dsh web
           \`\`\`
 
           > Built from commit: \`${{ github.sha }}\`" \
-            --target "${{ github.sha }}"
+              --target "${{ github.sha }}"
+          fi

@@ -23,10 +23,10 @@ echo "  ======================================================="
 echo -e "${NC}"
 
 # Step 1: System packages check & installation
-echo -e "${BLUE}[1/5] Checking and installing Termux system packages...${NC}"
-pkg update -y || true
-
-PACKAGES="nodejs-lts python git clang make binutils tar curl"
+echo -e "${BLUE}[1/5] Checking and installing minimal Termux system packages...${NC}"
+# clang, make, and binutils are excluded to save ~2 GB of storage on mobile.
+# Pre-compiled binaries and WASM modules are used instead.
+PACKAGES="nodejs-lts python git tar curl"
 MISSING_PKGS=""
 for pkg in $PACKAGES; do
     if ! command -v "$pkg" &>/dev/null && ! dpkg -s "$pkg" &>/dev/null; then
@@ -36,7 +36,9 @@ done
 
 if [ -n "$MISSING_PKGS" ]; then
     echo -e "${YELLOW}  -> Installing missing packages:${MISSING_PKGS}...${NC}"
+    pkg update -y || true
     pkg install -y -o Dpkg::Options::="--force-confold" $MISSING_PKGS || apt-get install -y $MISSING_PKGS || true
+    pkg clean 2>/dev/null || true
 fi
 
 # Ensure pnpm is available (via pkg or npm fallback)
@@ -50,7 +52,7 @@ if ! command -v pnpm &>/dev/null; then
     exit 1
 fi
 
-# Step 2: Repository setup
+# Step 2: Repository setup (Shallow clone to save storage)
 DSH_DIR="$HOME/deepseek-harness"
 echo -e "${BLUE}[2/5] Setting up DeepSeek Harness repository at $DSH_DIR...${NC}"
 git config --global --add safe.directory "$DSH_DIR" 2>/dev/null || true
@@ -62,12 +64,12 @@ if [ -d "$DSH_DIR/.git" ]; then
     git checkout master --quiet || true
     git pull origin master --quiet || true
 else
-    echo "  -> Cloning salmanbappi/deepseek-harness..."
+    echo "  -> Cloning salmanbappi/deepseek-harness (shallow clone to conserve storage)..."
     MAX_RETRIES=3
     COUNT=0
     until [ "$COUNT" -ge "$MAX_RETRIES" ]
     do
-        git clone https://github.com/salmanbappi/deepseek-harness.git "$DSH_DIR" && break
+        git clone --depth=1 https://github.com/salmanbappi/deepseek-harness.git "$DSH_DIR" && break
         COUNT=$((COUNT+1))
         echo -e "${YELLOW}  -> Clone attempt $COUNT failed. Retrying in 2 seconds...${NC}"
         sleep 2
@@ -165,33 +167,35 @@ for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile" "$HOME/.bash_profile";
 done
 export PATH="$HOME/bin:$PATH"
 
-# Step 4: Dependency installation & Termux patch application
-echo -e "${BLUE}[4/5] Applying Termux & Mobile UX patches and installing dependencies...${NC}"
+# Step 4: Deploy pre-compiled libraries and mobile web assets
+echo -e "${BLUE}[4/5] Deploying pre-compiled binaries & mobile web interface...${NC}"
 cd "$DSH_DIR"
-python3 scripts/patch_termux.py --apply || true
-CI=true pnpm install --frozen-lockfile=false --ignore-scripts --force
-pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
-python3 scripts/patch_termux.py --apply || true
+DOWNLOAD_SUCCESS=0
 
-
-# Step 5: Deploy pre-compiled libraries and mobile web assets
-echo -e "${BLUE}[5/5] Deploying pre-compiled binaries & mobile web interface...${NC}"
 if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ] && [ -f "packages/client/ui-chat/lib/client.js" ]; then
-    echo -e "${GREEN}  -> Pre-compiled build artifacts verified. Ready for launch.${NC}"
+    echo -e "${GREEN}  -> Existing pre-compiled build artifacts verified. Ready for launch.${NC}"
+    DOWNLOAD_SUCCESS=1
 else
-    echo -e "${YELLOW}  -> Fetching cloud pre-compiled release bundle from GitHub...${NC}"
+    echo -e "${YELLOW}  -> Resolving latest cloud pre-compiled release bundle from GitHub...${NC}"
     REPO_OWNER="salmanbappi"
     REPO_NAME="deepseek-harness"
-    RELEASE_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
-    LATEST_JSON=$(curl -sL "$RELEASE_API" 2>/dev/null || true)
-    TARBALL_URL=$(echo "$LATEST_JSON" | grep "browser_download_url" | grep "dsh-termux-.*\.tar\.gz" | cut -d : -f 2,3 | tr -d ' "' | head -n 1 || true)
     
-    DOWNLOAD_SUCCESS=0
-    if [ -n "$TARBALL_URL" ]; then
+    # 1. Try rate-limit-free header redirect to resolve latest release tag
+    LATEST_TAG=$(curl -sI "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest" 2>/dev/null | grep -i "^location:" | awk '{print $2}' | tr -d '\r\n' | sed -E 's|.*/tag/||')
+    
+    # 2. Fallback to API if redirect header was missing
+    if [ -z "$LATEST_TAG" ]; then
+        RELEASE_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
+        LATEST_JSON=$(curl -sL "$RELEASE_API" 2>/dev/null || true)
+        LATEST_TAG=$(echo "$LATEST_JSON" | grep '"tag_name":' | head -n 1 | cut -d '"' -f 4 || true)
+    fi
+
+    if [ -n "$LATEST_TAG" ]; then
+        TARBALL_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$LATEST_TAG/dsh-termux-prebuilt-${LATEST_TAG}.tar.gz"
         echo "  -> Downloading: $TARBALL_URL"
         if curl -sL "$TARBALL_URL" -o "$DSH_DIR/prebuilt.tar.gz" 2>/dev/null; then
             echo "  -> Extracting pre-built application packages..."
-            tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" apps/ packages/ 2>/dev/null || tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" || true
+            tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" 2>/dev/null || true
             rm -f "$DSH_DIR/prebuilt.tar.gz"
             if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ]; then
                 DOWNLOAD_SUCCESS=1
@@ -201,12 +205,29 @@ else
     fi
 
     if [ "$DOWNLOAD_SUCCESS" -eq 0 ]; then
-        echo -e "${YELLOW}[!] Cloud bundle unavailable. Attempting local compilation with memory limits...${NC}"
+        echo -e "${YELLOW}[!] Cloud prebuilt bundle unavailable. Attempting local compilation with memory limits...${NC}"
         pnpm run build:lib:host || true
         pnpm run build:lib:client || true
         pnpm run build:web || true
     fi
 fi
+
+# Step 5: Dependency linking & Termux patch application
+echo -e "${BLUE}[5/5] Applying Termux & Mobile UX patches and linking dependencies...${NC}"
+cd "$DSH_DIR"
+python3 scripts/patch_termux.py --apply || true
+
+# Production-only dependency install saves 2-3 GB of devDependencies
+echo "  -> Linking production dependencies..."
+CI=true pnpm install --prod --frozen-lockfile=false --ignore-scripts || true
+pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
+
+# Prune unneeded pnpm cache files
+echo "  -> Pruning package cache..."
+pnpm store prune 2>/dev/null || true
+pkg clean 2>/dev/null || true
+
+python3 scripts/patch_termux.py --apply || true
 
 echo -e "\n${GREEN}=======================================================${NC}"
 echo -e "${GREEN}   DeepSeek Harness successfully installed on Termux!  ${NC}"

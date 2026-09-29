@@ -1,0 +1,169 @@
+name: Build & Release Desktop Prebuilts
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (leave empty to use package.json)'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Build Windows Desktop
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve Version
+        id: pkg
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile=false --ignore-scripts
+
+      - name: Build — Core Libraries
+        shell: bash
+        run: |
+          pnpm run build:lib:host
+          pnpm run build:lib:client
+          pnpm run build:web
+
+      - name: Package Desktop — Windows x64
+        shell: bash
+        run: |
+          pnpm --filter @deepseek-ai/dsh-desktop run package:win:x64:unsigned
+
+      - name: Locate and Stage Windows Artifacts
+        shell: bash
+        run: |
+          mkdir -p dist-artifacts
+          find apps/desktop -type f \( -name "*.exe" -o -name "*.zip" \) -not -path "*/node_modules/*" -exec cp {} dist-artifacts/ \;
+          ls -la dist-artifacts/
+
+      - name: Upload Windows Artifacts to GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${VERSION}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "DeepSeek Harness v${VERSION}" --notes "Prebuilt releases for v${VERSION}"
+          fi
+          for f in dist-artifacts/*; do
+            if [ -f "$f" ]; then
+              gh release upload "$TAG" "$f" --clobber
+            fi
+          done
+
+  macos:
+    name: Build macOS Desktop
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve Version
+        id: pkg
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile=false --ignore-scripts
+
+      - name: Build — Core Libraries
+        run: |
+          pnpm run build:lib:host
+          pnpm run build:lib:client
+          pnpm run build:web
+
+      - name: Package Desktop — macOS
+        run: |
+          pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64:dir
+
+      - name: Compress macOS Application
+        run: |
+          mkdir -p dist-artifacts
+          APP_DIR=$(find apps/desktop -type d -name "DeepSeek Harness.app" | head -n 1)
+          if [ -n "$APP_DIR" ]; then
+            tar -czf "dist-artifacts/dsh-desktop-macos-arm64-v${VERSION}.tar.gz" -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
+          fi
+          find apps/desktop -type f \( -name "*.dmg" -o -name "*.zip" \) -not -path "*/node_modules/*" -exec cp {} dist-artifacts/ \;
+          ls -la dist-artifacts/
+
+      - name: Upload macOS Artifacts to GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${VERSION}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "DeepSeek Harness v${VERSION}" --notes "Prebuilt releases for v${VERSION}"
+          fi
+          for f in dist-artifacts/*; do
+            if [ -f "$f" ]; then
+              gh release upload "$TAG" "$f" --clobber
+            fi
+          done
