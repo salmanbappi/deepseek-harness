@@ -1,77 +1,97 @@
 # DeepSeek Harness
 
-English | [中文](README.zh.md)
+DeepSeek Harness (`dsh`) is an open-source autonomous agent execution environment developed by DeepSeek AI and maintained for Android (Termux) and Desktop platforms.
 
-DeepSeek Harness (`dsh`) is an open-source agent harness developed by [DeepSeek AI](https://deepseek.com).
+Powered by the Cordis plugin microkernel, DeepSeek Harness provides a modular runtime for model tool calling, persistent sandboxed execution, terminal sessions, and interactive interfaces.
 
-It is built on an **everything-is-a-plugin** architecture and powered by [Cordis](https://github.com/cordiverse/cordis), whose design is described in [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512).
+---
 
-Documentation: [https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+## Supported Platforms
 
-## Developer preview
+- **Android (Termux):** Optimized for ARM64 mobile environments with hardware-accelerated speech-to-text, terminal emulation, and zero-compile cloud prebuilts.
+- **Desktop (Windows and macOS):** Packaged standalone application running an authenticated local host and desktop workspace.
 
-DeepSeek Harness is in _developer preview_ and iterating rapidly. **THERE WILL BE COMPATIBILITY-BREAKING CHANGES.**
+---
 
-Review the [safety notice](SAFETY.md) before running the project.
+## Installation
 
-## Run
+### Android (Termux)
 
-### Run from `npm`
+#### Automated One-Line Installer
 
-Install `Node.js`, then run:
+The automated installer configures minimal dependencies, downloads pre-compiled release bundles, links workspace binaries, and exposes global executables:
 
 ```sh
-npx @deepseek-ai/dsh web
+curl -sL https://raw.githubusercontent.com/salmanbappi/deepseek-harness/master/scripts/install-termux.sh | bash
 ```
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+#### Manual Installation from Prebuilt Bundle
 
-### Run from source
-
-To run from a repository checkout:
+For manual deployment without local compilation load:
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
+git clone --depth=1 https://github.com/salmanbappi/deepseek-harness.git ~/deepseek-harness
+cd ~/deepseek-harness
+bash scripts/install-prebuilt.sh
+```
+
+---
+
+### Desktop (Windows and macOS)
+
+Standalone pre-packaged distributions with bundled runtimes are distributed via GitHub Releases:
+
+1. Navigate to the repository releases page: `https://github.com/salmanbappi/deepseek-harness/releases`
+2. Download the package for your architecture:
+   - **Windows:** `dsh-desktop-windows-x64-v*.exe`
+   - **macOS (Apple Silicon):** `dsh-desktop-macos-arm64-v*.dmg` or `.tar.gz`
+   - **macOS (Intel):** `dsh-desktop-macos-x64-v*.dmg`
+3. Launch the package. No local compilation toolchain or Node.js runtime configuration is required.
+
+---
+
+### Run from Source
+
+To build and run from source in a development environment:
+
+```sh
+git clone --depth=1 https://github.com/salmanbappi/deepseek-harness.git
 cd deepseek-harness
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
+---
 
-## Community and support
+## Execution and Diagnostics
 
-- Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).
-- Add the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic to your plugin repository for discoverability.
-- Join <a href="https://discord.gg/4MrtZUhpxg">DeepSeek Harness Discord community</a>.
+### Start Web Interface
 
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Development
-
-Start with the [development guide](docs/development.md) and [architecture documentation](docs/architecture.md).
-
-`pnpm run dev:web` builds, serves, and rebuilds client bundles on source edits in one terminal, and `make help` lists the matching Make targets for Web and Desktop; the guide's application commands section owns the full table.
-
-For agents, follow [AGENTS.md](AGENTS.md).
-
-## Citation
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
+```sh
+dsh web
 ```
+
+Launches the local HTTP service and user interface at `http://127.0.0.1:3080`. Pass `--no-open` to inhibit automatic browser launching.
+
+### System Diagnostics
+
+Validate platform patches, native addons, and runtime health:
+
+```sh
+dsh-doctor
+```
+
+### Upstream Synchronization
+
+Upgrade to the latest releases while maintaining mobile and platform optimizations:
+
+```sh
+dsh-update
+```
+
+---
 
 ## License
 
-[MIT](LICENSE)
-
-Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Distributed under the MIT License. See `LICENSE` for details.
