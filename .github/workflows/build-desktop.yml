@@ -85,7 +85,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist-artifacts
-          find apps/desktop -type f \( -name "*.exe" -o -name "*.zip" \) -not -path "*/node_modules/*" -exec cp {} dist-artifacts/ \;
+          find apps/desktop/.desktop-build/targets/win-x64 -maxdepth 2 -type f \( -name "*.exe" -o -name "*.zip" \) -exec cp {} dist-artifacts/ \;
           ls -la dist-artifacts/
 
       - name: Upload Windows Artifacts to GitHub Release
