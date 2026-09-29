@@ -26,10 +26,10 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index 591fbb4a12..20883563a5 100644
+index f5ce66dc9e..dccbcad223 100644
 --- a/package.json
 +++ b/package.json
-@@ -194,7 +194,7 @@
+@@ -199,7 +199,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -38,7 +38,7 @@ index 591fbb4a12..20883563a5 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -202,6 +202,9 @@
+@@ -207,6 +207,9 @@
      "dev:web": "tsx scripts/dev-web.ts --poll",
      "postinstall": "node scripts/install-lefthook.mjs"
    },
@@ -321,10 +321,10 @@ index af02724b4f..72ffdc81cc 100644
 +  }
 +}
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
-index 3fd38dc21a..46f40e9da3 100644
+index f40328906c..1b33461bd2 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
-@@ -77,6 +77,7 @@
+@@ -89,6 +89,7 @@
    overflow-y: auto;
    overscroll-behavior-y: auto;
    scrollbar-gutter: stable;
@@ -358,10 +358,10 @@ index 460f98b014..229cc243ce 100644
              onClick={scroll.returnToBottom}
            >
 diff --git a/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css b/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css
-index 6ef58c908d..21ef889592 100644
+index d34df73398..db3402246f 100644
 --- a/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css
 +++ b/packages/client/ui-chat/src/client/chat/GenericCommandCard.module.css
-@@ -52,6 +52,7 @@
+@@ -40,6 +40,7 @@
    margin: 4px 0 4px 4px;
    padding: 12px 16px;
    overflow: auto;
@@ -460,7 +460,7 @@ index 0000000000..78d71928fa
 +}
 +
 diff --git a/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
-index d1e0fc5eae..75145ad73b 100644
+index e897b061e0..32c8a24339 100644
 --- a/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/TurnProcessNodeView.tsx
 @@ -44,7 +44,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
@@ -20775,7 +20775,7 @@ index 841f9f72aa..a20fb8b389 100644
          <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
        )}
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-index 74b3311cdb..a6a52d33aa 100644
+index f4f42cb9cc..cddd7c5f3e 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 @@ -116,6 +116,19 @@
@@ -20799,10 +20799,10 @@ index 74b3311cdb..a6a52d33aa 100644
  .empty {
    padding: 8px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index 28e4bfa800..e867ac5ee8 100644
+index fbeda5d31e..c2720cef5d 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -126,14 +126,18 @@ export function ModelSelect(
+@@ -146,14 +146,18 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -20822,8 +20822,8 @@ index 28e4bfa800..e867ac5ee8 100644
 +    }
    }, [open])
  
-   // A pane switch unmounts the row that had focus, which drops focus onto the
-@@ -283,6 +287,7 @@ export function ModelSelect(
+   useLayoutEffect(() => {
+@@ -364,6 +368,7 @@ export function ModelSelect(
      )) return
      close()
    }
@@ -20831,7 +20831,7 @@ index 28e4bfa800..e867ac5ee8 100644
  
    const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
      if (result === undefined) return
-@@ -354,7 +359,6 @@ export function ModelSelect(
+@@ -437,7 +442,6 @@ export function ModelSelect(
        ref={rootRef}
        className={css.root}
        onKeyDown={onRootKeyDown}
@@ -20888,7 +20888,7 @@ index be4b832d23..ea5ef84ff2 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index df3de834d4..816cabb463 100644
+index 1133a01343..d065a02164 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -67,7 +67,7 @@
@@ -21244,7 +21244,7 @@ index 5343472cd0..2eb7d30403 100644
    return { card: { diffs: applied } }
  }
 diff --git a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
-index c58a5df600..563cc7a872 100644
+index 6d44e524fb..6674fd1915 100644
 --- a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 +++ b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 @@ -41,6 +41,7 @@
@@ -21256,7 +21256,7 @@ index c58a5df600..563cc7a872 100644
  
  .ioSection::-webkit-scrollbar-thumb {
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index a80446e058..bfd7c85b99 100644
+index 0274f74751..99245b66d0 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 @@ -55,6 +55,50 @@ describe('diffCardModel', () => {
@@ -21553,10 +21553,10 @@ index 67b302e3b5..0fa71c89f8 100644
  
  .previewActions {
 diff --git a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
-index f2fe1755f1..bb3a585786 100644
+index 5f2eb4701b..63ebc00d81 100644
 --- a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
 +++ b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
-@@ -420,6 +420,11 @@
+@@ -441,6 +441,11 @@
  }
  
  @media (max-width: 720px) {
@@ -21568,7 +21568,7 @@ index f2fe1755f1..bb3a585786 100644
    .card {
      border-radius: var(--dsw-radius-xl);
    }
-@@ -443,12 +448,31 @@
+@@ -464,12 +469,31 @@
    }
  
    .footer {
@@ -22324,7 +22324,7 @@ index 30e9c79412..cda1728bc5 100644
    // A rejected request body (gateway or provider size cap): resending the
    // same request cannot succeed, so it is invalid, not transient.
 diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index e9d1699c34..d3cc682e29 100644
+index 6beedfb3fb..06ede71f94 100644
 --- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 +++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
 @@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
