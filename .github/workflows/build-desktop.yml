@@ -66,6 +66,16 @@ jobs:
           pnpm run build:lib:client
           pnpm run build:web
 
+      - name: Configure Desktop Environment
+        shell: bash
+        run: |
+          cat << 'EOF' > apps/desktop/.env.windows
+          DSH_DESKTOP_APP_ID=com.deepseek.harness
+          DSH_DESKTOP_AUTO_UPDATE_ENV=production
+          DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://download.deepseek.com
+          DSH_DESKTOP_WINDOWS_SIGNATURE_CACHE_CONCURRENCY=4
+          EOF
+
       - name: Package Desktop — Windows x64
         shell: bash
         run: |
@@ -140,9 +150,18 @@ jobs:
           pnpm run build:lib:client
           pnpm run build:web
 
+      - name: Configure Desktop Environment
+        run: |
+          cat << 'EOF' > apps/desktop/.env.macos
+          DSH_DESKTOP_APP_ID=com.deepseek.harness
+          DSH_DESKTOP_AUTO_UPDATE_ENV=production
+          DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://download.deepseek.com
+          DSH_DESKTOP_MACOS_PACK_CONCURRENCY=4
+          EOF
+
       - name: Package Desktop — macOS
         run: |
-          pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64:dir
+          pnpm --filter @deepseek-ai/dsh-desktop run package:mac:arm64:unsigned
 
       - name: Compress macOS Application
         run: |
