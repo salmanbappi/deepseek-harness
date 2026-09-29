@@ -1,33 +1,24 @@
 # DeepSeek Harness
 
-DeepSeek Harness (`dsh`) is an open-source autonomous agent execution environment developed by DeepSeek AI and maintained for Android (Termux) and Desktop platforms.
+DeepSeek Harness (`dsh`) is an open-source autonomous agent execution environment developed by DeepSeek AI and optimized for Android (Termux) ARM64 architectures.
 
-Powered by the Cordis plugin microkernel, DeepSeek Harness provides a modular runtime for model tool calling, persistent sandboxed execution, terminal sessions, and interactive interfaces.
-
----
-
-## Supported Platforms
-
-- **Android (Termux):** Optimized for ARM64 mobile environments with hardware-accelerated speech-to-text, terminal emulation, and zero-compile cloud prebuilts.
-- **Desktop (Windows and macOS):** Packaged standalone application running an authenticated local host and desktop workspace.
+Powered by the Cordis plugin microkernel, DeepSeek Harness provides a modular runtime for model tool calling, persistent sandboxed execution, terminal sessions, speech-to-text, and local web interfaces.
 
 ---
 
 ## Installation
 
-### Android (Termux)
+### Automated One-Line Installer
 
-#### Automated One-Line Installer
-
-The automated installer configures minimal dependencies, downloads pre-compiled release bundles, links workspace binaries, and exposes global executables:
+The automated installer configures system packages, downloads pre-compiled zero-compile release bundles, links workspace binaries, and exposes global executables:
 
 ```sh
 curl -sL https://raw.githubusercontent.com/salmanbappi/deepseek-harness/master/scripts/install-termux.sh | bash
 ```
 
-#### Manual Installation from Prebuilt Bundle
+### Manual Installation from Prebuilt Bundle
 
-For manual deployment without local compilation load:
+For manual deployment without local compilation:
 
 ```sh
 git clone --depth=1 https://github.com/salmanbappi/deepseek-harness.git ~/deepseek-harness
@@ -35,23 +26,9 @@ cd ~/deepseek-harness
 bash scripts/install-prebuilt.sh
 ```
 
----
-
-### Desktop (Windows and macOS)
-
-Standalone pre-packaged distributions with bundled runtimes are distributed via GitHub Releases:
-
-1. Navigate to the repository releases page: `https://github.com/salmanbappi/deepseek-harness/releases`
-2. Download the package for your architecture:
-   - **Windows (x64):** `deepseek-harness-*-win-x64-unsigned.exe` (Installer) or `DeepSeek.Harness.exe` (Portable)
-   - **macOS (Apple Silicon):** `dsh-desktop-macos-arm64-*.tar.gz`
-3. Launch or unpack the package. No local compilation toolchain or Node.js runtime configuration is required.
-
----
-
 ### Run from Source
 
-To build and run from source in a development environment:
+To build and run from source in a Termux development environment:
 
 ```sh
 git clone --depth=1 https://github.com/salmanbappi/deepseek-harness.git
@@ -83,7 +60,7 @@ dsh-doctor
 
 ### Upstream Synchronization
 
-Upgrade to the latest releases while maintaining mobile and platform optimizations:
+Upgrade to the latest releases while maintaining mobile optimizations:
 
 ```sh
 dsh-update
