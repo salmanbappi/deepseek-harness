@@ -43,10 +43,9 @@ Standalone pre-packaged distributions with bundled runtimes are distributed via 
 
 1. Navigate to the repository releases page: `https://github.com/salmanbappi/deepseek-harness/releases`
 2. Download the package for your architecture:
-   - **Windows:** `dsh-desktop-windows-x64-v*.exe`
-   - **macOS (Apple Silicon):** `dsh-desktop-macos-arm64-v*.dmg` or `.tar.gz`
-   - **macOS (Intel):** `dsh-desktop-macos-x64-v*.dmg`
-3. Launch the package. No local compilation toolchain or Node.js runtime configuration is required.
+   - **Windows (x64):** `deepseek-harness-*-win-x64-unsigned.exe` (Installer) or `DeepSeek.Harness.exe` (Portable)
+   - **macOS (Apple Silicon):** `dsh-desktop-macos-arm64-*.tar.gz`
+3. Launch or unpack the package. No local compilation toolchain or Node.js runtime configuration is required.
 
 ---
 
