@@ -26,10 +26,10 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index f5ce66dc9e..dccbcad223 100644
+index f4970a1730..77f00c0cf1 100644
 --- a/package.json
 +++ b/package.json
-@@ -199,7 +199,7 @@
+@@ -195,7 +195,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -38,7 +38,7 @@ index f5ce66dc9e..dccbcad223 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -207,6 +207,9 @@
+@@ -203,6 +203,9 @@
      "dev:web": "tsx scripts/dev-web.ts --poll",
      "postinstall": "node scripts/install-lefthook.mjs"
    },
@@ -183,10 +183,10 @@ index 82c2b9f3ba..3ef3919554 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
-index e17e125a75..3ccfe7d388 100644
+index 9ea867ca5e..2f5e2978a8 100644
 --- a/packages/boot/app-boot/src/profile.ts
 +++ b/packages/boot/app-boot/src/profile.ts
-@@ -652,6 +652,8 @@ export function resolveBundleDir(
+@@ -729,6 +729,8 @@ export function resolveBundleDir(
   * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
   * @returns the successfully loaded bundle layers and optional user patch layer.
   */
@@ -195,7 +195,7 @@ index e17e125a75..3ccfe7d388 100644
  export function loadProfileDirectory(
    binName: string,
    dir: string,
-@@ -666,17 +668,22 @@ export function loadProfileDirectory(
+@@ -743,17 +745,22 @@ export function loadProfileDirectory(
    for (const packageName of bundles) {
      try {
        const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
@@ -246,7 +246,7 @@ index ffec879f40..090919bebc 100644
          const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
          const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
 diff --git a/packages/client/AGENTS.md b/packages/client/AGENTS.md
-index 605a9fcde3..1a729d3fa5 100644
+index 2d39d6b3ca..2f79bd5bfe 100644
 --- a/packages/client/AGENTS.md
 +++ b/packages/client/AGENTS.md
 @@ -110,9 +110,7 @@ One UI feature = one plugin package (`src/client/` browser half). A multi-domain
@@ -20533,10 +20533,10 @@ index 0000000000..2b87582078
 +//# sourceMappingURL=client.js.map
 \ No newline at end of file
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 56494a90ee..8e2d4019b7 100644
+index 5b71ebecfd..f94d631632 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -284,3 +284,119 @@
+@@ -288,3 +288,119 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -20657,7 +20657,7 @@ index 56494a90ee..8e2d4019b7 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index 841f9f72aa..a20fb8b389 100644
+index 5614947447..3cfbd88a6f 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
 @@ -138,7 +138,7 @@ export function AppFrame({
@@ -20765,7 +20765,7 @@ index 841f9f72aa..a20fb8b389 100644
          {sidebar}
        </div>
        <>
-@@ -295,7 +355,7 @@ export function AppFrame({
+@@ -298,7 +358,7 @@ export function AppFrame({
          </div>
        )}
        {/* The collapsed rail is fixed-width: no resize handle while closed. */}
@@ -20888,7 +20888,7 @@ index be4b832d23..ea5ef84ff2 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index 1133a01343..d065a02164 100644
+index ddba8ede7b..7f8a16486c 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -67,7 +67,7 @@
@@ -21170,7 +21170,7 @@ index de9133c467..e93bf7638d 100644
  
  .item,
 diff --git a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-index 5343472cd0..2eb7d30403 100644
+index 04cc8278a4..cf8554cffe 100644
 --- a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
 +++ b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
 @@ -39,7 +39,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
@@ -21200,7 +21200,7 @@ index 5343472cd0..2eb7d30403 100644
        }
      }
      return null
-@@ -70,14 +70,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -69,14 +69,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
    if (parsed.name === 'write') {
      const { content } = parsed.args
      return typeof content === 'string'
@@ -21228,7 +21228,7 @@ index 5343472cd0..2eb7d30403 100644
  }
  
  function appliedDiffs(meta: unknown): DiffHunk[] | 'empty' | null {
-@@ -101,12 +112,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
+@@ -100,12 +111,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
    if (block.parentCallId !== undefined) return null
    const intended = intendedDiff(block)
    if (intended === null) return null
@@ -21256,10 +21256,10 @@ index 6d44e524fb..6674fd1915 100644
  
  .ioSection::-webkit-scrollbar-thumb {
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index 0274f74751..99245b66d0 100644
+index 08590fbcb5..c1c0a0f575 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-@@ -55,6 +55,50 @@ describe('diffCardModel', () => {
+@@ -63,6 +63,50 @@ describe('diffCardModel', () => {
      })
    })
  
@@ -21832,7 +21832,7 @@ index e3105925a5..4884eef3e4 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index f9cd0f36e1..e19b11d153 100644
+index 0a4b8c20ea..d0581b43a4 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
 @@ -101,7 +101,14 @@ class FakeFs extends FileSystem {
@@ -21851,7 +21851,7 @@ index f9cd0f36e1..e19b11d153 100644
      this.files.set(target.targetKey, after)
      return { version: FsVersion('v3'), before: content, after }
    }
-@@ -476,6 +483,40 @@ describe('edit tool', () => {
+@@ -492,6 +499,40 @@ describe('edit tool', () => {
      expect(result.isError).toBe(true)
      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
    })
@@ -21892,7 +21892,7 @@ index f9cd0f36e1..e19b11d153 100644
  })
  
  describe('tool-owned presentation (pure presentCall)', () => {
-@@ -602,6 +643,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -618,6 +659,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
        locations: [{ path: 'a.txt' }],
      })
    })
@@ -22346,7 +22346,7 @@ index 6beedfb3fb..06ede71f94 100644
  
    it('continues natively after max-token assembly drops a tool call, with pruned replay metadata', async () => {
 diff --git a/packages/llm/llm/src/attribution.ts b/packages/llm/llm/src/attribution.ts
-index 42980939cc..dcb0db1a36 100644
+index b984c18ca7..d82b0cffc1 100644
 --- a/packages/llm/llm/src/attribution.ts
 +++ b/packages/llm/llm/src/attribution.ts
 @@ -66,3 +66,21 @@ export function attributionHeaders(
@@ -22372,7 +22372,7 @@ index 42980939cc..dcb0db1a36 100644
 +  }
 +}
 diff --git a/packages/llm/llm/src/error.ts b/packages/llm/llm/src/error.ts
-index 430f031ea1..27c6c425b7 100644
+index 9be7cf9c00..c937bdd72c 100644
 --- a/packages/llm/llm/src/error.ts
 +++ b/packages/llm/llm/src/error.ts
 @@ -96,9 +96,9 @@ export function isContextWindowExceededError(detail: string): boolean {
