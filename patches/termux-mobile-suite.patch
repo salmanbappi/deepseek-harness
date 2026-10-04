@@ -22686,14 +22686,14 @@ index 7cb37f1be7..155546861f 100644
  /** Pwsh dialect default arguments (interactive host, profile-free). */
 diff --git a/packages/web/web-search-tavily/package.json b/packages/web/web-search-tavily/package.json
 new file mode 100644
-index 0000000000..b6449b3e50
+index 0000000000..591e7df429
 --- /dev/null
 +++ b/packages/web/web-search-tavily/package.json
 @@ -0,0 +1,32 @@
 +{
 +  "name": "@deepseek-ai/dsh-web-search-tavily",
 +  "description": "Tavily-backed WebSearchProvider plugin",
-+  "version": "0.1.2-alpha.1",
++  "version": "0.2.0-rc.2",
 +  "publishConfig": {
 +    "access": "public"
 +  },
