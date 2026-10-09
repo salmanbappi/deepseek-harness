@@ -17642,8 +17642,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					return;
 				}
 				if (text.length > token.length) {
-					const [tokenNode] = node.splitText(token.length);
+					const [tokenNode, overflow] = node.splitText(token.length);
 					if (tokenNode !== void 0 && tokenNode.getStyle() !== TOKEN_STYLE) tokenNode.setStyle(TOKEN_STYLE);
+					overflow?.setStyle("");
 					return;
 				}
 				if (node.getStyle() !== TOKEN_STYLE) node.setStyle(TOKEN_STYLE);
@@ -19632,6 +19633,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"row.preparing": "正在准备调用",
 			"row.failed": "失败",
 			"row.stopped": "已停止",
+			"row.commandArguments": "命令参数",
 			"row.input": "输入",
 			"row.output": "输出",
 			"row.inspect": "查看",
@@ -19693,6 +19695,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"terminal.signal": "信号 {signal}",
 			"terminal.exitCode": "退出码 {code}",
 			"terminal.noExitCode": "未正常退出",
+			"terminal.commandLine": "命令第 {n} 行",
 			"terminal.running": "运行中",
 			"terminal.failed": "失败",
 			"terminal.done": "已完成",
@@ -20004,6 +20007,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"row.preparing": "Preparing tool call",
 			"row.failed": "Failed",
 			"row.stopped": "Stopped",
+			"row.commandArguments": "Command arguments",
 			"row.input": "IN",
 			"row.output": "OUT",
 			"row.inspect": "Inspect",
@@ -20065,6 +20069,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"terminal.signal": "signal {signal}",
 			"terminal.exitCode": "exit code {code}",
 			"terminal.noExitCode": "no exit code",
+			"terminal.commandLine": "Command line {n}",
 			"terminal.running": "Running",
 			"terminal.failed": "Failed",
 			"terminal.done": "Done",
@@ -21627,7 +21632,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		*/
 		function installDraftFilePicker(keyboard, gate, fileInputRef) {
 			return keyboard.bindFilePicker({
-				available: () => gate.current.canAcceptDrop && fileInputRef.current !== null,
+				available: () => gate.current.canAcceptDrop && fileInputRef.current !== null && !fileInputRef.current.disabled,
 				open: () => {
 					fileInputRef.current?.click();
 				}
@@ -22147,8 +22152,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return installDraftWheel(scrollRef);
 			}, []);
 			const intakeFiles = (0, react.useCallback)((files, directories) => {
-				if (subagent !== null || addFiles === void 0 || files.length === 0) return;
+				if (locked || machineBusy || subagent !== null && !continuable || addFiles === void 0 || files.length === 0) return;
 				const rejected = (() => {
+					if (continuable && files.some((file) => directories?.has(file) || !isImageMediaType(file.type))) return t("image.unsupportedType");
 					if (imageLimits !== void 0) {
 						const mediaTypes = imageLimits.mediaTypes;
 						const images = files.filter((file) => mediaTypes.includes(file.type));
@@ -22161,14 +22167,17 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				})();
 				if (rejected !== null) showToast(rejected);
 			}, [
+				locked,
+				machineBusy,
 				subagent,
+				continuable,
 				addFiles,
 				attachments,
 				imageLimits,
 				showToast,
 				t
 			]);
-			const canAcceptDrop = subagent === null && !locked && !machineBusy && addFiles !== void 0;
+			const canAcceptDrop = (subagent === null || continuable) && !locked && !machineBusy && addFiles !== void 0;
 			const fileInputRef = (0, react.useRef)(null);
 			const onPickFiles = (e) => {
 				const picked = e.target.files === null ? [] : [...e.target.files];
@@ -22211,6 +22220,17 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}, [editor, keyboard]);
 			const keepFocus = (e) => {
 				keepDraftFocus(e, editor);
+			};
+			const onCardMouseDown = (e) => {
+				if (!editable || editor === null || e.button !== 0 || e.defaultPrevented) return;
+				const target = e.target;
+				if (!(target instanceof Element) || !e.currentTarget.contains(target)) return;
+				if (target.closest("[data-composer-overlay]") !== null) return;
+				if (scrollRef.current?.contains(target)) return;
+				const control = target.closest("button, a, input, select, textarea, [role=\"button\"], [contenteditable], [tabindex]");
+				if (control !== null && e.currentTarget.contains(control)) return;
+				e.preventDefault();
+				if (document.activeElement !== editor.getRootElement()) focusDraftEditor(editor, revealSelection);
 			};
 			const onToggleCommandMenu = () => {
 				if (keyboard === void 0) return;
@@ -22271,9 +22291,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						onPointerDown: workspaceTrigger ? (e) => {
 							e.stopPropagation();
 						} : void 0,
+						onMouseDown: onCardMouseDown,
 						children: [
 							sessionId !== void 0 && (0, react_jsx_runtime.jsx)("div", {
 								className: InputBar_module_css_default.overlayAnchor,
+								"data-composer-overlay": true,
 								children: renderSlot("conversation.input.overlay", {})
 							}),
 							accessory !== void 0 && (0, react_jsx_runtime.jsx)("div", {

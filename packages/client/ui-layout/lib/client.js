@@ -587,8 +587,18 @@ window.__ModuleLoader__.load({
 		* scheme.
 		*/
 		const THEME_SOURCE_ATTRIBUTE = "data-ds-theme-source";
-		/** Body variable carrying the user's content font size in px. */
-		const CONTENT_FONT_SIZE_VARIABLE = "--dsh-content-font-size";
+		/** Body variables carrying the user's font sizes in px by role. */
+		const FONT_SIZE_VARIABLES = {
+			text: "--dsh-content-font-size",
+			code: "--dsh-code-font-size",
+			terminal: "--dsh-terminal-font-size"
+		};
+		/** Body variables carrying the user's normalized font lists; absent selects the built-in stack. */
+		const FONT_FAMILY_VARIABLES = {
+			text: "--dsh-font-family-text",
+			code: "--dsh-font-family-code",
+			terminal: "--dsh-font-family-terminal"
+		};
 		/** Applies theme snapshots to the document; one instance per plugin fiber. */
 		var ThemePresenter = class {
 			/** Token names this presenter wrote in the last apply (its retraction set). */
@@ -603,7 +613,7 @@ window.__ModuleLoader__.load({
 			/**
 			* Project a snapshot onto the document: set root `color-scheme` and the body
 			* palette attribute from `active.colorScheme` (never the id — `system` is
-			* resolved upstream), publish the content font-size axis, then replace the
+			* resolved upstream), publish the font sizes and font lists, then replace the
 			* previously applied token variables with `active.tokens`. Browser
 			* theme-color metadata follows the computed body background after those
 			* writes, so the rendered palette remains the color authority.
@@ -616,7 +626,12 @@ window.__ModuleLoader__.load({
 				const body = document.body;
 				if (scheme === "dark") body.setAttribute(DARK_ATTRIBUTE, "");
 				else body.removeAttribute(DARK_ATTRIBUTE);
-				body.style.setProperty(CONTENT_FONT_SIZE_VARIABLE, `${snapshot.fontSize}px`);
+				for (const [role, name] of Object.entries(FONT_SIZE_VARIABLES)) body.style.setProperty(name, `${snapshot.fontSizes[role]}px`);
+				for (const [kind, name] of Object.entries(FONT_FAMILY_VARIABLES)) {
+					const list = snapshot.fontFamilies[kind];
+					if (list === "") body.style.removeProperty(name);
+					else body.style.setProperty(name, list);
+				}
 				for (const name of this.appliedTokens) body.style.removeProperty(name);
 				this.appliedTokens = [];
 				for (const [name, value] of Object.entries(snapshot.active.tokens)) {
@@ -628,14 +643,15 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Retract root color-scheme, the theme-source attribute, the palette
-			* attribute, token variables, the font-size axis, and the owned metadata node.
+			* attribute, token variables, the font sizes, font lists, and the owned metadata node.
 			*/
 			dispose() {
 				document.documentElement.style.removeProperty("color-scheme");
 				document.documentElement.removeAttribute(THEME_SOURCE_ATTRIBUTE);
 				const body = document.body;
 				body.removeAttribute(DARK_ATTRIBUTE);
-				body.style.removeProperty(CONTENT_FONT_SIZE_VARIABLE);
+				for (const name of Object.values(FONT_SIZE_VARIABLES)) body.style.removeProperty(name);
+				for (const name of Object.values(FONT_FAMILY_VARIABLES)) body.style.removeProperty(name);
 				for (const name of this.appliedTokens) body.style.removeProperty(name);
 				this.appliedTokens = [];
 				this.themeColorMeta.remove();
