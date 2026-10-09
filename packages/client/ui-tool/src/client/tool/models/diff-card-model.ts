@@ -118,7 +118,7 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
   const applied = appliedDiffs(block.meta)
   if (applied === null || applied === 'empty') {
     return intended.tool === 'write' ? { card: { diffs: intended.diffs } } : null
-  }
   const path = recordedAbsolutePath(block.meta, 'path')
-  return { card: { diffs: applied.map(diff => diff.path === path ? { ...diff, path: intended.diff.path } : diff) } }
+  const intendedPath = intended.diffs[0]?.path
+  return { card: { diffs: applied.map(diff => diff.path === path && intendedPath !== undefined ? { ...diff, path: intendedPath } : diff) } }
 }
