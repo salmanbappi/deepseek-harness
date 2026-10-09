@@ -285,16 +285,16 @@ def patch_browser_auth():
 
         if "if (authority !== undefined && this.isLocalAuthority(authority)) return true" not in c:
             c = re.sub(
-                r"if \(this\.isAuthenticated\(req\)\) return true\s*\n\s*this\.writeUnauthorized\(req, res\)",
-                "if (this.isAuthenticated(req)) return true\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    this.writeUnauthorized(req, res)",
+                r"if \(this\.isAuthenticated\(req(?:,\s*secure)?\)\) return true\s*\n\s*this\.writeUnauthorized\(req, res\)",
+                "if (this.isAuthenticated(req, secure)) return true\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    this.writeUnauthorized(req, res)",
                 c
             )
             modified = True
 
-        if "const authority = requestAuthority(request.headers)\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true" not in c:
+        if "if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    const rawCookie =" not in c:
             c = re.sub(
-                r"const authority = requestAuthority\(request\.headers\)\s*\n\s*const rawCookie =",
-                "const authority = requestAuthority(request.headers)\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    const rawCookie =",
+                r"(const authority = (?:requestAudience|requestAuthority)\(request\.headers(?:,\s*secure)?\))\s*\n\s*const rawCookie =",
+                r"\1\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    const rawCookie =",
                 c
             )
             modified = True

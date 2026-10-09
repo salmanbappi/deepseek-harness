@@ -26,10 +26,10 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index f4970a1730..77f00c0cf1 100644
+index 2d76805736..d0d3b857d6 100644
 --- a/package.json
 +++ b/package.json
-@@ -195,7 +195,7 @@
+@@ -201,7 +201,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -38,16 +38,16 @@ index f4970a1730..77f00c0cf1 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -203,6 +203,9 @@
-     "dev:web": "tsx scripts/dev-web.ts --poll",
-     "postinstall": "node scripts/install-lefthook.mjs"
+@@ -213,6 +213,9 @@
+     "verify-official-bundle-catalog": "tsx scripts/gen-official-bundle-catalog.ts --check",
+     "verify-product-use": "tsx scripts/verify-product-use.ts"
    },
 +  "dependencies": {
 +    "@img/sharp-wasm32": "^0.35.4"
 +  },
    "devDependencies": {
-     "@deepseek-ai/dsh-agent": "workspace:*",
-     "@deepseek-ai/dsh-browser-use": "workspace:*",
+     "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",
+     "@deepseek-ai/dsh-hooks-codex": "workspace:*",
 diff --git a/packages/attachment/attachment-local/src/store.ts b/packages/attachment/attachment-local/src/store.ts
 index 7fab679e34..77e14abcb0 100644
 --- a/packages/attachment/attachment-local/src/store.ts
@@ -183,10 +183,10 @@ index 82c2b9f3ba..3ef3919554 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
-index 9ea867ca5e..2f5e2978a8 100644
+index cbece01be2..93684b0322 100644
 --- a/packages/boot/app-boot/src/profile.ts
 +++ b/packages/boot/app-boot/src/profile.ts
-@@ -729,6 +729,8 @@ export function resolveBundleDir(
+@@ -736,6 +736,8 @@ export function resolveBundleDir(
   * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
   * @returns the successfully loaded bundle layers and optional user patch layer.
   */
@@ -195,7 +195,7 @@ index 9ea867ca5e..2f5e2978a8 100644
  export function loadProfileDirectory(
    binName: string,
    dir: string,
-@@ -743,17 +745,22 @@ export function loadProfileDirectory(
+@@ -750,17 +752,22 @@ export function loadProfileDirectory(
    for (const packageName of bundles) {
      try {
        const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
@@ -261,26 +261,26 @@ index 2d39d6b3ca..2f79bd5bfe 100644
  Every product-visible string—including text, accessibility names, tooltips, placeholders, status/unit formatters, and primitive chrome—lives in a typed locale dictionary and reaches components through the standard `t` seat or an already-localized prop. Cordis-free primitives require complete label props and own no fallback copy. Keep user/model/wire data and code tokens verbatim; internal matching uses discriminants or stable ids, never localized text. `pnpm run verify-client-ui-i18n` enforces source ownership ([decision](../../.agents/notes/implemented/architecture/2026-08-23-locale-owned-client-ui-copy.md)).
  
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
-index 5691180d96..15447357dc 100644
+index 6b01531da6..2a53e70e67 100644
 --- a/packages/client/connection/src/browser-auth.ts
 +++ b/packages/client/connection/src/browser-auth.ts
-@@ -239,10 +239,10 @@ export class BrowserAuth {
+@@ -251,10 +251,10 @@ export class BrowserAuth {
      /* v8 ignore next -- node:http always supplies url on server requests. */
      const url = new URL(req.url ?? '/', 'http://dsh.invalid')
      const tokens = url.searchParams.getAll(TOKEN_QUERY)
-+    const authority = requestAuthority(req.headers)
++    const authority = requestAudience(req.headers, secure)
      if (tokens.length > 0) {
--      const authority = requestAuthority(req.headers)
+-      const authority = requestAudience(req.headers, secure)
        if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
 -        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
 +        && authority !== undefined && (tokenMatches(tokens.join(''), this.launchToken) || this.isLocalAuthority(authority))) {
          const issuedAt = Date.now()
          const expiresAt = issuedAt + this.maxAgeMilliseconds
          const value = encodeCookie({
-@@ -275,10 +275,16 @@ export class BrowserAuth {
+@@ -287,10 +287,16 @@ export class BrowserAuth {
        return false
      }
-     if (this.isAuthenticated(req)) return true
+     if (this.isAuthenticated(req, secure)) return true
 +    if (authority !== undefined && this.isLocalAuthority(authority)) return true
      this.writeUnauthorized(req, res)
      return false
@@ -294,10 +294,10 @@ index 5691180d96..15447357dc 100644
    /**
     * Verify the authority-bound browser cookie on a Host request.
     * @param request - request headers carrying Host and Cookie.
-@@ -286,6 +292,7 @@ export class BrowserAuth {
+@@ -299,6 +305,7 @@ export class BrowserAuth {
     */
-   isAuthenticated(request: ConnectionTrustRequest): boolean {
-     const authority = requestAuthority(request.headers)
+   isAuthenticated(request: ConnectionTrustRequest, secure = false): boolean {
+     const authority = requestAudience(request.headers, secure)
 +    if (authority !== undefined && this.isLocalAuthority(authority)) return true
      const rawCookie = header(request.headers, 'cookie')
      if (authority === undefined || rawCookie === undefined) return false
@@ -321,7 +321,7 @@ index af02724b4f..72ffdc81cc 100644
 +  }
 +}
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
-index f40328906c..1b33461bd2 100644
+index c7797443d9..4d05b47976 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
 @@ -89,6 +89,7 @@
@@ -333,10 +333,10 @@ index f40328906c..1b33461bd2 100644
  
  .label {
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-index 443cb0407a..98682121f5 100644
+index cdf34ce2ef..a281a1c495 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-@@ -113,7 +113,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
+@@ -114,7 +114,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
    const activity = data.closed ? data.summary.counts[0]?.kind ?? 'thinking' : live.activity
    return (
      <button type="button" className={css.title} aria-expanded={open} aria-controls={bodyId}
@@ -346,10 +346,10 @@ index 443cb0407a..98682121f5 100644
          <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
          <span className={css.chevron} data-step-process-chevron>
 diff --git a/packages/client/ui-chat/src/client/chat/ChatView.tsx b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-index 460f98b014..229cc243ce 100644
+index e3e4491672..222bbc8143 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-@@ -289,6 +289,7 @@ export function ChatView({
+@@ -242,6 +242,7 @@ export function ChatView({
            <button
              type="button"
              className={css.toBottom}
@@ -494,25 +494,12 @@ index bfa386d31c..a8e20d19cb 100644
 +  }
 +}
 +
-diff --git a/packages/client/ui-chat/src/client/chat/use-chat-reading.ts b/packages/client/ui-chat/src/client/chat/use-chat-reading.ts
-index 010b49de0d..f9cf4f343e 100644
---- a/packages/client/ui-chat/src/client/chat/use-chat-reading.ts
-+++ b/packages/client/ui-chat/src/client/chat/use-chat-reading.ts
-@@ -125,7 +125,7 @@ export class ChatReading {
-    */
-   readonly onScroll = (scroll: ViewportScroll): void => {
-     if ((!scroll.movedByReader && this.state.followingTail)
--      || (scroll.movedByReader && scroll.metrics.top >= scroll.metrics.floor)) {
-+      || (scroll.movedByReader && scroll.metrics.top >= scroll.metrics.floor - 1.5)) {
-       this.followTail()
-       this.sampled?.({ position: null, movedByReader: scroll.movedByReader, followingTail: true })
-       return
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts b/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-index cdf14ed5e7..4cace2ff9e 100644
+index e233309669..c2ccbf98af 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-@@ -91,7 +91,10 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
-         reading.onScrollEnd()
+@@ -130,7 +130,10 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
+         reading.onScrollEnd(outer)
          navigation.readerSettled()
        },
 -      interact: () => { navigation.cancel() },
@@ -520,14 +507,14 @@ index cdf14ed5e7..4cace2ff9e 100644
 +        navigation.cancel()
 +        reading.pauseFollowing()
 +      },
+       intent: () => { cancelPendingFollow(); reading.interruptFollow() },
        resize: () => {
-         if (!navigation.contentCommitted()) reading.onResize()
-         navigation.reconcile()
+         if (!content.current.opened) return
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-index f74153097c..34a8b8add5 100644
+index 5a81d63230..eb79484f06 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-@@ -138,7 +138,7 @@ export class ChatViewport {
+@@ -212,7 +212,7 @@ export class ChatViewport {
      if (metrics === null) return null
      return {
        metrics,
@@ -536,7 +523,7 @@ index f74153097c..34a8b8add5 100644
      }
    }
  
-@@ -426,7 +426,7 @@ export class ChatViewport {
+@@ -505,7 +505,7 @@ export class ChatViewport {
  
    private readonly onScroll = (event: Event): void => {
      if (this.elements === null || event.target !== this.elements.scroller) return
@@ -545,7 +532,7 @@ index f74153097c..34a8b8add5 100644
      this.invalidate()
      if (this.paging !== null) {
        this.events?.resize()
-@@ -443,11 +443,21 @@ export class ChatViewport {
+@@ -524,12 +524,22 @@ export class ChatViewport {
  
    private readonly onIntent = (event: Event): void => {
      if (event.type === 'keydown' || event.type === 'pointerdown') {
@@ -562,20 +549,21 @@ index f74153097c..34a8b8add5 100644
 +          return
 +        }
 +      }
-+    }
-+    if (this.paging !== null) {
-+      this.stopPreserving()
      }
+     this.events?.intent?.()
 -    if (this.paging === null) return
 -    this.stopPreserving()
++    if (this.paging !== null) {
++      this.stopPreserving()
++    }
      this.events?.interact()
    }
  }
 diff --git a/packages/client/ui-chat/tests/chat-viewport.client.spec.ts b/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
-index 7dd39a8698..97460c799e 100644
+index def772efb8..f1b8bd6689 100644
 --- a/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
 +++ b/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
-@@ -551,3 +551,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
+@@ -560,3 +560,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
    expect(h.viewport.preserving).toBe(false)
    expect(h.scroller.scrollTop).toBe(80)
  })
@@ -24519,10 +24507,10 @@ index aac6a5cf61..5a6a04682d 100644
 +}
 +
 diff --git a/packages/client/ui-deliverables/src/client/turn-deliverables.ts b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-index 7eb765ec2b..62e24cecfc 100644
+index fb2f962b84..87d4da2bab 100644
 --- a/packages/client/ui-deliverables/src/client/turn-deliverables.ts
 +++ b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-@@ -77,6 +77,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
+@@ -80,6 +80,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
  
  /** Validate the fields that an `edit` execution requires. */
  function validEditArgs(args: Readonly<Record<string, unknown>>): boolean {
@@ -24541,10 +24529,10 @@ index 7eb765ec2b..62e24cecfc 100644
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
 diff --git a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-index 09dfa6a74c..1ca99b07bc 100644
+index be0c8fbeeb..a6f4e3c7b2 100644
 --- a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
 +++ b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-@@ -240,27 +240,32 @@ describe('produced-file Turn data', () => {
+@@ -300,27 +300,32 @@ describe('produced-file Turn data', () => {
          replace_all: false,
        }),
        result(5, 'edit'),
@@ -24585,7 +24573,7 @@ index 09dfa6a74c..1ca99b07bc 100644
        'notes/new.md',
        'notes/existing.md',
        'notes/deleted-text.md',
-@@ -271,6 +276,10 @@ describe('produced-file Turn data', () => {
+@@ -331,6 +336,10 @@ describe('produced-file Turn data', () => {
    it.each([
      { caseName: 'write omits content', name: 'write', args: { file_path: 'write.txt' } },
      { caseName: 'write has non-string content', name: 'write', args: { file_path: 'write.txt', content: 1 } },
@@ -25648,10 +25636,10 @@ index f4f42cb9cc..cddd7c5f3e 100644
  .empty {
    padding: 8px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index fbeda5d31e..c2720cef5d 100644
+index 8d37dab5e3..ffd3fc6ff0 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -146,14 +146,18 @@ export function ModelSelect(
+@@ -148,14 +148,18 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -25672,7 +25660,7 @@ index fbeda5d31e..c2720cef5d 100644
    }, [open])
  
    useLayoutEffect(() => {
-@@ -364,6 +368,7 @@ export function ModelSelect(
+@@ -366,6 +370,7 @@ export function ModelSelect(
      )) return
      close()
    }
@@ -25680,7 +25668,7 @@ index fbeda5d31e..c2720cef5d 100644
  
    const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
      if (result === undefined) return
-@@ -437,7 +442,6 @@ export function ModelSelect(
+@@ -439,7 +444,6 @@ export function ModelSelect(
        ref={rootRef}
        className={css.root}
        onKeyDown={onRootKeyDown}
@@ -25737,7 +25725,7 @@ index be4b832d23..ea5ef84ff2 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/package.json b/packages/client/ui-settings-general/package.json
-index ddba8ede7b..7f8a16486c 100644
+index 99927e5391..7288d654bd 100644
 --- a/packages/client/ui-settings-general/package.json
 +++ b/packages/client/ui-settings-general/package.json
 @@ -67,7 +67,7 @@
@@ -25991,7 +25979,7 @@ index 761ae2dc0f..7c8eace6c5 100644
            <div className={css.navTitle} id={titleId} tabIndex={-1}
              data-modal-autofocus={active === undefined ? '' : undefined}>{renderSlot('settings.header', {})}</div>
 diff --git a/packages/client/ui-theme/src/styles/base.css b/packages/client/ui-theme/src/styles/base.css
-index 23be07f678..446133aba8 100644
+index 60a625630a..b4334b6052 100644
 --- a/packages/client/ui-theme/src/styles/base.css
 +++ b/packages/client/ui-theme/src/styles/base.css
 @@ -1,3 +1,11 @@
@@ -26019,10 +26007,10 @@ index de9133c467..e93bf7638d 100644
  
  .item,
 diff --git a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-index 04cc8278a4..cf8554cffe 100644
+index 30acee7a0a..7e400f6362 100644
 --- a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
 +++ b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-@@ -39,7 +39,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
+@@ -40,7 +40,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
    return out
  }
  
@@ -26031,7 +26019,7 @@ index 04cc8278a4..cf8554cffe 100644
  
  function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
    const parsed = parsedToolCall(block)
-@@ -51,7 +51,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -52,7 +52,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
        if (fileText !== undefined && typeof fileText !== 'string') return null
        return {
          tool: 'str_replace_editor',
@@ -26040,7 +26028,7 @@ index 04cc8278a4..cf8554cffe 100644
        }
      }
      if (command === 'str_replace') {
-@@ -59,7 +59,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -60,7 +60,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
        if (newText !== undefined && typeof newText !== 'string') return null
        return {
          tool: 'str_replace_editor',
@@ -26049,7 +26037,7 @@ index 04cc8278a4..cf8554cffe 100644
        }
      }
      return null
-@@ -69,14 +69,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
+@@ -70,14 +70,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
    if (parsed.name === 'write') {
      const { content } = parsed.args
      return typeof content === 'string'
@@ -26077,7 +26065,7 @@ index 04cc8278a4..cf8554cffe 100644
  }
  
  function appliedDiffs(meta: unknown): DiffHunk[] | 'empty' | null {
-@@ -100,12 +111,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
+@@ -101,12 +112,12 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
    if (block.parentCallId !== undefined) return null
    const intended = intendedDiff(block)
    if (intended === null) return null
@@ -26090,10 +26078,10 @@ index 04cc8278a4..cf8554cffe 100644
 -    return intended.tool === 'write' ? { card: { diffs: [intended.diff] } } : null
 +    return intended.tool === 'write' ? { card: { diffs: intended.diffs } } : null
    }
-   return { card: { diffs: applied } }
- }
+   const path = recordedAbsolutePath(block.meta, 'path')
+   return { card: { diffs: applied.map(diff => diff.path === path ? { ...diff, path: intended.diff.path } : diff) } }
 diff --git a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
-index 6d44e524fb..6674fd1915 100644
+index e6ba3f505e..98e1eddacb 100644
 --- a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 +++ b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 @@ -41,6 +41,7 @@
@@ -26105,10 +26093,10 @@ index 6d44e524fb..6674fd1915 100644
  
  .ioSection::-webkit-scrollbar-thumb {
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index 08590fbcb5..c1c0a0f575 100644
+index 1cbd9c43dd..18c25ea92f 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-@@ -63,6 +63,50 @@ describe('diffCardModel', () => {
+@@ -68,6 +68,50 @@ describe('diffCardModel', () => {
      })
    })
  
@@ -26681,10 +26669,10 @@ index e3105925a5..4884eef3e4 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 0a4b8c20ea..d0581b43a4 100644
+index f495097df2..b52a089e43 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
-@@ -101,7 +101,14 @@ class FakeFs extends FileSystem {
+@@ -99,7 +99,14 @@ class FakeFs extends FileSystem {
      this.throwIfArmed()
      this.editIntents.push(expected)
      const content = this.files.get(target.targetKey) ?? ''
@@ -26700,7 +26688,7 @@ index 0a4b8c20ea..d0581b43a4 100644
      this.files.set(target.targetKey, after)
      return { version: FsVersion('v3'), before: content, after }
    }
-@@ -492,6 +499,40 @@ describe('edit tool', () => {
+@@ -483,6 +490,40 @@ describe('edit tool', () => {
      expect(result.isError).toBe(true)
      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
    })
@@ -26741,7 +26729,7 @@ index 0a4b8c20ea..d0581b43a4 100644
  })
  
  describe('tool-owned presentation (pure presentCall)', () => {
-@@ -618,6 +659,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -609,6 +650,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
        locations: [{ path: 'a.txt' }],
      })
    })
@@ -26767,7 +26755,7 @@ index 0a4b8c20ea..d0581b43a4 100644
  
  describe('result-time contextual diff (meta + presentResult)', () => {
 diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
-index 20e899788e..e16921190e 100644
+index 8346abc29a..8a0f3d4aba 100644
 --- a/packages/llm/llm-deepseek/src/adapter.ts
 +++ b/packages/llm/llm-deepseek/src/adapter.ts
 @@ -1,6 +1,6 @@
@@ -26778,7 +26766,7 @@ index 20e899788e..e16921190e 100644
  import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
  import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
  import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
-@@ -83,6 +83,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
+@@ -85,6 +85,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
      try {
        const files = new RequestFiles(this.files, {
          baseURL: connection.baseURL, headers: auth.headers,
@@ -26786,7 +26774,7 @@ index 20e899788e..e16921190e 100644
        },
        connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
        let inline = false
-@@ -120,7 +121,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
+@@ -124,7 +125,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
          const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
            method: 'POST', signal, body: extensions.payload, redirect: 'error',
            headers: {
@@ -26796,7 +26784,7 @@ index 20e899788e..e16921190e 100644
              ...auth.headers,
              'anthropic-version': '2023-06-01',
 diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
-index 5996645b7e..48378efedb 100644
+index 0bb302fa29..ea202c7531 100644
 --- a/packages/llm/llm-deepseek/src/config.ts
 +++ b/packages/llm/llm-deepseek/src/config.ts
 @@ -18,6 +18,13 @@ const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModa
@@ -26950,7 +26938,7 @@ index 9aa1f005d7..417968869c 100644
        headers.set('anthropic-version', '2023-06-01')
        headers.set('anthropic-beta', MESSAGES_FILES_BETA)
 diff --git a/packages/llm/llm-deepseek/src/types.ts b/packages/llm/llm-deepseek/src/types.ts
-index f8ecb1b3c6..1ace6f004f 100644
+index 8732fada98..a133712ea9 100644
 --- a/packages/llm/llm-deepseek/src/types.ts
 +++ b/packages/llm/llm-deepseek/src/types.ts
 @@ -51,6 +51,12 @@ export interface DeepSeekCatalogModel {
@@ -27027,10 +27015,10 @@ index 48126befb6..47a86a1df4 100644
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
 diff --git a/packages/llm/llm-deepseek/tests/runtime.spec.ts b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-index e051f6f909..31021dc49b 100644
+index 54cec3fe36..9173bccdb4 100644
 --- a/packages/llm/llm-deepseek/tests/runtime.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-@@ -383,6 +383,30 @@ describe('DeepSeekAdapter against a mock server', () => {
+@@ -389,6 +389,30 @@ describe('DeepSeekAdapter against a mock server', () => {
      expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
    })
  
@@ -27061,7 +27049,7 @@ index e051f6f909..31021dc49b 100644
    it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
      const server = await mockServer([{ kind: 'sse', events: textEvents }])
      const signalSeen: (AbortSignal | undefined)[] = []
-@@ -1730,6 +1754,19 @@ describe('plugin registration and config', () => {
+@@ -1736,6 +1760,19 @@ describe('plugin registration and config', () => {
      expect(() => resolveAdapterOptions(retired)).toThrow(/protocol/)
    })
  
@@ -27082,7 +27070,7 @@ index e051f6f909..31021dc49b 100644
      for (const helper of [
        'httpErrorCode',
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
-index de9f3e0e42..c36107f0fe 100644
+index 3f531097fb..d230274fdf 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
 +++ b/packages/llm/llm-pi-ai/src/adapter.ts
 @@ -38,11 +38,11 @@ import type {
@@ -27098,7 +27086,7 @@ index de9f3e0e42..c36107f0fe 100644
  } from '@deepseek-ai/dsh-llm'
  import type {
    GenerateOptions,
-@@ -201,16 +201,6 @@ function reasoningInfo(
+@@ -212,16 +212,6 @@ function reasoningInfo(
    }
  }
  
@@ -27172,28 +27160,6 @@ index 30e9c79412..cda1728bc5 100644
    if (/\b429\b|rate.?limit/i.test(message)) return 'RATE_LIMIT'
    // A rejected request body (gateway or provider size cap): resending the
    // same request cannot succeed, so it is invalid, not transient.
-diff --git a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-index 6beedfb3fb..06ede71f94 100644
---- a/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-+++ b/packages/llm/llm-pi-ai/tests/loader-composition.spec.ts
-@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
- import { Context } from '@deepseek-ai/cordis'
- import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
- import Include from '@deepseek-ai/cordis-plugin-include'
--import LlmRuntime, { createMessage, createUserMessage, userAgent } from '@deepseek-ai/dsh-llm'
-+import LlmRuntime, { createMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
- import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
- import { profileComposition } from '../../../settings/settings/tests/profile-composition.ts'
- import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
-@@ -144,7 +144,7 @@ describe('llm-pi-ai real dormant composition', () => {
-     expect(server.headers[0]?.['x-company-code']).toBe('private-tenant')
-     expect(server.headers[0]?.authorization).toBe('Bearer key-from-store')
-     expect(server.headers[0]?.accept).toBe('application/json')
--    expect(server.headers[0]?.['user-agent']).toBe(userAgent())
-+    expect(server.headers[0]?.['user-agent']).toBe('deployment-owned')
-   })
- 
-   it('continues natively after max-token assembly drops a tool call, with pruned replay metadata', async () => {
 diff --git a/packages/llm/llm/src/attribution.ts b/packages/llm/llm/src/attribution.ts
 index b984c18ca7..d82b0cffc1 100644
 --- a/packages/llm/llm/src/attribution.ts
@@ -27266,7 +27232,7 @@ index 172ce1bd2c..aea5557cd6 100644
 +- Due handling rechecks the wall clock and exact live owner, claims the idle maintenance phase through the public Agent seam, constructs the complete escaped framing before `followup()`, appends dispatch only after synchronous enqueue returns, releases maintenance, and then awaits durability. A synchronous framing/enqueue failure appends no dispatch; a later model failure does not roll one back.
 +- Rule math and durable transition logic stay pure and deterministic. Production uses the platform wall clock and segmented timers; tests supply explicit samples or fake timers without adding a production clock service.
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
-index 1a89b76d29..1c336d332f 100644
+index 3390100174..39eb691038 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
 +++ b/packages/session/session-persistence-jsonl/src/index.ts
 @@ -14,7 +14,7 @@ import {
@@ -27278,7 +27244,7 @@ index 1a89b76d29..1c336d332f 100644
  import { dirname, join, resolve } from 'node:path'
  import { performance } from 'node:perf_hooks'
  import { scheduler } from 'node:timers/promises'
-@@ -1214,6 +1214,13 @@ class JsonlSessionPersistence extends SessionPersistence {
+@@ -1224,6 +1224,13 @@ class JsonlSessionPersistence extends SessionPersistence {
      try {
        await link(tmp, finalPath)
        linked = true
