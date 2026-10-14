@@ -291,13 +291,6 @@ def patch_browser_auth():
             )
             modified = True
 
-        if "if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    const rawCookie =" not in c:
-            c = re.sub(
-                r"(const authority = (?:requestAudience|requestAuthority)\(request\.headers(?:,\s*secure)?\))\s*\n\s*const rawCookie =",
-                r"\1\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    const rawCookie =",
-                c
-            )
-            modified = True
 
     if modified:
         with open(path, "w", encoding="utf-8") as f:

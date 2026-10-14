@@ -376,7 +376,6 @@ export class BrowserAuth {
 
   private authenticate(request: ConnectionTrustRequest, secure: boolean): CookiePayload | undefined {
     const authority = requestAudience(request.headers, secure)
-    if (authority !== undefined && this.isLocalAuthority(authority)) return true
     const rawCookie = header(request.headers, 'cookie')
     if (authority === undefined || rawCookie === undefined) return undefined
     const value = cookieValue(rawCookie, cookieName(authority))

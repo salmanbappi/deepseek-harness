@@ -261,7 +261,7 @@ index 16956ca71d..3a2833bd1b 100644
  Every product-visible string—including text, accessibility names, tooltips, placeholders, status/unit formatters, and primitive chrome—lives in a typed locale dictionary and reaches components through the standard `t` seat or an already-localized prop. Cordis-free primitives require complete label props and own no fallback copy. Keep user/model/wire data and code tokens verbatim; internal matching uses discriminants or stable ids, never localized text. `pnpm run verify-client-ui-i18n` enforces source ownership ([decision](../../.agents/notes/implemented/architecture/2026-08-23-locale-owned-client-ui-copy.md)).
  
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
-index 5c8594df6f..ef709a9c91 100644
+index 5c8594df6f..6038402071 100644
 --- a/packages/client/connection/src/browser-auth.ts
 +++ b/packages/client/connection/src/browser-auth.ts
 @@ -264,10 +264,10 @@ export class BrowserAuth {
@@ -294,14 +294,6 @@ index 5c8594df6f..ef709a9c91 100644
    /**
     * Exchange the launch token for an independent API operator; omitted interactions default to none.
     * @param req - trusted GET request on /connect with at most one interactions declaration.
-@@ -370,6 +376,7 @@ export class BrowserAuth {
- 
-   private authenticate(request: ConnectionTrustRequest, secure: boolean): CookiePayload | undefined {
-     const authority = requestAudience(request.headers, secure)
-+    if (authority !== undefined && this.isLocalAuthority(authority)) return true
-     const rawCookie = header(request.headers, 'cookie')
-     if (authority === undefined || rawCookie === undefined) return undefined
-     const value = cookieValue(rawCookie, cookieName(authority))
 diff --git a/packages/client/locale/src/client/LanguageRow.module.css b/packages/client/locale/src/client/LanguageRow.module.css
 index af02724b4f..72ffdc81cc 100644
 --- a/packages/client/locale/src/client/LanguageRow.module.css
