@@ -20,6 +20,7 @@ fi
 
 DRY_RUN=0
 NO_BUILD=0
+LOCAL_BUILD=0
 REAPPLY_ONLY=0
 FORCE=0
 ROLLBACK_TARGET=""
@@ -33,6 +34,10 @@ while [ $# -gt 0 ]; do
             ;;
         --no-build)
             NO_BUILD=1
+            shift
+            ;;
+        --local-build)
+            LOCAL_BUILD=1
             shift
             ;;
         --reapply-only|--reapply)
@@ -72,6 +77,7 @@ while [ $# -gt 0 ]; do
             echo "  --rollback [BRANCH]      Roll back to previous snapshot (defaults to latest)"
             echo "  --list-backups           List all available safety snapshot branches"
             echo "  --no-build               Sync and apply patches without compiling"
+            echo "  --local-build            Force local compilation instead of remote GitHub Actions bundle"
             echo "  --force, -f              Force update even with local uncommitted changes"
             echo "  --help, -h               Show this help message"
             exit 0
@@ -161,24 +167,7 @@ if ! git remote | grep -q "^origin$"; then
     git remote add origin "https://github.com/$REPO_OWNER/$REPO_NAME.git" 2>/dev/null || true
 fi
 
-# Step 2: Safety Snapshot Backup (Zero-Loss Guarantee)
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_BRANCH="backup/dsh-update-$TIMESTAMP"
-echo ""
-echo "[*] Creating safety snapshot: $BACKUP_BRANCH"
-python3 "$PATCHER" --export 2>/dev/null || true
-mkdir -p "$DSH_DIR/patches"
-git diff HEAD > "$DSH_DIR/patches/dsh-preupdate-$TIMESTAMP.patch" 2>/dev/null || true
-cp -f "$DSH_DIR/patches/dsh-preupdate-$TIMESTAMP.patch" "$DSH_DIR/patches/dsh-preupdate-latest.patch" 2>/dev/null || true
-
-# Commit working changes locally if needed so git branch captures exact state
-if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-    git add -A
-    git commit -m "chore(termux): pre-update snapshot $TIMESTAMP" 2>/dev/null || true
-fi
-git branch "$BACKUP_BRANCH" 2>/dev/null || true
-
-# Step 3: Check Upstream Updates
+# Step 2: Check Upstream Updates
 echo ""
 echo "[*] Checking upstream repository for updates..."
 git fetch upstream master --quiet 2>/dev/null || git fetch origin master --quiet
@@ -208,16 +197,63 @@ else
     fi
 fi
 
+# Step 3: Safety Snapshot Backup (Zero-Loss Guarantee)
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_BRANCH="backup/dsh-update-$TIMESTAMP"
+echo ""
+echo "[*] Creating safety snapshot: $BACKUP_BRANCH"
+python3 "$PATCHER" --export 2>/dev/null || true
+mkdir -p "$DSH_DIR/patches"
+git diff HEAD > "$DSH_DIR/patches/dsh-preupdate-$TIMESTAMP.patch" 2>/dev/null || true
+cp -f "$DSH_DIR/patches/dsh-preupdate-$TIMESTAMP.patch" "$DSH_DIR/patches/dsh-preupdate-latest.patch" 2>/dev/null || true
+
+# Commit working changes locally if needed so git branch captures exact state
+if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    git add -A
+    git commit -m "chore(termux): pre-update snapshot $TIMESTAMP" 2>/dev/null || true
+fi
+git branch "$BACKUP_BRANCH" 2>/dev/null || true
+
 # Step 4: Non-Destructive Merge with Autonomous Conflict Resolution
 echo ""
 echo "[*] Merging upstream updates into local workspace..."
 if ! git merge --no-edit -m "chore(termux): merge upstream master" upstream/master 2>/dev/null; then
     echo "[*] Resolving merge integration on customized files..."
-    # Check conflicting files
     CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
     if [ -n "$CONFLICTS" ]; then
         echo "[*] Auto-resolving managed files: $CONFLICTS"
-        for f in $CONFLICTS; do
+        # Intelligent resolution for known structured fork additions
+        if echo "$CONFLICTS" | grep -q "packages/boot/app-boot/src/profile.ts"; then
+            python3 -c "
+path = '$DSH_DIR/packages/boot/app-boot/src/profile.ts'
+with open(path, 'r', encoding='utf-8') as f: c = f.read()
+import re
+c = re.sub(
+    r'<<<<<<< HEAD\s+layers\.push\(cachedLayer\)\s+=======\s+.*?layers\.push\(\{ packageName, packageDir, patchPaths, patches \}\)\s+>>>>>>> upstream/master',
+    'layers.push(cachedLayer)',
+    c, flags=re.DOTALL
+)
+c = c.replace('// A bundle is not a plugin row, so row admission never reads its own peers.', '// A bundle is not a plugin row, so row admission never reads its own dsh requirements.')
+with open(path, 'w', encoding='utf-8') as f: f.write(c)
+" 2>/dev/null || true
+            git add "$DSH_DIR/packages/boot/app-boot/src/profile.ts" 2>/dev/null || true
+        fi
+        if echo "$CONFLICTS" | grep -q "tsconfig.host.json"; then
+            python3 -c "
+path = '$DSH_DIR/tsconfig.host.json'
+with open(path, 'r', encoding='utf-8') as f: c = f.read()
+import re
+c = re.sub(
+    r'<<<<<<< HEAD\s+(\{\s*\"path\":\s*\"\./packages/web/web-search-tavily\"\s*\},)\s+=======\s+(\{\s*\"path\":\s*\"\./packages/web/web-deepseek-api\"\s*\},)\s+>>>>>>> upstream/master',
+    r'\1\n    \2',
+    c, flags=re.DOTALL
+)
+with open(path, 'w', encoding='utf-8') as f: f.write(c)
+" 2>/dev/null || true
+            git add "$DSH_DIR/tsconfig.host.json" 2>/dev/null || true
+        fi
+        REMAINING_CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
+        for f in $REMAINING_CONFLICTS; do
             git checkout --theirs "$f" 2>/dev/null || true
             git add "$f" 2>/dev/null || true
         done
@@ -245,51 +281,7 @@ pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
 # Re-run patcher for native node-pty and Koffi
 python3 "$PATCHER" --apply
 
-# Step 7: Build or Fetch Pre-compiled Binaries & Web Assets
-if [ "$NO_BUILD" -eq 0 ]; then
-    echo ""
-    FETCHED_PREBUILT=0
-    NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "")
-    
-    if [ -n "$NEW_VERSION" ] && command -v curl &>/dev/null && command -v tar &>/dev/null; then
-        echo "[*] Checking for pre-compiled cloud release on GitHub (v$NEW_VERSION)..."
-        RELEASE_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/v$NEW_VERSION"
-        RELEASE_JSON=$(curl -sL "$RELEASE_API" 2>/dev/null || true)
-        TARBALL_URL=$(echo "$RELEASE_JSON" | grep -o 'https://github.com/[^"]*dsh-termux-[^"]*\.tar\.gz' | head -n 1 || true)
-        
-        if [ -z "$TARBALL_URL" ]; then
-            # Fallback to latest release
-            LATEST_JSON=$(curl -sL "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest" 2>/dev/null || true)
-            TARBALL_URL=$(echo "$LATEST_JSON" | grep -o 'https://github.com/[^"]*dsh-termux-[^"]*\.tar\.gz' | head -n 1 || true)
-        fi
-        
-        if [ -n "$TARBALL_URL" ]; then
-            echo "[+] Found cloud pre-compiled release ($TARBALL_URL)! Downloading..."
-            if curl -sL "$TARBALL_URL" -o "$DSH_DIR/prebuilt.tar.gz" 2>/dev/null; then
-                echo "[+] Extracting pre-compiled binaries and web assets..."
-                tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" apps/ packages/ 2>/dev/null || tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" || true
-                rm -f "$DSH_DIR/prebuilt.tar.gz"
-                if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ]; then
-                    FETCHED_PREBUILT=1
-                    echo "[✓] Applied pre-compiled cloud release (zero local compile load)!"
-                fi
-            fi
-        fi
-    fi
-
-    if [ "$FETCHED_PREBUILT" -eq 0 ]; then
-        if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ]; then
-            echo "[✓] Using existing compiled build artifacts."
-        else
-            echo "[*] Compiling application host & web assets locally (safe memory limits)..."
-            NODE_OPTIONS="--max-old-space-size=2560" pnpm run build:lib:host || true
-            NODE_OPTIONS="--max-old-space-size=2560" pnpm run build:lib:client || true
-            NODE_OPTIONS="--max-old-space-size=2560" pnpm run build:web || true
-        fi
-    fi
-fi
-
-# Step 8: Sync Changes to Fork (origin)
+# Step 7: Sync Changes to Fork (origin) — triggers remote GitHub Actions CI
 if git remote | grep -q "^origin$"; then
     echo ""
     echo "[*] Syncing updated state to fork ($REPO_OWNER/$REPO_NAME)..."
@@ -297,6 +289,58 @@ if git remote | grep -q "^origin$"; then
     NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "latest")
     git commit -m "chore(termux): sync upstream v$NEW_VERSION + mobile & termux suite" 2>/dev/null || true
     git push -u origin master 2>/dev/null || echo "[!] Notice: Push to origin skipped (offline or already synced)."
+fi
+
+# Step 8: Apply Pre-compiled Release Bundle (Zero Local Build Load)
+if [ "$NO_BUILD" -eq 0 ]; then
+    echo ""
+    FETCHED_PREBUILT=0
+    NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "")
+    
+    if [ -n "$NEW_VERSION" ]; then
+        echo "[*] Checking for pre-compiled cloud release bundle on GitHub (v$NEW_VERSION)..."
+        if [ -f "$DSH_DIR/scripts/install-prebuilt.sh" ] && command -v gh &>/dev/null; then
+            if gh release view "v$NEW_VERSION" --repo "$REPO_OWNER/$REPO_NAME" >/dev/null 2>&1; then
+                echo "[+] Found release v$NEW_VERSION! Installing prebuilt bundle..."
+                if bash "$DSH_DIR/scripts/install-prebuilt.sh" "$NEW_VERSION"; then
+                    FETCHED_PREBUILT=1
+                fi
+            fi
+        fi
+        
+        if [ "$FETCHED_PREBUILT" -eq 0 ] && command -v curl &>/dev/null && command -v tar &>/dev/null; then
+            RELEASE_API="https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/tags/v$NEW_VERSION"
+            RELEASE_JSON=$(curl -sL "$RELEASE_API" 2>/dev/null || true)
+            TARBALL_URL=$(echo "$RELEASE_JSON" | grep -o 'https://github.com/[^"]*dsh-termux-[^"]*\.tar\.gz' | head -n 1 || true)
+            if [ -n "$TARBALL_URL" ]; then
+                echo "[+] Found cloud pre-compiled release ($TARBALL_URL)! Downloading..."
+                if curl -sL "$TARBALL_URL" -o "$DSH_DIR/prebuilt.tar.gz" 2>/dev/null; then
+                    echo "[+] Extracting pre-compiled binaries and web assets..."
+                    rm -rf "$DSH_DIR/apps/web/dist"
+                    tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" apps/ packages/ 2>/dev/null || tar -xzf "$DSH_DIR/prebuilt.tar.gz" -C "$DSH_DIR" || true
+                    rm -f "$DSH_DIR/prebuilt.tar.gz"
+                    if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ]; then
+                        FETCHED_PREBUILT=1
+                        echo "[✓] Applied pre-compiled cloud release (zero local compile load)!"
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    if [ "$FETCHED_PREBUILT" -eq 0 ]; then
+        if [ "$LOCAL_BUILD" -eq 1 ]; then
+            echo "[*] Compiling application host & web assets locally (safe memory limits)..."
+            NODE_OPTIONS="--max-old-space-size=2560" pnpm run build:lib:host || true
+            NODE_OPTIONS="--max-old-space-size=2560" pnpm run build:lib:client || true
+            NODE_OPTIONS="--max-old-space-size=2560" pnpm run build:web || true
+        else
+            echo "[!] Notice: Prebuilt bundle for v$NEW_VERSION is currently building in GitHub Actions CI."
+            echo "    Local build skipped to prevent Termux OOM."
+            echo "    Once GitHub Actions CI completes (~3-5 mins), run:"
+            echo "    bash scripts/install-prebuilt.sh $NEW_VERSION"
+        fi
+    fi
 fi
 
 # Step 9: Final Diagnostics and Verification

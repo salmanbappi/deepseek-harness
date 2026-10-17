@@ -1092,7 +1092,7 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
         changed = False
         pending = {}
         for marker, upstream, patched, label in edits[key]:
-            if key == "adapter" and "requestHeaders" in c and "@deepseek-ai/dsh-llm" in c:
+            if key == "adapter" and re.search(r"import\s*\{[^}]*\brequestHeaders\b[^}]*\}\s*from\s*['\"]@deepseek-ai/dsh-llm['\"]", c):
                 continue
             # A removal is done when its upstream line is gone; every other edit
             # is done when its marker is present.
@@ -1556,14 +1556,19 @@ def export_patch():
                 base = "HEAD"
         
         diff = subprocess.run(
-            ["git", "diff", base, "--", "package.json", "packages/", "apps/web/"],
+            ["git", "diff", base, "--", "package.json", "packages/", "apps/web/", ":(exclude)**/lib/**", ":(exclude)**/*.map"],
             cwd=REPO_DIR,
             capture_output=True,
             text=True
         )
         full_diff = diff.stdout
         if not full_diff.strip():
-            res = subprocess.run(["git", "diff", "HEAD", "--", "package.json", "packages/", "apps/web/"], cwd=REPO_DIR, capture_output=True, text=True)
+            res = subprocess.run(
+                ["git", "diff", "HEAD", "--", "package.json", "packages/", "apps/web/", ":(exclude)**/lib/**", ":(exclude)**/*.map"],
+                cwd=REPO_DIR,
+                capture_output=True,
+                text=True
+            )
             full_diff = res.stdout
 
         if full_diff.strip():
