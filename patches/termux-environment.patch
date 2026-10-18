@@ -26,10 +26,10 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index 5f7eb6364c..e625dd562b 100644
+index a5e45dbf91..d95c4471e0 100644
 --- a/package.json
 +++ b/package.json
-@@ -203,7 +203,7 @@
+@@ -204,7 +204,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -38,7 +38,7 @@ index 5f7eb6364c..e625dd562b 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -217,6 +217,9 @@
+@@ -218,6 +218,9 @@
      "verify-provider-data": "tsx packages/llm/llm-pi-ai/scripts/gen-provider-data.ts --check",
      "verify-product-use": "tsx scripts/verify-product-use.ts"
    },
@@ -183,10 +183,10 @@ index 82c2b9f3ba..3ef3919554 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
-index cbece01be2..93684b0322 100644
+index 3c7aa74762..32d51d5fb3 100644
 --- a/packages/boot/app-boot/src/profile.ts
 +++ b/packages/boot/app-boot/src/profile.ts
-@@ -736,6 +736,8 @@ export function resolveBundleDir(
+@@ -737,6 +737,8 @@ export function resolveBundleDir(
   * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
   * @returns the successfully loaded bundle layers and optional user patch layer.
   */
@@ -195,7 +195,7 @@ index cbece01be2..93684b0322 100644
  export function loadProfileDirectory(
    binName: string,
    dir: string,
-@@ -750,17 +752,22 @@ export function loadProfileDirectory(
+@@ -751,17 +753,22 @@ export function loadProfileDirectory(
    for (const packageName of bundles) {
      try {
        const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
@@ -210,7 +210,7 @@ index cbece01be2..93684b0322 100644
 +        if (bundle === undefined) {
 +          throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
 +        }
-+        // A bundle is not a plugin row, so row admission never reads its own peers.
++        // A bundle is not a plugin row, so row admission never reads its own dsh requirements.
 +        const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
 +        if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
 +        const patchPaths = bundlePatchPaths(packageDir, bundle)
@@ -218,13 +218,13 @@ index cbece01be2..93684b0322 100644
 +        cachedLayer = { packageName, packageDir, patchPaths, patches }
 +        bundleLayerCache.set(packageDir, cachedLayer)
        }
--      // A bundle is not a plugin row, so row admission never reads its own peers.
+-      // A bundle is not a plugin row, so row admission never reads its own dsh requirements.
 -      const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
 -      if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
 -      const patchPaths = bundlePatchPaths(packageDir, bundle)
 -      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
 -      layers.push({ packageName, packageDir, patchPaths, patches })
-+      layers.push(cachedLayer)
++layers.push(cachedLayer)
      } catch (error) {
        skippedBundles.push({ packageName, reason: String(error) })
      }
@@ -246,7 +246,7 @@ index ffec879f40..090919bebc 100644
          const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
          const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
 diff --git a/packages/client/AGENTS.md b/packages/client/AGENTS.md
-index 16956ca71d..3a2833bd1b 100644
+index 7697a5cfd3..aaf9edb8e5 100644
 --- a/packages/client/AGENTS.md
 +++ b/packages/client/AGENTS.md
 @@ -114,9 +114,7 @@ One UI feature = one plugin package (`src/client/` browser half). A multi-domain
@@ -1532,10 +1532,10 @@ index f4f42cb9cc..cddd7c5f3e 100644
  .empty {
    padding: 8px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index 8d37dab5e3..ffd3fc6ff0 100644
+index c497bcbe77..8586271575 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -148,14 +148,18 @@ export function ModelSelect(
+@@ -156,14 +156,18 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -1556,7 +1556,7 @@ index 8d37dab5e3..ffd3fc6ff0 100644
    }, [open])
  
    useLayoutEffect(() => {
-@@ -366,6 +370,7 @@ export function ModelSelect(
+@@ -372,6 +376,7 @@ export function ModelSelect(
      )) return
      close()
    }
@@ -1564,7 +1564,7 @@ index 8d37dab5e3..ffd3fc6ff0 100644
  
    const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
      if (result === undefined) return
-@@ -439,7 +444,6 @@ export function ModelSelect(
+@@ -454,7 +459,6 @@ export function ModelSelect(
        ref={rootRef}
        className={css.root}
        onKeyDown={onRootKeyDown}
@@ -2555,7 +2555,7 @@ index e3105925a5..4884eef3e4 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 83d22de89d..87e2b19bf4 100644
+index 2ea469c3f8..dfe36d726b 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
 @@ -99,7 +99,14 @@ class FakeFs extends FileSystem {
