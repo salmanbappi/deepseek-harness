@@ -26,7 +26,7 @@ new file mode 100644
 index 0000000000..07602c0c0e
 Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index a5e45dbf91..d95c4471e0 100644
+index 21eecbf2da..f43b221567 100644
 --- a/package.json
 +++ b/package.json
 @@ -204,7 +204,7 @@
@@ -1124,10 +1124,10 @@ index 0b5450cc95..b81c24f64f 100644
 +  }
 +}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index 070cb94a75..0c15f85eeb 100644
+index 29a4d5e74e..7fdabe0804 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-@@ -413,6 +413,7 @@ button.crumb:hover {
+@@ -452,6 +452,7 @@ button.crumb:hover {
       gutter moves the input card sideways by the bar's width whenever the two
       differ ([decision](../../../../../../.agents/notes/archived/bug-fix/2026-08-04-composer-tab-gutter-reservation.md)). */
    scrollbar-gutter: stable;
@@ -1135,7 +1135,7 @@ index 070cb94a75..0c15f85eeb 100644
  }
  
  /* The bar also stops 2px short of the scroller's ends, matching its 2px edge
-@@ -557,3 +558,19 @@ button.crumb:hover {
+@@ -596,3 +597,19 @@ button.crumb:hover {
  .embeddedBody[data-content-phase='settling'] .composerSeat {
    visibility: hidden;
  }
@@ -2670,10 +2670,10 @@ index 53b288f1f2..ab0013bf99 100644
              ...auth.headers,
              'anthropic-version': '2023-06-01',
 diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
-index 8f6c06bc59..94da283681 100644
+index 630ccea010..801687b850 100644
 --- a/packages/llm/llm-deepseek/src/config.ts
 +++ b/packages/llm/llm-deepseek/src/config.ts
-@@ -18,6 +18,13 @@ const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModa
+@@ -19,6 +19,13 @@ const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModa
  export interface Config {
    /** Endpoint base; falls back to $DEEPSEEK_BASE_URL from a trusted environment layer, then the public API. */
    baseURL: Volatile<string | undefined>
@@ -2687,7 +2687,7 @@ index 8f6c06bc59..94da283681 100644
    /** Deployment thinking policy; `disabled` limits every conversation request to `off`. */
    thinking: Volatile<'enabled' | 'disabled' | undefined>
    /** Default thinking effort (default `high`); `off` disables thinking per request. */
-@@ -90,6 +97,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
+@@ -91,6 +98,7 @@ const catalogModel: z<DeepSeekCatalogModel> = z.object({
  /** Shared schema fields for Messages protocol options. */
  export const deepSeekConfigFields = {
    baseURL: z.string().volatile(),
@@ -2695,7 +2695,7 @@ index 8f6c06bc59..94da283681 100644
    thinking: z.union(['enabled', 'disabled']).volatile(),
    reasoningEffort: z.union(['off', 'low', 'high', 'max']).volatile(),
    maxTokens: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(DEFAULT_MAX_TOKENS).volatile(),
-@@ -198,6 +206,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
+@@ -209,6 +217,44 @@ function resolveModels(models: readonly DeepSeekCatalogModel[] | undefined): Dee
    })
  }
  
@@ -2740,7 +2740,7 @@ index 8f6c06bc59..94da283681 100644
  /**
   * The one explicit resolve step from raw config to validated protocol
   * settings. Programmatic construction may bypass Schemastery normalization, so
-@@ -216,6 +262,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+@@ -227,6 +273,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
    if (Object.hasOwn(config, 'protocol')) {
      throw new Error('llm-deepseek: protocol is not configurable; remove it and use a Messages-compatible baseURL')
    }
@@ -2748,7 +2748,7 @@ index 8f6c06bc59..94da283681 100644
    if (config.thinking === 'disabled'
      && config.reasoningEffort !== undefined
      && config.reasoningEffort !== 'off') {
-@@ -304,6 +351,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
+@@ -315,6 +362,7 @@ export function resolveAdapterOptions(config: Options, environment?: LaunchEnvir
    }
    return {
      baseURL,
@@ -2901,7 +2901,7 @@ index 48126befb6..47a86a1df4 100644
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
 diff --git a/packages/llm/llm-deepseek/tests/runtime.spec.ts b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-index 54cec3fe36..9173bccdb4 100644
+index 3c4676ba0d..d3f1cc7864 100644
 --- a/packages/llm/llm-deepseek/tests/runtime.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/runtime.spec.ts
 @@ -389,6 +389,30 @@ describe('DeepSeekAdapter against a mock server', () => {
