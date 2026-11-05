@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import {
   ConnectionIndicator, Tooltip, useModalLayer,
-  IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconChevronLeftOutlineRegular, IconCloseOutlineRegular, IconDataOutlineMedium,
+  IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconCloseOutlineRegular, IconDataOutlineMedium,
   IconPersonalizationOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ConnectionIndicatorState } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -72,9 +72,6 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
       <div className={css.mask} aria-hidden="true" onClick={onClose} />
       <div ref={panel} tabIndex={-1} data-shortcut-modal="settings" className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className={css.mobileHeader}>
-          <button type="button" className={css.mobileBack} onClick={onClose} aria-label="Back">
-            <IconChevronLeftOutlineRegular size={20} />
-          </button>
           <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
           <div className={css.mobileActions}>
             {renderSlot('settings.action', {})}

@@ -941,13 +941,10 @@ def patch_settings_mobile():
         css = f.read()
 
     # Already fully patched with mobile header and portal
-    if "createPortal" in tsx and "css.mobileHeader" in tsx and ".mobileHeader" in css and ".mobileBack" in css:
+    if "createPortal" in tsx and "css.mobileHeader" in tsx and ".mobileHeader" in css:
         return True
 
     header_jsx = """        <div className={css.mobileHeader}>
-          <button type="button" className={css.mobileBack} onClick={onClose} aria-label="Back">
-            <IconChevronLeftOutlineRegular size={20} />
-          </button>
           <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
           <div className={css.mobileActions}>
             {renderSlot('settings.action', {})}
@@ -964,9 +961,6 @@ def patch_settings_mobile():
     panel_tail = "      </div>\n    </div>\n  )\n}\n"
 
     has_portal = "createPortal" in tsx
-    if "IconChevronLeftOutlineRegular" not in tsx and "IconCloseOutlineRegular" in tsx:
-        tsx = tsx.replace("IconCloseOutlineRegular", "IconChevronLeftOutlineRegular, IconCloseOutlineRegular", 1)
-        applied.append("chevron back icon import")
 
     for marker, upstream, patched, label in (
         ("from 'react-dom'", react_import, react_import + "import { createPortal } from 'react-dom'\n", "react-dom import"),
@@ -1950,8 +1944,8 @@ def check_status():
             t = f.read()
         with open(set_css, "r", encoding="utf-8") as f:
             s = f.read()
-        set_ok = "mobileHeader" in t and "mobileBack" in t and ".mobileHeader" in s and ".mobileBack" in s
-    print(f"[*] Mobile Settings & Back Button:     {'[PASS]' if set_ok else '[FAIL]'}")
+        set_ok = "mobileHeader" in t and "mobileClose" in t and ".mobileHeader" in s and ".mobileClose" in s
+    print(f"[*] Mobile Settings & Close Button:    {'[PASS]' if set_ok else '[FAIL]'}")
 
     print("==================================================")
     all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok

@@ -346,10 +346,6 @@
   display: none;
 }
 
-.mobileBack {
-  display: none;
-}
-
 .mobileTitle {
   font-size: 16px;
   font-weight: 600;
@@ -442,31 +438,11 @@
     background: var(--dsw-alias-bg-layer-2);
   }
 
-  .mobileBack {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    padding: 0;
-    margin-right: 8px;
-    border: none;
-    border-radius: 18px;
-    background: var(--dsw-alias-bg-module-platform);
-    color: var(--dsw-alias-label-primary);
-    cursor: pointer;
-    flex: none;
-  }
-
   .mobileTitle {
-    flex: 1;
     font-size: 17px;
     font-weight: 600;
     line-height: 24px;
     color: var(--dsw-alias-label-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .mobileClose {
