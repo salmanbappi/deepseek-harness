@@ -218,7 +218,7 @@ def patch_fs_local():
     modified = False
     if "isAndroid" not in c or "isUnsupportedLinkErr" not in c:
         pat = re.compile(
-            r"(\s*if \(createIfAbsent !== undefined\) \{\s*try \{\s*await linkFile\(tempPath, absolutePath\)\s*\} catch \(error: unknown\) \{)(.*?)(\s*\}\s*\} else if \(platform === 'win32')",
+            r"(\s*if \((?:options\.createIfAbsent|createIfAbsent !== undefined)\) \{\s*try \{\s*await linkFile\(tempPath, absolutePath\)\s*\} catch \(error: unknown\) \{)(.*?)(\s*\}\s*\} else if \(platform === 'win32')",
             re.DOTALL
         )
         repl = r"""\1
@@ -228,28 +228,29 @@ def patch_fs_local():
         )
 
         if (isAndroid && isUnsupportedLinkErr) {
+          const targetDisplayPath = typeof displayPath !== 'undefined' ? displayPath : createIfAbsent?.displayPath
           let existing: BigIntStats | undefined
           try {
             existing = await inspectPublicationTarget(absolutePath)
           } catch (metadataError: unknown) {
             if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
-              throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
+              throw new FsError(`cannot write "${targetDisplayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
             }
           }
 
           if (existing !== undefined) {
             if (!existing.isFile()) {
-              throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
+              throw new FsError(`cannot write "${targetDisplayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
             }
             throw new FsError(
-              `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
+              `cannot overwrite existing "${targetDisplayPath}" without reading it first`,
               'FS_NOT_OBSERVED',
               { cause: error },
             )
           }
           await rename(tempPath, absolutePath)
         } else {
-          await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
+          await throwGuardedCreateFailure(error, absolutePath, typeof displayPath !== 'undefined' ? displayPath : createIfAbsent.displayPath, inspectPublicationTarget)
         }\3"""
         c = pat.sub(repl, c, count=1)
         modified = True
@@ -343,6 +344,59 @@ def patch_app_frame():
     with open(tsx_path, "r", encoding="utf-8") as f:
         c = f.read()
     edits = []
+
+    # Upstream native drawer architecture (v0.2.2+)
+    if "const drawer =" in c and "drawerMask" in c:
+        if "onSidebarColClick" not in c:
+            delegation_code = """  // Mobile sidebar click delegation: close sidebar when tapping an active/other session, new session, or panel
+  const onSidebarColClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!drawer || sidebarCollapsed) return
+    const target = e.target as HTMLElement | null
+    if (!target) return
+    if (target.closest('input, textarea, select')) return
+    if (target.closest('button[class*="toggle"]')) return
+
+    const sessionRow = target.closest('[data-row-key^="session:"]')
+    if (sessionRow) {
+      actions.toggleSidebar()
+      return
+    }
+
+    const isNewSession = target.closest('button[class*="newSession"]') ||
+      target.closest('button[aria-label*="session" i]') ||
+      target.closest('button[class*="brand"]')
+    if (isNewSession) {
+      actions.toggleSidebar()
+      return
+    }
+
+    const isPanel = target.closest('button[class*="panelRow"]') ||
+      target.closest('button[data-panel-id]') ||
+      target.closest('nav[aria-label*="panel" i] button')
+    if (isPanel) {
+      actions.toggleSidebar()
+      return
+    }
+  }, [drawer, sidebarCollapsed, actions])
+"""
+            leading_anchor = "  const leading = useMemo(() => renderSlot('shell.leading', {}), [renderSlot])"
+            if leading_anchor in c:
+                c = c.replace(leading_anchor, leading_anchor + "\n\n" + delegation_code, 1)
+                edits.append("mobile sidebar click delegation")
+
+        if "onClick={onSidebarColClick}" not in c and "<div className={css.sidebarCol}" in c:
+            c = c.replace(
+                "<div className={css.sidebarCol}",
+                "<div className={css.sidebarCol} onClick={onSidebarColClick}",
+                1
+            )
+            edits.append("sidebarCol click handler")
+
+        if edits:
+            with open(tsx_path, "w", encoding="utf-8") as f:
+                f.write(c)
+            print(f"  [+] Patched AppFrame.tsx native mobile drawer ({', '.join(edits)}).")
+        return
 
     # 0. Migrate stale references left by an older suite run against a
     #    previous upstream shape (details panel → rightbar panel). Runs even
@@ -881,9 +935,14 @@ def patch_settings_mobile():
     if not os.path.exists(tsx_path) or not os.path.exists(css_path):
         return False
 
-    applied = []
     with open(tsx_path, "r", encoding="utf-8") as f:
         tsx = f.read()
+    with open(css_path, "r", encoding="utf-8") as f:
+        css = f.read()
+
+    # Upstream v0.2.2+ has native mobile responsiveness, grid layout, close button and createPortal
+    if "createPortal" in tsx and ("max-width: 767px" in css or ".mobileHeader" in css):
+        return True
 
     header_jsx = """        <div className={css.mobileHeader}>
           <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
@@ -979,6 +1038,35 @@ def patch_llm_pi_ai_gateway():
 
     edits = {
         "adapter": [(
+            "// Attribution first so a route's configured headers can win",
+            """    const initial = new Headers()
+    // Profile aliases overwrite case-insensitively; the Headers constructor appends them.
+    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
+    const request: PiAiRequestHeaderContext = Object.freeze({
+      provider: options.provider,
+      model: options.model,
+      baseURL,
+      ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
+      ...options.purpose === undefined ? {} : { purpose: options.purpose },
+    })
+    const headers = prepare === undefined ? initial : prepare(request, initial)
+    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+    return Object.fromEntries(headers)""",
+            """    const initial = new Headers()
+    // Attribution first so a route's configured headers can win per header name.
+    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, value)
+    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
+    const request: PiAiRequestHeaderContext = Object.freeze({
+      provider: options.provider,
+      model: options.model,
+      baseURL,
+      ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
+      ...options.purpose === undefined ? {} : { purpose: options.purpose },
+    })
+    const headers = prepare === undefined ? initial : prepare(request, initial)
+    return Object.fromEntries(headers)""",
+            "request header precedence (upstream 4-arg)",
+        ), (
             "const configured = new Set(",
             """/** Merge deployment headers while removing case-insensitive attribution collisions. */
 function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
@@ -1525,6 +1613,144 @@ def patch_conversation_mobile():
     return True
 
 
+def patch_bundle_layer_cache():
+    """Patches packages/boot/app-boot/src/profile.ts to retain in-memory bundle layer caching."""
+    path = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "src", "profile.ts")
+    if not os.path.exists(path):
+        return False
+    with open(path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    if "bundleLayerCache" in c:
+        return True
+
+    # 1. Define bundleLayerCache before loadProfileDirectory
+    anchor = "export function loadProfileDirectory("
+    cache_def = "const bundleLayerCache = new Map<string, ProfileLayer>()\n\n"
+    if anchor in c:
+        c = c.replace(anchor, cache_def + anchor, 1)
+
+    # 2. Wrap bundle resolution in bundleLayerCache
+    old_loop = """      const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
+      const bundleManifest = readProfileManifest(binName, packageDir)"""
+    new_loop = """      const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
+      let cachedLayer = bundleLayerCache.get(packageDir)
+      if (cachedLayer === undefined) {
+        const bundleManifest = readProfileManifest(binName, packageDir)"""
+
+    if old_loop in c:
+        c = c.replace(old_loop, new_loop, 1)
+        old_push = """      layers.push({ packageName, packageDir, patchPaths, patches })"""
+        new_push = """        cachedLayer = { packageName, packageDir, patchPaths, patches }
+        bundleLayerCache.set(packageDir, cachedLayer)
+      }
+      layers.push(cachedLayer)"""
+        if old_push in c:
+            c = c.replace(old_push, new_push, 1)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(c)
+            print("  [+] Patched app-boot bundleLayerCache.")
+            return True
+    return False
+
+
+def patch_fs_batch_edits():
+    """Patches packages/fs/fs-local and packages/fs/fs to retain batch edit operations."""
+    # 1. packages/fs/fs/src/index.ts
+    idx_path = os.path.join(REPO_DIR, "packages", "fs", "fs", "src", "index.ts")
+    if os.path.exists(idx_path):
+        with open(idx_path, "r", encoding="utf-8") as f:
+            idx_c = f.read()
+        if "FsEditOp" not in idx_c and "export type {" in idx_c:
+            idx_c = idx_c.replace("export type {", "export type {\n  FsEditOp,", 1)
+            with open(idx_path, "w", encoding="utf-8") as f:
+                f.write(idx_c)
+
+    # 2. packages/fs/fs/src/types.ts
+    types_path = os.path.join(REPO_DIR, "packages", "fs", "fs", "src", "types.ts")
+    if os.path.exists(types_path):
+        with open(types_path, "r", encoding="utf-8") as f:
+            types_c = f.read()
+        types_mod = False
+        if "export interface FsEditOp" not in types_c:
+            op_def = """/** An individual literal-replacement edit operation in a batch. */
+export interface FsEditOp {
+  oldString: string
+  newString: string
+  replaceAll?: boolean
+}
+
+"""
+            anchor = "export interface FsEditRequest {"
+            if anchor in types_c:
+                types_c = types_c.replace(anchor, op_def + anchor, 1)
+                types_mod = True
+        if "edits?: FsEditOp[]" not in types_c:
+            types_c = types_c.replace(
+                "oldString: string",
+                "oldString?: string",
+                1
+            )
+            types_c = types_c.replace(
+                "newString: string",
+                "newString?: string\n  edits?: FsEditOp[]",
+                1
+            )
+            types_mod = True
+        if types_mod:
+            with open(types_path, "w", encoding="utf-8") as f:
+                f.write(types_c)
+
+    # 3. packages/fs/fs-local/src/index.ts
+    local_path = os.path.join(REPO_DIR, "packages", "fs", "fs-local", "src", "index.ts")
+    if os.path.exists(local_path):
+        with open(local_path, "r", encoding="utf-8") as f:
+            loc_c = f.read()
+        if "edit.edits" not in loc_c:
+            old_edit = """      const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
+      const content = restoreLineEndings(edited.content, original.lineEndings)
+      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
+
+      const after = await probe(target.targetKey)
+      return {
+        targetKey: target.targetKey,
+        // The LF-normalized before/after text (the applied-hunk diff basis);
+        // line-ending restoration is a storage detail the diff ignores.
+        before: original.content,
+        after: edited.content,
+      }"""
+            new_edit = """      let current = original.content
+      if (Array.isArray(edit.edits) && edit.edits.length > 0) {
+        for (const op of edit.edits) {
+          const res = applyLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, target.displayPath)
+          current = res.content
+        }
+      } else if (edit.oldString !== undefined && edit.newString !== undefined) {
+        const res = applyLiteralEdit(current, edit.oldString, edit.newString, edit.replaceAll ?? false, target.displayPath)
+        current = res.content
+      } else {
+        throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
+      }
+      const content = restoreLineEndings(current, original.lineEndings)
+      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
+
+      const after = await probe(target.targetKey)
+      return {
+        targetKey: target.targetKey,
+        // The LF-normalized before/after text (the applied-hunk diff basis);
+        // line-ending restoration is a storage detail the diff ignores.
+        before: original.content,
+        after: current,
+      }"""
+            if old_edit in loc_c:
+                loc_c = loc_c.replace(old_edit, new_edit, 1)
+                with open(local_path, "w", encoding="utf-8") as f:
+                    f.write(loc_c)
+                print("  [+] Patched fs-local batch edits support.")
+                return True
+    return True
+
+
 def apply_git_patch():
     """Attempts git apply using the master patch bundle."""
     target_patch = PATCH_FILE if os.path.exists(PATCH_FILE) else LEGACY_PATCH_FILE
@@ -1545,15 +1771,20 @@ def export_patch():
     """Exports current Termux & Mobile diff to termux-mobile-suite.patch."""
     ensure_patch_dir()
     try:
-        base = "upstream/master"
-        # Use merge-base with upstream/master so diff contains only fork modifications
-        mb_res = subprocess.run(["git", "merge-base", "HEAD", base], cwd=REPO_DIR, capture_output=True, text=True)
-        if mb_res.returncode == 0 and mb_res.stdout.strip():
-            base = mb_res.stdout.strip()
+        # If in the middle of a merge, diff against MERGE_HEAD / upstream/master directly
+        is_merging = subprocess.run(["git", "rev-parse", "--verify", "MERGE_HEAD"], cwd=REPO_DIR, capture_output=True).returncode == 0
+        if is_merging:
+            base = "MERGE_HEAD"
         else:
-            has_upstream = subprocess.run(["git", "rev-parse", "--verify", base], cwd=REPO_DIR, capture_output=True).returncode == 0
-            if not has_upstream:
-                base = "HEAD"
+            base = "upstream/master"
+            # Use merge-base with upstream/master so diff contains only fork modifications
+            mb_res = subprocess.run(["git", "merge-base", "HEAD", base], cwd=REPO_DIR, capture_output=True, text=True)
+            if mb_res.returncode == 0 and mb_res.stdout.strip():
+                base = mb_res.stdout.strip()
+            else:
+                has_upstream = subprocess.run(["git", "rev-parse", "--verify", base], cwd=REPO_DIR, capture_output=True).returncode == 0
+                if not has_upstream:
+                    base = "HEAD"
         
         diff = subprocess.run(
             ["git", "diff", base, "--", "package.json", "packages/", "apps/web/", ":(exclude)**/lib/**", ":(exclude)**/*.map"],
@@ -1623,7 +1854,7 @@ def check_status():
     if os.path.exists(frame_path):
         with open(frame_path, "r", encoding="utf-8") as f:
             c = f.read()
-        frame_ok = "const isMobile" in c and "mobileBackdrop" in c
+        frame_ok = ("onSidebarColClick" in c or "isMobile" in c) and ("drawerMask" in c or "mobileBackdrop" in c)
     print(f"[*] Responsive Mobile Drawer & UI:     {'[PASS]' if frame_ok else '[FAIL]'}")
 
     # 5. Model Selection Touch Fix
@@ -1760,6 +1991,8 @@ def apply_all():
     patch_trajectory_mobile()
     patch_conversation_mobile()
     patch_speech_to_text()
+    patch_bundle_layer_cache()
+    patch_fs_batch_edits()
     
     print("[+] All Termux & Mobile UX patches verified and active.")
     export_patch()

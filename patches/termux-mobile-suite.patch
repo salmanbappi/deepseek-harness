@@ -1,8 +1,8 @@
 diff --git a/apps/web/index.html b/apps/web/index.html
-index f5c2ffac06..626ba3ea8d 100644
+index ff3ca620b7..1458e23d10 100644
 --- a/apps/web/index.html
 +++ b/apps/web/index.html
-@@ -7,6 +7,14 @@
+@@ -10,6 +10,14 @@
      <link rel="icon" type="image/svg+xml" href="/favicon-dark.svg" media="(prefers-color-scheme: dark)" />
      <link rel="icon" type="image/svg+xml" href="/favicon.svg" media="(prefers-color-scheme: light)" />
      <title>DSH Local Build</title>
@@ -17,19 +17,11 @@ index f5c2ffac06..626ba3ea8d 100644
    </head>
    <body>
      <div id="root"></div>
-diff --git a/apps/web/public/icon-192.png b/apps/web/public/icon-192.png
-new file mode 100644
-index 0000000000..a98b7b60ea
-Binary files /dev/null and b/apps/web/public/icon-192.png differ
-diff --git a/apps/web/public/icon-512.png b/apps/web/public/icon-512.png
-new file mode 100644
-index 0000000000..07602c0c0e
-Binary files /dev/null and b/apps/web/public/icon-512.png differ
 diff --git a/package.json b/package.json
-index 21eecbf2da..f43b221567 100644
+index c4f130943d..0112815822 100644
 --- a/package.json
 +++ b/package.json
-@@ -204,7 +204,7 @@
+@@ -208,7 +208,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -38,7 +30,7 @@ index 21eecbf2da..f43b221567 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -218,6 +218,9 @@
+@@ -222,6 +222,9 @@
      "verify-provider-data": "tsx packages/llm/llm-pi-ai/scripts/gen-provider-data.ts --check",
      "verify-product-use": "tsx scripts/verify-product-use.ts"
    },
@@ -49,7 +41,7 @@ index 21eecbf2da..f43b221567 100644
      "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",
      "@deepseek-ai/dsh-hooks-codex": "workspace:*",
 diff --git a/packages/attachment/attachment-local/src/store.ts b/packages/attachment/attachment-local/src/store.ts
-index 7fab679e34..77e14abcb0 100644
+index 88ab2c9d27..a002ccd8a3 100644
 --- a/packages/attachment/attachment-local/src/store.ts
 +++ b/packages/attachment/attachment-local/src/store.ts
 @@ -2,7 +2,7 @@
@@ -135,7 +127,7 @@ index 7fab679e34..77e14abcb0 100644
      // read-only mode when the deduplication path observes an existing object.
      await chmod(target, 0o400)
 diff --git a/packages/attachment/attachment-local/tests/store.spec.ts b/packages/attachment/attachment-local/tests/store.spec.ts
-index 82c2b9f3ba..3ef3919554 100644
+index 6e7ff4b011..2339aa3ca3 100644
 --- a/packages/attachment/attachment-local/tests/store.spec.ts
 +++ b/packages/attachment/attachment-local/tests/store.spec.ts
 @@ -19,6 +19,7 @@ import {
@@ -167,7 +159,7 @@ index 82c2b9f3ba..3ef3919554 100644
    await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true })))
  })
  
-@@ -296,4 +304,14 @@ describe('local attachment store', () => {
+@@ -311,4 +319,14 @@ describe('local attachment store', () => {
        data: Uint8Array.of(...prepared.data, 0),
      })).rejects.toMatchObject({ code: 'ATTACHMENT_CORRUPT' })
    })
@@ -183,10 +175,10 @@ index 82c2b9f3ba..3ef3919554 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
-index 3c7aa74762..32d51d5fb3 100644
+index 32719f2484..343b22b0e4 100644
 --- a/packages/boot/app-boot/src/profile.ts
 +++ b/packages/boot/app-boot/src/profile.ts
-@@ -737,6 +737,8 @@ export function resolveBundleDir(
+@@ -675,6 +675,8 @@ export function resolveBundleDir(
   * @param options - `userLayer: false` skips reading `cordis.patch.yml`.
   * @returns the successfully loaded bundle layers and optional user patch layer.
   */
@@ -195,7 +187,7 @@ index 3c7aa74762..32d51d5fb3 100644
  export function loadProfileDirectory(
    binName: string,
    dir: string,
-@@ -751,17 +753,22 @@ export function loadProfileDirectory(
+@@ -689,18 +691,23 @@ export function loadProfileDirectory(
    for (const packageName of bundles) {
      try {
        const packageDir = resolveBundleDir(binName, packageName, installAnchor, dir)
@@ -210,6 +202,7 @@ index 3c7aa74762..32d51d5fb3 100644
 +        if (bundle === undefined) {
 +          throw new Error(`${binName}: profile bundle ${JSON.stringify(packageName)} declares no dsh.bundle in its package.json`)
 +        }
++        assertBundlePlatform(bundle.platforms, process.platform)
 +        // A bundle is not a plugin row, so row admission never reads its own dsh requirements.
 +        const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
 +        if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
@@ -218,18 +211,19 @@ index 3c7aa74762..32d51d5fb3 100644
 +        cachedLayer = { packageName, packageDir, patchPaths, patches }
 +        bundleLayerCache.set(packageDir, cachedLayer)
        }
+-      assertBundlePlatform(bundle.platforms, process.platform)
 -      // A bundle is not a plugin row, so row admission never reads its own dsh requirements.
 -      const issue = evaluatePluginCompatibility(bundleManifest, exemptions)
 -      if (issue !== undefined && !issue.exempted) throw new Error(pluginCompatibilityWarning(issue))
 -      const patchPaths = bundlePatchPaths(packageDir, bundle)
 -      const patches = patchPaths.flatMap(patchPath => loadOverlayPatches(binName, patchPath))
 -      layers.push({ packageName, packageDir, patchPaths, patches })
-+layers.push(cachedLayer)
++      layers.push(cachedLayer)
      } catch (error) {
        skippedBundles.push({ packageName, reason: String(error) })
      }
 diff --git a/packages/boot/config-editor/src/index.ts b/packages/boot/config-editor/src/index.ts
-index ffec879f40..090919bebc 100644
+index 8fe686e478..0e900368d4 100644
 --- a/packages/boot/config-editor/src/index.ts
 +++ b/packages/boot/config-editor/src/index.ts
 @@ -93,7 +93,11 @@ export class ConfigEditor extends Service {
@@ -245,21 +239,6 @@ index ffec879f40..090919bebc 100644
          if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
          const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
          const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
-diff --git a/packages/client/AGENTS.md b/packages/client/AGENTS.md
-index 7697a5cfd3..aaf9edb8e5 100644
---- a/packages/client/AGENTS.md
-+++ b/packages/client/AGENTS.md
-@@ -114,9 +114,7 @@ One UI feature = one plugin package (`src/client/` browser half). A multi-domain
- 
- ## Styling and localization
- 
--[docs/web-styling.md](../../docs/web-styling.md) is authoritative. Shared `--dsw-*` tokens and global sheets live in `ui-theme/src/styles/`; feature components consume semantic aliases through CSS Modules and `clsx`, with no literal colors, component library, or Tailwind. Code comments are English. Design judgment beyond those rules — feedback surfaces, loading states, overlay safety, platform window adaptation — follows [dsh-client-ui-ux](../../.agents/skills/dsh-client-ui-ux/SKILL.md).
--
--Menus use `Menu` or `MenuSurface`, including custom listboxes, except the explicitly listed schedule containers. Preserve the shared transparency and blur ([rules](../../docs/web-styling.md#component-rules)).
-+[docs/web-styling.md](../../docs/web-styling.md) is authoritative. Shared `--dsw-*` tokens and global sheets live in `ui-theme/src/styles/`; feature components consume semantic aliases through CSS Modules and `clsx`, with no literal colors, component library, or Tailwind. Code comments are English.
- 
- Every product-visible string—including text, accessibility names, tooltips, placeholders, status/unit formatters, and primitive chrome—lives in a typed locale dictionary and reaches components through the standard `t` seat or an already-localized prop. Cordis-free primitives require complete label props and own no fallback copy. Keep user/model/wire data and code tokens verbatim; internal matching uses discriminants or stable ids, never localized text. `pnpm run verify-client-ui-i18n` enforces source ownership ([decision](../../.agents/notes/implemented/architecture/2026-08-23-locale-owned-client-ui-copy.md)).
- 
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
 index 5c8594df6f..6038402071 100644
 --- a/packages/client/connection/src/browser-auth.ts
@@ -295,10 +274,10 @@ index 5c8594df6f..6038402071 100644
     * Exchange the launch token for an independent API operator; omitted interactions default to none.
     * @param req - trusted GET request on /connect with at most one interactions declaration.
 diff --git a/packages/client/locale/src/client/LanguageRow.module.css b/packages/client/locale/src/client/LanguageRow.module.css
-index af02724b4f..72ffdc81cc 100644
+index 794ec53652..6b3483804b 100644
 --- a/packages/client/locale/src/client/LanguageRow.module.css
 +++ b/packages/client/locale/src/client/LanguageRow.module.css
-@@ -49,3 +49,13 @@
+@@ -59,3 +59,13 @@
  .chevron {
    flex: none;
  }
@@ -313,10 +292,10 @@ index af02724b4f..72ffdc81cc 100644
 +  }
 +}
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
-index c7797443d9..4d05b47976 100644
+index ba58b53eff..3c205eefe6 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.module.css
-@@ -89,6 +89,7 @@
+@@ -105,6 +105,7 @@
    overflow-y: auto;
    overscroll-behavior-y: auto;
    scrollbar-gutter: stable;
@@ -325,10 +304,10 @@ index c7797443d9..4d05b47976 100644
  
  .label {
 diff --git a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-index 3153d3fdbf..72ffc36180 100644
+index 49d8f12300..c23199e83b 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatGroupSeat.tsx
-@@ -114,7 +114,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
+@@ -115,7 +115,7 @@ const ProcessGroupHeader = memo(function ProcessGroupHeader({ groupKey, useChatG
    const activity = data.closed ? data.summary.counts[0]?.kind ?? 'thinking' : live.activity
    return (
      <button type="button" className={css.title} aria-expanded={open} aria-controls={bodyId}
@@ -338,10 +317,10 @@ index 3153d3fdbf..72ffc36180 100644
          <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
          <span className={css.chevron} data-step-process-chevron>
 diff --git a/packages/client/ui-chat/src/client/chat/ChatView.tsx b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-index 1e0741f31f..63100064a1 100644
+index e265ab635f..93b2712e21 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-@@ -242,6 +242,7 @@ export function ChatView({
+@@ -274,6 +274,7 @@ export function ChatView({
            <button
              type="button"
              className={css.toBottom}
@@ -362,10 +341,10 @@ index d34df73398..db3402246f 100644
    border-radius: var(--dsw-radius-lg);
    background: var(--dsw-alias-markdown-code-block);
 diff --git a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
-index 29c1c9e713..6e000ce7c3 100644
+index 9c211ea186..a9a6007866 100644
 --- a/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
 +++ b/packages/client/ui-chat/src/client/chat/MessageIconActions.module.css
-@@ -110,3 +110,40 @@
+@@ -114,3 +114,40 @@
    clip: rect(0 0 0 0);
    white-space: nowrap;
  }
@@ -487,10 +466,10 @@ index bfa386d31c..a8e20d19cb 100644
 +}
 +
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts b/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-index 0fd20082e3..e36dc1bda1 100644
+index 7924a33e3f..7a80d8f41a 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-@@ -109,7 +109,10 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
+@@ -114,7 +114,10 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
          reading.onScrollEnd(outer)
          navigation.readerSettled()
        },
@@ -503,10 +482,10 @@ index 0fd20082e3..e36dc1bda1 100644
        resize: () => {
          if (!content.current.opened) return
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-index 40ea51de98..1980e102de 100644
+index b0dbf7528a..3fb93572f2 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-@@ -457,7 +457,7 @@ export class ChatViewport {
+@@ -628,7 +628,7 @@ export class ChatViewport {
      if (metrics === null) return null
      return {
        metrics,
@@ -515,7 +494,7 @@ index 40ea51de98..1980e102de 100644
      }
    }
  
-@@ -750,7 +750,7 @@ export class ChatViewport {
+@@ -921,7 +921,7 @@ export class ChatViewport {
  
    private readonly onScroll = (event: Event): void => {
      if (this.elements === null || event.target !== this.elements.scroller) return
@@ -524,7 +503,7 @@ index 40ea51de98..1980e102de 100644
      this.invalidate()
      if (this.paging !== null) {
        this.events?.resize()
-@@ -769,12 +769,22 @@ export class ChatViewport {
+@@ -940,12 +940,22 @@ export class ChatViewport {
  
    private readonly onIntent = (event: Event): void => {
      if (event.type === 'keydown' || event.type === 'pointerdown') {
@@ -1106,10 +1085,10 @@ index 0000000000..b8ff2e40ab
 +}
 +
 diff --git a/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css b/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
-index 0b5450cc95..b81c24f64f 100644
+index d953998ea2..c0c28f07f1 100644
 --- a/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
 +++ b/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css
-@@ -54,3 +54,13 @@
+@@ -64,3 +64,13 @@
  .chevron {
    flex: none;
  }
@@ -1124,10 +1103,10 @@ index 0b5450cc95..b81c24f64f 100644
 +  }
 +}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-index 29a4d5e74e..7fdabe0804 100644
+index 39d6f62fef..710df5b58f 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css
-@@ -452,6 +452,7 @@ button.crumb:hover {
+@@ -497,6 +497,7 @@
       gutter moves the input card sideways by the bar's width whenever the two
       differ ([decision](../../../../../../.agents/notes/archived/bug-fix/2026-08-04-composer-tab-gutter-reservation.md)). */
    scrollbar-gutter: stable;
@@ -1135,7 +1114,7 @@ index 29a4d5e74e..7fdabe0804 100644
  }
  
  /* The bar also stops 2px short of the scroller's ends, matching its 2px edge
-@@ -596,3 +597,19 @@ button.crumb:hover {
+@@ -645,3 +646,19 @@
  .embeddedBody[data-content-phase='settling'] .composerSeat {
    visibility: hidden;
  }
@@ -1156,10 +1135,10 @@ index 29a4d5e74e..7fdabe0804 100644
 +}
 +
 diff --git a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
-index aac6a5cf61..5a6a04682d 100644
+index 7d42d3c5bb..ab89776e28 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
 +++ b/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css
-@@ -230,3 +230,27 @@
+@@ -235,3 +235,27 @@
    line-height: 18px;
    color: var(--dsw-alias-state-error-primary);
  }
@@ -1188,10 +1167,10 @@ index aac6a5cf61..5a6a04682d 100644
 +}
 +
 diff --git a/packages/client/ui-deliverables/src/client/turn-deliverables.ts b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-index fb2f962b84..87d4da2bab 100644
+index d51b54edc4..e0d55233c0 100644
 --- a/packages/client/ui-deliverables/src/client/turn-deliverables.ts
 +++ b/packages/client/ui-deliverables/src/client/turn-deliverables.ts
-@@ -80,6 +80,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
+@@ -79,6 +79,17 @@ function mutationPath(name: string, argsRaw: string): string | null {
  
  /** Validate the fields that an `edit` execution requires. */
  function validEditArgs(args: Readonly<Record<string, unknown>>): boolean {
@@ -1210,10 +1189,10 @@ index fb2f962b84..87d4da2bab 100644
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
 diff --git a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-index be0c8fbeeb..a6f4e3c7b2 100644
+index 9f8ed1d7b1..009df95bd2 100644
 --- a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
 +++ b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-@@ -300,27 +300,32 @@ describe('produced-file Turn data', () => {
+@@ -314,27 +314,32 @@ describe('produced-file Turn data', () => {
          replace_all: false,
        }),
        result(5, 'edit'),
@@ -1254,7 +1233,7 @@ index be0c8fbeeb..a6f4e3c7b2 100644
        'notes/new.md',
        'notes/existing.md',
        'notes/deleted-text.md',
-@@ -331,6 +336,10 @@ describe('produced-file Turn data', () => {
+@@ -345,6 +350,10 @@ describe('produced-file Turn data', () => {
    it.each([
      { caseName: 'write omits content', name: 'write', args: { file_path: 'write.txt' } },
      { caseName: 'write has non-string content', name: 'write', args: { file_path: 'write.txt', content: 1 } },
@@ -1266,10 +1245,10 @@ index be0c8fbeeb..a6f4e3c7b2 100644
        caseName: 'edit omits old_string', name: 'edit',
        args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index 5b71ebecfd..f94d631632 100644
+index fa1065dc56..fdf8a0e4a7 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -288,3 +288,119 @@
+@@ -386,3 +386,119 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -1390,10 +1369,10 @@ index 5b71ebecfd..f94d631632 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index 5614947447..3cfbd88a6f 100644
+index 23e71c9c03..c12df7cef9 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
-@@ -138,7 +138,7 @@ export function AppFrame({
+@@ -148,7 +148,7 @@ export function AppFrame({
      let raf: number | null = null
      let disposed = false
      const measure = () => {
@@ -1402,34 +1381,13 @@ index 5614947447..3cfbd88a6f 100644
        if (width > 0) actions.setViewportWidth(width)
      }
      measure()
-@@ -158,6 +158,7 @@ export function AppFrame({
-   }, [actions])
- 
-   const narrow = viewport < SIDEBAR_AUTO_COLLAPSE
-+  const isMobile = viewport <= 768
-   const sidebarCollapsed = narrow ? !layoutInfo.narrowExpanded : layoutInfo.sidebar === 0
-   const sidebarPreference = sidebarCollapsed
-     ? 0
-@@ -240,9 +241,9 @@ export function AppFrame({
-   // the discrete decisions (track present, collapse state) and the drag base.
-   const rightbarMax = cols.rightbar === 0 ? 0 : clampWidth(rightbarPreference, RIGHTBAR_MIN, viewport * RIGHTBAR_MAX_RATIO)
-   const sidebar = useMemo(() => renderSlot('sidebar', {
--    collapsed: sidebarCollapsed,
--    width: cols.sidebar,
--  }), [renderSlot, sidebarCollapsed, cols.sidebar])
-+    collapsed: isMobile ? false : sidebarCollapsed,
-+    width: isMobile ? 280 : cols.sidebar,
-+  }), [renderSlot, sidebarCollapsed, cols.sidebar, isMobile])
-   const main = useMemo(() => (
-     <MainPanel usePanelInfo={usePanelInfo} renderSlot={renderSlot} />
-   ), [usePanelInfo, renderSlot])
-@@ -255,6 +256,37 @@ export function AppFrame({
+@@ -285,6 +285,37 @@ export function AppFrame({
    const leading = useMemo(() => renderSlot('shell.leading', {}), [renderSlot])
-   const leadingMounted = darwin && sidebarCollapsed
+   const leadingMounted = drawer || darwin && sidebarCollapsed
  
 +  // Mobile sidebar click delegation: close sidebar when tapping an active/other session, new session, or panel
 +  const onSidebarColClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-+    if (!isMobile || sidebarCollapsed) return
++    if (!drawer || sidebarCollapsed) return
 +    const target = e.target as HTMLElement | null
 +    if (!target) return
 +    if (target.closest('input, textarea, select')) return
@@ -1456,62 +1414,28 @@ index 5614947447..3cfbd88a6f 100644
 +      actions.toggleSidebar()
 +      return
 +    }
-+  }, [isMobile, sidebarCollapsed, actions])
++  }, [drawer, sidebarCollapsed, actions])
 +
    return (
      <div
        ref={frameRef}
-@@ -277,7 +309,35 @@ export function AppFrame({
-         useSessions={useSessions}
-         usePanelInfo={usePanelInfo}
-       />
--      <div className={css.sidebarCol}>
-+      {/* Mobile drawer backdrop */}
-+      {isMobile && (!sidebarCollapsed || cols.rightbar > 0) && (
-+        <div
-+          className={css.mobileBackdrop}
-+          onClick={() => {
-+            if (!sidebarCollapsed) actions.toggleSidebar()
-+            if (cols.rightbar > 0) actions.closeRightbar()
-+          }}
-+          aria-hidden="true"
-+        />
-+      )}
-+
-+      {/* Mobile sidebar toggle button when collapsed */}
-+      {isMobile && sidebarCollapsed && (
-+        <button
-+          type="button"
-+          className={css.mobileSidebarToggle}
-+          aria-label="Toggle sidebar"
-+          onClick={() => { actions.toggleSidebar() }}
-+        >
-+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
-+            <line x1="2.5" y1="4" x2="13.5" y2="4" />
-+            <line x1="2.5" y1="8" x2="13.5" y2="8" />
-+            <line x1="2.5" y1="12" x2="13.5" y2="12" />
-+          </svg>
-+        </button>
-+      )}
-+
-+      <div className={css.sidebarCol} onClick={onSidebarColClick}>
+@@ -313,7 +344,10 @@ export function AppFrame({
+         onClick={drawerOpen ? () => { actions.toggleSidebar() } : undefined} />}
+       <div className={css.sidebarCol}
+         style={drawer ? { width: sidebarWidth } : undefined}
+-        {...{ inert: drawer && sidebarCollapsed ? '' : undefined }}>
++        {...{ inert: drawer && sidebarCollapsed ? '' : undefined }}
++        onClick={onSidebarColClick}>
++        {sidebar}
++      </div>
          {sidebar}
        </div>
        <>
-@@ -298,7 +358,7 @@ export function AppFrame({
-         </div>
-       )}
-       {/* The collapsed rail is fixed-width: no resize handle while closed. */}
--      {!sidebarCollapsed && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-+      {!sidebarCollapsed && !isMobile && <DragHandle side="sidebar" left={cols.sidebar} onStart={onSidebarStart} onDrag={onSidebarDrag} onEnd={onDragEnd} />}
-       {layoutInfo.rightbarShown && !layoutInfo.rightbarFullscreen && normal.rightbar > 0 && (
-         <DragHandle side="rightbar" left={viewport - normal.rightbar} onStart={onRightbarStart} onDrag={onRightbarDrag} onEnd={onDragEnd} />
-       )}
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-index f4f42cb9cc..cddd7c5f3e 100644
+index 9ef7fc2e80..3dec2f155c 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-@@ -116,6 +116,19 @@
+@@ -129,6 +129,19 @@
    --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
  }
  
@@ -1532,10 +1456,10 @@ index f4f42cb9cc..cddd7c5f3e 100644
  .empty {
    padding: 8px;
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index c497bcbe77..8586271575 100644
+index 3eea3e37ad..f6a761680c 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -156,14 +156,18 @@ export function ModelSelect(
+@@ -157,14 +157,18 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -1556,7 +1480,7 @@ index c497bcbe77..8586271575 100644
    }, [open])
  
    useLayoutEffect(() => {
-@@ -372,6 +376,7 @@ export function ModelSelect(
+@@ -345,6 +349,7 @@ export function ModelSelect(
      )) return
      close()
    }
@@ -1564,7 +1488,7 @@ index c497bcbe77..8586271575 100644
  
    const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
      if (result === undefined) return
-@@ -454,7 +459,6 @@ export function ModelSelect(
+@@ -435,7 +440,6 @@ export function ModelSelect(
        ref={rootRef}
        className={css.root}
        onKeyDown={onRootKeyDown}
@@ -1573,10 +1497,10 @@ index c497bcbe77..8586271575 100644
          // WebKit blurs a focused row before click unless the button's mousedown keeps focus.
          if (event.target instanceof Element && event.target.closest('button') !== null) event.preventDefault()
 diff --git a/packages/client/ui-permission-presets/src/client/PermissionRow.module.css b/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
-index a40d0959cd..fdc1d90272 100644
+index e3d9b76252..991d645f04 100644
 --- a/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
 +++ b/packages/client/ui-permission-presets/src/client/PermissionRow.module.css
-@@ -58,3 +58,13 @@
+@@ -68,3 +68,13 @@
  .chevron {
    flex: none;
  }
@@ -1591,10 +1515,10 @@ index a40d0959cd..fdc1d90272 100644
 +  }
 +}
 diff --git a/packages/client/ui-primitives/src/Modal.module.css b/packages/client/ui-primitives/src/Modal.module.css
-index be4b832d23..ea5ef84ff2 100644
+index d1a67e6a61..01ccbc5713 100644
 --- a/packages/client/ui-primitives/src/Modal.module.css
 +++ b/packages/client/ui-primitives/src/Modal.module.css
-@@ -127,3 +127,25 @@
+@@ -145,3 +145,25 @@
    gap: 8px;
    padding: 0 24px;
  }
@@ -1621,10 +1545,10 @@ index be4b832d23..ea5ef84ff2 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index 0f695de58a..1b44619f34 100644
+index 29c3d52c45..880c3d135e 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-@@ -246,3 +246,197 @@
+@@ -340,3 +340,197 @@
     ui-web base.css's `body > :not(#root)` subtraction covers it wherever it
     overlaps a chrome row's drag — including above every column, which an in-root
     overlay could not promise once a chrome row declares drag itself. */
@@ -1822,45 +1746,6 @@ index 0f695de58a..1b44619f34 100644
 +    box-sizing: border-box;
 +  }
 +}
-diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index 761ae2dc0f..7c8eace6c5 100644
---- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-+++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-@@ -46,16 +46,17 @@ type PanelProps = {
-   onClose: () => void
- }
- 
-+/**
- /**
-  * Body-portaled modal layer: full-viewport mask + centered panel. Close paths: the
-  * header button, a mask click, and document-level Escape (mounted only while
-  * open, so the listener lifetime is the panel's).
-  */
- function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelProps) {
-+  const titleId = useId()
-   // Entries can unmount underneath the requested id, so the render-time
-   // projection falls back to the first row when the id is gone.
-   const active = rows.find(r => r.id === activeId)?.id ?? rows[0]?.id
--  const titleId = useId()
- 
-   const panel = useRef<HTMLDivElement>(null)
-   useModalLayer(panel, true, onClose)
-@@ -68,6 +69,15 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
-     <div className={css.overlay} role="presentation">
-       <div className={css.mask} aria-hidden="true" onClick={onClose} />
-       <div ref={panel} tabIndex={-1} data-shortcut-modal="settings" className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-+        <div className={css.mobileHeader}>
-+          <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
-+          <div className={css.mobileActions}>
-+            {renderSlot('settings.action', {})}
-+            <button type="button" className={css.mobileClose} onClick={onClose} aria-label="Close">
-+              <IconCloseOutlineRegular size={16} />
-+            </button>
-+          </div>
-+        </div>
-         <nav className={css.nav}>
-           <div className={css.navTitle} id={titleId} tabIndex={-1}
-             data-modal-autofocus={active === undefined ? '' : undefined}>{renderSlot('settings.header', {})}</div>
 diff --git a/packages/client/ui-theme/src/styles/base.css b/packages/client/ui-theme/src/styles/base.css
 index 60a625630a..b4334b6052 100644
 --- a/packages/client/ui-theme/src/styles/base.css
@@ -1878,7 +1763,7 @@ index 60a625630a..b4334b6052 100644
   * upstream (deepsuite theme/global.css) — supplied here so the composite
   * --dsw-font-* variables resolve and motion rides the upstream curve. Code
 diff --git a/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css b/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
-index de9133c467..e93bf7638d 100644
+index 0180f9fa0d..e375e8a155 100644
 --- a/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
 +++ b/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
 @@ -14,6 +14,7 @@
@@ -1889,85 +1774,8 @@ index de9133c467..e93bf7638d 100644
  }
  
  .item,
-diff --git a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-index 30acee7a0a..c44e61e7c3 100644
---- a/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-+++ b/packages/client/ui-tool/src/client/tool/models/diff-card-model.ts
-@@ -40,7 +40,7 @@ function narrowDiffs(diffs: unknown): DiffHunk[] | null {
-   return out
- }
- 
--type IntendedDiff = { tool: 'write' | 'edit' | 'str_replace_editor'; diff: DiffHunk }
-+type IntendedDiff = { tool: 'write' | 'edit' | 'str_replace_editor'; diffs: DiffHunk[] }
- 
- function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
-   const parsed = parsedToolCall(block)
-@@ -52,7 +52,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
-       if (fileText !== undefined && typeof fileText !== 'string') return null
-       return {
-         tool: 'str_replace_editor',
--        diff: { path, oldText: null, newText: fileText ?? '' },
-+        diffs: [{ path, oldText: null, newText: fileText ?? '' }],
-       }
-     }
-     if (command === 'str_replace') {
-@@ -60,7 +60,7 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
-       if (newText !== undefined && typeof newText !== 'string') return null
-       return {
-         tool: 'str_replace_editor',
--        diff: { path, oldText: oldText ?? null, newText: newText ?? '' },
-+        diffs: [{ path, oldText: oldText ?? null, newText: newText ?? '' }],
-       }
-     }
-     return null
-@@ -70,14 +70,25 @@ function intendedDiff(block: ToolCallBlock): IntendedDiff | null {
-   if (parsed.name === 'write') {
-     const { content } = parsed.args
-     return typeof content === 'string'
--      ? { tool: 'write', diff: { path, oldText: null, newText: content } }
-+      ? { tool: 'write', diffs: [{ path, oldText: null, newText: content }] }
-       : null
-   }
-   if (parsed.name !== 'edit') return null
-+  if (Array.isArray(parsed.args.edits) && parsed.args.edits.length > 0) {
-+    const diffs: DiffHunk[] = []
-+    for (const edit of parsed.args.edits) {
-+      if (typeof edit !== 'object' || edit === null) return null
-+      const { old_string: oldText, new_string: newText, replace_all: replaceAll } = edit as Record<string, unknown>
-+      if (typeof oldText !== 'string' || typeof newText !== 'string') return null
-+      if (replaceAll !== undefined && typeof replaceAll !== 'boolean') return null
-+      diffs.push({ path, oldText: oldText || null, newText })
-+    }
-+    return { tool: 'edit', diffs }
-+  }
-   const { old_string: oldText, new_string: newText, replace_all: replaceAll } = parsed.args
-   if (typeof oldText !== 'string' || typeof newText !== 'string') return null
-   if (replaceAll !== undefined && typeof replaceAll !== 'boolean') return null
--  return { tool: 'edit', diff: { path, oldText: oldText || null, newText } }
-+  return { tool: 'edit', diffs: [{ path, oldText: oldText || null, newText }] }
- }
- 
- function appliedDiffs(meta: unknown): DiffHunk[] | 'empty' | null {
-@@ -101,13 +112,14 @@ export function diffCardModel(block: ToolCallBlock): DiffCardModel | null {
-   if (block.parentCallId !== undefined) return null
-   const intended = intendedDiff(block)
-   if (intended === null) return null
--  if (!('kind' in block)) return { card: { diffs: [intended.diff] } }
-+  if (!('kind' in block)) return { card: { diffs: intended.diffs } }
-   if (intended.tool === 'str_replace_editor') return null
-   if (block.isError) return null
-   const applied = appliedDiffs(block.meta)
-   if (applied === null || applied === 'empty') {
--    return intended.tool === 'write' ? { card: { diffs: [intended.diff] } } : null
-+    return intended.tool === 'write' ? { card: { diffs: intended.diffs } } : null
-   }
-   const path = recordedAbsolutePath(block.meta, 'path')
--  return { card: { diffs: applied.map(diff => diff.path === path ? { ...diff, path: intended.diff.path } : diff) } }
-+  const intendedPath = intended.diffs[0]?.path
-+  return { card: { diffs: applied.map(diff => diff.path === path && intendedPath !== undefined ? { ...diff, path: intendedPath } : diff) } }
- }
 diff --git a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
-index 52792b8722..a24e844ee7 100644
+index 6f521dc8b3..c7f9b8af5f 100644
 --- a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 +++ b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 @@ -42,6 +42,7 @@
@@ -1979,10 +1787,10 @@ index 52792b8722..a24e844ee7 100644
  
  .ioSection::-webkit-scrollbar-thumb {
 diff --git a/packages/client/ui-tool/tests/diff-card.client.spec.tsx b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-index 1cbd9c43dd..18c25ea92f 100644
+index 0458bf33bc..89248e84b7 100644
 --- a/packages/client/ui-tool/tests/diff-card.client.spec.tsx
 +++ b/packages/client/ui-tool/tests/diff-card.client.spec.tsx
-@@ -68,6 +68,50 @@ describe('diffCardModel', () => {
+@@ -79,6 +79,50 @@ describe('diffCardModel', () => {
      })
    })
  
@@ -2034,7 +1842,7 @@ index 1cbd9c43dd..18c25ea92f 100644
      {
        command: 'create',
 diff --git a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
-index 12b03b1c51..64d60a84c4 100644
+index ab3aa6bed9..87c41eec36 100644
 --- a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 +++ b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 @@ -20,6 +20,7 @@
@@ -2045,7 +1853,7 @@ index 12b03b1c51..64d60a84c4 100644
  }
  
  .historyLoading {
-@@ -1132,10 +1133,11 @@
+@@ -1184,10 +1185,11 @@
  .overview dd {
    min-width: 0;
    margin: 0;
@@ -2060,7 +1868,7 @@ index 12b03b1c51..64d60a84c4 100644
  }
  
  .timestampToggle {
-@@ -1224,10 +1226,11 @@
+@@ -1306,10 +1308,11 @@
  }
  
  .overviewPreview {
@@ -2075,7 +1883,7 @@ index 12b03b1c51..64d60a84c4 100644
    background: var(--dsw-alias-bg-layer-1);
  }
  
-@@ -1972,14 +1975,148 @@
+@@ -2069,14 +2072,148 @@
  @media (max-width: 760px) {
    .details {
      position: absolute;
@@ -2276,10 +2084,10 @@ index 67b302e3b5..0fa71c89f8 100644
  
  .previewActions {
 diff --git a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
-index 1041cf7b7f..50a90df3f7 100644
+index 5c530aef72..fc1b244c07 100644
 --- a/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
 +++ b/packages/client/ui-user-questions/src/client/QuestionComposer.module.css
-@@ -443,6 +443,11 @@
+@@ -601,6 +601,11 @@
  }
  
  @media (max-width: 720px) {
@@ -2291,7 +2099,7 @@ index 1041cf7b7f..50a90df3f7 100644
    .card {
      border-radius: var(--dsw-radius-xl);
    }
-@@ -466,12 +471,31 @@
+@@ -628,12 +633,31 @@
    }
  
    .footer {
@@ -2325,7 +2133,7 @@ index 1041cf7b7f..50a90df3f7 100644
  }
  
 diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
-index af74988cf1..52cf158cfa 100644
+index 3a556a982e..b2a1300f21 100644
 --- a/packages/client/web/src/base.css
 +++ b/packages/client/web/src/base.css
 @@ -1,5 +1,13 @@
@@ -2358,14 +2166,14 @@ index 67da743073..5a69e3a7ad 100644
    const lock = JSON.parse(readFileSync(new URL('../runtime/assets.json', import.meta.url), 'utf8')) as RuntimeLock
    const modelRoot = config.modelDirectory ?? join(config.dataRoot, 'models', 'sensevoice-onnx')
 diff --git a/packages/fs/fs-local/src/fsio.ts b/packages/fs/fs-local/src/fsio.ts
-index a9d97fd6ac..285637a87a 100644
+index a6e3da2bba..ec6bb9c169 100644
 --- a/packages/fs/fs-local/src/fsio.ts
 +++ b/packages/fs/fs-local/src/fsio.ts
-@@ -634,7 +634,35 @@ export async function writeFileAtomic(
+@@ -666,7 +666,35 @@ export async function writeFileAtomic(
        try {
          await linkFile(tempPath, absolutePath)
        } catch (error: unknown) {
--        await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
+-        await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget)
 +        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
 +        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
 +          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
@@ -2377,32 +2185,32 @@ index a9d97fd6ac..285637a87a 100644
 +            existing = await inspectPublicationTarget(absolutePath)
 +          } catch (metadataError: unknown) {
 +            if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
-+              throw new FsError(`cannot write "${createIfAbsent.displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
++              throw new FsError(`cannot write "${displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
 +            }
 +          }
 +
 +          if (existing !== undefined) {
 +            if (!existing.isFile()) {
-+              throw new FsError(`cannot write "${createIfAbsent.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
++              throw new FsError(`cannot write "${displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
 +            }
 +            throw new FsError(
-+              `cannot overwrite existing "${createIfAbsent.displayPath}" without reading it first`,
++              `cannot overwrite existing "${displayPath}" without reading it first`,
 +              'FS_NOT_OBSERVED',
 +              { cause: error },
 +            )
 +          }
 +          await rename(tempPath, absolutePath)
 +        } else {
-+          await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget)
++          await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget)
 +        }
        }
-     } else if (platform === 'win32' && mode !== undefined) {
+     } else if (platform === 'win32' && existingDestination) {
        try {
 diff --git a/packages/fs/fs-local/src/index.ts b/packages/fs/fs-local/src/index.ts
-index 17033e512b..f8f6e1d80e 100644
+index e9ee2b8395..dc07d7c249 100644
 --- a/packages/fs/fs-local/src/index.ts
 +++ b/packages/fs/fs-local/src/index.ts
-@@ -275,8 +275,19 @@ export class LocalFileSystem extends FileSystem {
+@@ -268,8 +268,19 @@ export class LocalFileSystem extends FileSystem {
        }
  
        const original = await readForEdit(target.targetKey, target.displayPath, signal)
@@ -2421,10 +2229,10 @@ index 17033e512b..f8f6e1d80e 100644
 +        throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
 +      }
 +      const content = restoreLineEndings(current, original.lineEndings)
-       await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals)
+       await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
  
        const after = await probe(target.targetKey)
-@@ -285,7 +296,7 @@ export class LocalFileSystem extends FileSystem {
+@@ -278,7 +289,7 @@ export class LocalFileSystem extends FileSystem {
          // The LF-normalized before/after text (the applied-hunk diff basis);
          // line-ending restoration is a storage detail the diff ignores.
          before: original.content,
@@ -2434,10 +2242,10 @@ index 17033e512b..f8f6e1d80e 100644
      })
    }
 diff --git a/packages/fs/fs-local/tests/filesystem.spec.ts b/packages/fs/fs-local/tests/filesystem.spec.ts
-index 96419634f7..901fba5b55 100644
+index ca38025767..d12fe7a01c 100644
 --- a/packages/fs/fs-local/tests/filesystem.spec.ts
 +++ b/packages/fs/fs-local/tests/filesystem.spec.ts
-@@ -739,6 +739,32 @@ describe('editText', () => {
+@@ -785,6 +785,32 @@ describe('editText', () => {
      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('b b b')
    })
  
@@ -2471,7 +2279,7 @@ index 96419634f7..901fba5b55 100644
      const path = join(dir, 'bad.txt')
      const bytes = Buffer.from([0x68, 0xff, 0x69])
 diff --git a/packages/fs/fs-local/tests/fsio.spec.ts b/packages/fs/fs-local/tests/fsio.spec.ts
-index 40ed836309..09b45666f3 100644
+index e53e1e4b37..d5e620faa9 100644
 --- a/packages/fs/fs-local/tests/fsio.spec.ts
 +++ b/packages/fs/fs-local/tests/fsio.spec.ts
 @@ -826,6 +826,7 @@ describe('writeFileAtomic — temp-file safety', () => {
@@ -2480,22 +2288,22 @@ index 40ed836309..09b45666f3 100644
      await expect(writeFileAtomic(file, 'ours', undefined, undefined, {
 +      platform: 'linux',
        linkFile: async () => { throw denied },
-     }, { displayPath: file })).rejects.toMatchObject({ code: 'FS_IO_ERROR', cause: denied })
+     }, { displayPath: file, createIfAbsent: true })).rejects.toMatchObject({ code: 'FS_IO_ERROR', cause: denied })
      await expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' })
 diff --git a/packages/fs/fs/src/index.ts b/packages/fs/fs/src/index.ts
-index 1158a6dede..e00054e14d 100644
+index a49e7ff0e2..6afd241a1f 100644
 --- a/packages/fs/fs/src/index.ts
 +++ b/packages/fs/fs/src/index.ts
-@@ -30,6 +30,7 @@ export {
+@@ -34,6 +34,7 @@ export {
    FsVersion,
  } from './types.ts'
  export type {
 +  FsEditOp,
-   FsEditOutcome,
-   FsEditRequest,
-   FsDirEntry,
+   FsDeleteOutcome,
+   FsMoveOutcome,
+   FsMoveSourceFailure,
 diff --git a/packages/fs/fs/src/types.ts b/packages/fs/fs/src/types.ts
-index a3464f197c..f68bd6ebe5 100644
+index 6ece2c04e4..f8a4905243 100644
 --- a/packages/fs/fs/src/types.ts
 +++ b/packages/fs/fs/src/types.ts
 @@ -143,14 +143,26 @@ export interface FsWriteOutcome {
@@ -2529,10 +2337,10 @@ index a3464f197c..f68bd6ebe5 100644
  
  /** Outcome of a literal edit. */
 diff --git a/packages/fs/fs/tests/service.spec.ts b/packages/fs/fs/tests/service.spec.ts
-index e3105925a5..4884eef3e4 100644
+index 0fccd4edc6..d5a93595bd 100644
 --- a/packages/fs/fs/tests/service.spec.ts
 +++ b/packages/fs/fs/tests/service.spec.ts
-@@ -78,10 +78,17 @@ class FakeFileSystem extends FileSystem {
+@@ -82,10 +82,17 @@ class FakeFileSystem extends FileSystem {
      return { operation: before !== null ? 'update' : 'create', version: FsVersion('v2'), before, after: content }
    }
    override async editText(target: FsTarget, edit: FsEditRequest): Promise<FsEditOutcome> {
@@ -2555,10 +2363,10 @@ index e3105925a5..4884eef3e4 100644
  }
  
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 2ea469c3f8..dfe36d726b 100644
+index 8ba5a105cd..36591fbff0 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
-@@ -99,7 +99,14 @@ class FakeFs extends FileSystem {
+@@ -107,7 +107,14 @@ class FakeFs extends FileSystem {
      this.throwIfArmed()
      this.editIntents.push(expected)
      const content = this.files.get(target.targetKey) ?? ''
@@ -2574,7 +2382,7 @@ index 2ea469c3f8..dfe36d726b 100644
      this.files.set(target.targetKey, after)
      return { version: FsVersion('v3'), before: content, after }
    }
-@@ -505,6 +512,40 @@ describe('edit tool', () => {
+@@ -517,6 +524,40 @@ describe('edit tool', () => {
      expect(result.isError).toBe(true)
      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
    })
@@ -2615,7 +2423,7 @@ index 2ea469c3f8..dfe36d726b 100644
  })
  
  describe('tool-owned presentation (pure presentCall)', () => {
-@@ -631,6 +672,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -643,6 +684,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
        locations: [{ path: 'a.txt' }],
      })
    })
@@ -2641,7 +2449,7 @@ index 2ea469c3f8..dfe36d726b 100644
  
  describe('result-time contextual diff (meta + presentResult)', () => {
 diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
-index 53b288f1f2..ab0013bf99 100644
+index df35b6ce3b..a35e4b7e0d 100644
 --- a/packages/llm/llm-deepseek/src/adapter.ts
 +++ b/packages/llm/llm-deepseek/src/adapter.ts
 @@ -1,6 +1,6 @@
@@ -2650,7 +2458,7 @@ index 53b288f1f2..ab0013bf99 100644
 -import { attributionHeaders, LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
 +import { LlmAdapter, LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
  import type { GenerateOptions, ImageAttachmentAccessResolver, PreparedAdapterCall, StreamChunk } from '@deepseek-ai/dsh-llm'
- import type { DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
+ import type { DeepSeekLlmApiExtensionRequest, DeepSeekLlmApiJson } from '@deepseek-ai/dsh-deepseek-llm-api-extensions'
  import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
 @@ -99,6 +99,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
      try {
@@ -2660,7 +2468,7 @@ index 53b288f1f2..ab0013bf99 100644
        },
        connection.filePolicy, connection.filesApiTimeoutMs, signal, activity)
        let inline = false
-@@ -138,7 +139,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
+@@ -142,7 +143,7 @@ export class DeepSeekAdapter<C extends Connection = Connection> extends LlmAdapt
          const response = await fetch(`${messagesApiRoot(connection.baseURL)}/messages`, {
            method: 'POST', signal, body: extensions.payload, redirect: 'error',
            headers: {
@@ -2956,7 +2764,7 @@ index 3c4676ba0d..d3f1cc7864 100644
      for (const helper of [
        'httpErrorCode',
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
-index a912fff69f..2ed7edb5e6 100644
+index 1302589633..c3840bfe27 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
 +++ b/packages/llm/llm-pi-ai/src/adapter.ts
 @@ -38,11 +38,11 @@ import type {
@@ -2972,28 +2780,46 @@ index a912fff69f..2ed7edb5e6 100644
  } from '@deepseek-ai/dsh-llm'
  import type {
    GenerateOptions,
-@@ -213,16 +213,6 @@ function reasoningInfo(
-   }
+@@ -236,7 +236,7 @@ function requestHeaderDiagnostic(error: unknown): string {
+     : 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'
  }
  
--/** Merge deployment headers while removing case-insensitive attribution collisions. */
--function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
--  const attribution = attributionHeaders()
--  const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
--  return {
--    ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
--    ...attribution,
--  }
--}
+-/** Prepare request-owned headers without allowing contributors to replace attribution. */
++/** Prepare request-owned headers while allowing custom gateway overrides. */
+ function requestHeaders(
+   configured: Readonly<Record<string, string>> | undefined,
+   options: GenerateOptions<string>,
+@@ -245,7 +245,8 @@ function requestHeaders(
+ ): Record<string, string> {
+   try {
+     const initial = new Headers()
+-    // Profile aliases overwrite case-insensitively; the Headers constructor appends them.
++    // Attribution first so a route's configured headers can win per header name.
++    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, value)
+     for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
+     const request: PiAiRequestHeaderContext = Object.freeze({
+       provider: options.provider,
+@@ -255,7 +256,6 @@ function requestHeaders(
+       ...options.purpose === undefined ? {} : { purpose: options.purpose },
+     })
+     const headers = prepare === undefined ? initial : prepare(request, initial)
+-    for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
+     return Object.fromEntries(headers)
+   } catch (error) {
+     throw new LlmError(
+@@ -264,7 +264,6 @@ function requestHeaders(
+     )
+   }
+ }
 -
  /**
   * pi-ai-backed multi-provider adapter. Each operation reads the current
   * profiles, so a configuration change reaches the next request without a
 diff --git a/packages/llm/llm-pi-ai/src/config.ts b/packages/llm/llm-pi-ai/src/config.ts
-index b07cd57bfb..450a7d5a3e 100644
+index 9de6c4416e..71ffaa4e5f 100644
 --- a/packages/llm/llm-pi-ai/src/config.ts
 +++ b/packages/llm/llm-pi-ai/src/config.ts
-@@ -148,7 +148,7 @@ export interface PiAiProviderProfile {
+@@ -161,7 +161,7 @@ export interface PiAiProviderProfile {
     * to answer instead.
     */
    defaultInput?: PiAiModality[]
@@ -3031,7 +2857,7 @@ index d171b30235..6f3d60fece 100644
        method: 'GET',
        headers,
 diff --git a/packages/llm/llm-pi-ai/src/stream.ts b/packages/llm/llm-pi-ai/src/stream.ts
-index 30e9c79412..cda1728bc5 100644
+index 17b7158135..c062ba4ef6 100644
 --- a/packages/llm/llm-pi-ai/src/stream.ts
 +++ b/packages/llm/llm-pi-ai/src/stream.ts
 @@ -41,7 +41,10 @@ export function mapUsage(usage: PiUsage): TokenUsage {
@@ -3096,29 +2922,8 @@ index 0000000000..2131a5c92f
 @@ -0,0 +1 @@
 +/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
 \ No newline at end of file
-diff --git a/packages/schedule/AGENTS.md b/packages/schedule/AGENTS.md
-index 172ce1bd2c..aea5557cd6 100644
---- a/packages/schedule/AGENTS.md
-+++ b/packages/schedule/AGENTS.md
-@@ -2,10 +2,9 @@
- 
- These rules supplement the repository and package instructions for `packages/schedule/*`.
- 
--- The Host `schedule` storage domain owns active and ended tasks. Store each record with its original Session id and a globally unique task id; only explicit deletion removes a task. Browser and Agent management use the same service; read and delete must not activate a Session.
--- One Host runtime scans active tasks at startup and schedules their next target; ended tasks never rearm. Resume due Sessions through the existing Session controller so preset composition and concurrent activation retain one owner.
--- Preserve `after`, `at`, `every`, `daily`, `weekly`, and `cron`. Daily rules retain an explicit time and IANA zone; they are not fixed 86,400-second intervals. Skip missing local dates/times and select the earlier overlap once per date. Recurring tasks contribute only their latest missed occurrence and advance to a future target; due recurring tasks in one Session share a message.
--- Enqueue with producer kind `schedule`, await Session persistence, then retire or advance the task. These writes are not atomic: a crash between them may duplicate delivery. Do not describe enqueue as model completion or add an execution-record state machine.
--- Failed delivery leaves the task stored and reports the failure. Do not add a generic retry loop. Shutdown drains accepted work before closing storage.
--- Historical `schedule/change` events retain the original three-kind `LegacyScheduleRecord`; the current Host decoder owns additional rule kinds. Warn when loading a Session with active historical reminders; do not scan or migrate all historical Sessions implicitly, or infer daily intent from an existing one-shot prompt.
--- Keep recurrence arithmetic pure. Production uses platform wall time and segmented timers; tests use explicit samples or restored fake timers.
-+- The owning Session's versioned `schedule/change` stream is the only durable Schedule state. Folds validate every durable JSON boundary and derive active records; timers, idle waiters, and tool values remain disposable projections.
-+- A normal Session folds its complete log. A fork derives active Schedule state only from events at or after the Session's exact `inheritedEventCount`; it never inherits an active parent reminder.
-+- Every Schedule management operation that reads or decides from the fold first awaits `ctx.sessions.flush(session)`. Create and an actual delete await a second barrier after append; a failed barrier returns the stable uncertainty result instead of inferring durability from the live log.
-+- Runtime owners attach only to future live root Agents while the plugin is loaded. They do not scan persisted Sessions, adopt already-published roots, wake cold Sessions, register global tools, or delete durable records during teardown.
-+- Due handling rechecks the wall clock and exact live owner, claims the idle maintenance phase through the public Agent seam, constructs the complete escaped framing before `followup()`, appends dispatch only after synchronous enqueue returns, releases maintenance, and then awaits durability. A synchronous framing/enqueue failure appends no dispatch; a later model failure does not roll one back.
-+- Rule math and durable transition logic stay pure and deterministic. Production uses the platform wall clock and segmented timers; tests supply explicit samples or fake timers without adding a production clock service.
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
-index 3c3c13589f..db28d939f6 100644
+index f8351fa9ee..d4dc5eac6d 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
 +++ b/packages/session/session-persistence-jsonl/src/index.ts
 @@ -14,7 +14,7 @@ import {
@@ -3130,7 +2935,7 @@ index 3c3c13589f..db28d939f6 100644
  import { dirname, join, resolve } from 'node:path'
  import { performance } from 'node:perf_hooks'
  import { scheduler } from 'node:timers/promises'
-@@ -1301,6 +1301,13 @@ class JsonlSessionPersistence extends SessionPersistence {
+@@ -1303,6 +1303,13 @@ class JsonlSessionPersistence extends SessionPersistence {
      try {
        await link(tmp, finalPath)
        linked = true
@@ -3311,10 +3116,10 @@ index 59dfe27fca..7531f13284 100644
    }
  }
 diff --git a/packages/settings/settings/src/index.ts b/packages/settings/settings/src/index.ts
-index e0586ecb24..0be5b2932b 100644
+index 5e9a9cd59d..28165a4ee1 100644
 --- a/packages/settings/settings/src/index.ts
 +++ b/packages/settings/settings/src/index.ts
-@@ -388,10 +388,11 @@ export class SettingsForms extends Service {
+@@ -389,10 +389,11 @@ export class SettingsForms extends Service {
        if (path.length && !isVolatilePath(schema, path)) throw new Error(`Config field "${path.join('.')}" is not volatile`)
      }
      await this.ownerContext.configEditor.edit(entry, (raw, inherited) => {
@@ -3330,7 +3135,7 @@ index e0586ecb24..0be5b2932b 100644
        }
        const current = projectForm(form, raw) as Record<string, unknown>
        const base = projectForm(form, inherited) as Record<string, unknown>
-@@ -419,6 +420,7 @@ export class SettingsForms extends Service {
+@@ -420,6 +421,7 @@ export class SettingsForms extends Service {
        }
        return mergeLayers(strip(raw, form), next) as Record<string, unknown>
      })
