@@ -1543,16 +1543,20 @@ index d1a67e6a61..01ccbc5713 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-index 29c3d52c45..880c3d135e 100644
+index 29c3d52c45..957c9b9482 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
-@@ -340,3 +340,197 @@
+@@ -340,3 +340,221 @@
     ui-web base.css's `body > :not(#root)` subtraction covers it wherever it
     overlaps a chrome row's drag — including above every column, which an in-root
     overlay could not promise once a chrome row declares drag itself. */
 +
 +/* Mobile top bar: hidden on desktop, replaces the dual-column header on mobile. */
 +.mobileHeader {
++  display: none;
++}
++
++.mobileBack {
 +  display: none;
 +}
 +
@@ -1648,11 +1652,31 @@ index 29c3d52c45..880c3d135e 100644
 +    background: var(--dsw-alias-bg-layer-2);
 +  }
 +
++  .mobileBack {
++    display: inline-flex;
++    align-items: center;
++    justify-content: center;
++    width: 36px;
++    height: 36px;
++    padding: 0;
++    margin-right: 8px;
++    border: none;
++    border-radius: 18px;
++    background: var(--dsw-alias-bg-module-platform);
++    color: var(--dsw-alias-label-primary);
++    cursor: pointer;
++    flex: none;
++  }
++
 +  .mobileTitle {
++    flex: 1;
 +    font-size: 17px;
 +    font-weight: 600;
 +    line-height: 24px;
 +    color: var(--dsw-alias-label-primary);
++    overflow: hidden;
++    text-overflow: ellipsis;
++    white-space: nowrap;
 +  }
 +
 +  .mobileClose {
@@ -1744,6 +1768,38 @@ index 29c3d52c45..880c3d135e 100644
 +    box-sizing: border-box;
 +  }
 +}
+diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
+index 980e59a06d..3805b8d1d9 100644
+--- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
++++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
+@@ -18,7 +18,7 @@ import { createPortal } from 'react-dom'
+ import clsx from 'clsx'
+ import {
+   ConnectionIndicator, Tooltip, useModalLayer,
+-  IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconCloseOutlineRegular, IconDataOutlineMedium,
++  IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconChevronLeftOutlineRegular, IconCloseOutlineRegular, IconDataOutlineMedium,
+   IconPersonalizationOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
+ } from '@deepseek-ai/dsh-client-ui-primitives'
+ import type { ConnectionIndicatorState } from '@deepseek-ai/dsh-client-ui-primitives'
+@@ -71,6 +71,18 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
+     <div className={css.overlay} role="presentation">
+       <div className={css.mask} aria-hidden="true" onClick={onClose} />
+       <div ref={panel} tabIndex={-1} data-shortcut-modal="settings" className={css.panel} role="dialog" aria-modal="true" aria-labelledby={titleId}>
++        <div className={css.mobileHeader}>
++          <button type="button" className={css.mobileBack} onClick={onClose} aria-label="Back">
++            <IconChevronLeftOutlineRegular size={20} />
++          </button>
++          <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
++          <div className={css.mobileActions}>
++            {renderSlot('settings.action', {})}
++            <button type="button" className={css.mobileClose} onClick={onClose} aria-label="Close">
++              <IconCloseOutlineRegular size={16} />
++            </button>
++          </div>
++        </div>
+         {/* The four seats stay direct children of the panel and take their
+             places from its grid: title and header share the first row, the
+             navigation and the active section the second. */}
 diff --git a/packages/client/ui-theme/src/styles/base.css b/packages/client/ui-theme/src/styles/base.css
 index 60a625630a..b4334b6052 100644
 --- a/packages/client/ui-theme/src/styles/base.css

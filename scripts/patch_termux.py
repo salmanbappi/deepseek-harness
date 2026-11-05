@@ -940,11 +940,14 @@ def patch_settings_mobile():
     with open(css_path, "r", encoding="utf-8") as f:
         css = f.read()
 
-    # Upstream v0.2.2+ has native mobile responsiveness, grid layout, close button and createPortal
-    if "createPortal" in tsx and ("max-width: 767px" in css or ".mobileHeader" in css):
+    # Already fully patched with mobile header and portal
+    if "createPortal" in tsx and "css.mobileHeader" in tsx and ".mobileHeader" in css and ".mobileBack" in css:
         return True
 
     header_jsx = """        <div className={css.mobileHeader}>
+          <button type="button" className={css.mobileBack} onClick={onClose} aria-label="Back">
+            <IconChevronLeftOutlineRegular size={20} />
+          </button>
           <span className={css.mobileTitle}>{renderSlot('settings.header', {})}</span>
           <div className={css.mobileActions}>
             {renderSlot('settings.action', {})}
@@ -955,16 +958,22 @@ def patch_settings_mobile():
         </div>
 """
     nav_open = "        <nav className={css.nav}>\n"
+    title_comment = "        {/* The four seats stay direct children of the panel and take their\n"
     panel_open = '  return (\n    <div className={css.overlay} role="presentation">\n'
     react_import = "import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'\n"
     panel_tail = "      </div>\n    </div>\n  )\n}\n"
 
     has_portal = "createPortal" in tsx
+    if "IconChevronLeftOutlineRegular" not in tsx and "IconCloseOutlineRegular" in tsx:
+        tsx = tsx.replace("IconCloseOutlineRegular", "IconChevronLeftOutlineRegular, IconCloseOutlineRegular", 1)
+        applied.append("chevron back icon import")
+
     for marker, upstream, patched, label in (
         ("from 'react-dom'", react_import, react_import + "import { createPortal } from 'react-dom'\n", "react-dom import"),
         # The panel becomes a value so it can be portalled to document.body (unless already portalled).
         ("const panel = (", panel_open, panel_open.replace("  return (", "  const panel = ("), "panel binding"),
-        ("css.mobileHeader", nav_open, header_jsx + nav_open, "mobile header row"),
+        ("css.mobileHeader", title_comment, header_jsx + title_comment, "mobile header row"),
+        ("css.mobileHeader", nav_open, header_jsx + nav_open, "mobile header row (legacy)"),
         (
             "createPortal",
             panel_tail,
@@ -975,6 +984,8 @@ def patch_settings_mobile():
         if marker in tsx or (has_portal and label in ("panel binding", "portal render")):
             continue
         if upstream not in tsx:
+            if label == "mobile header row (legacy)":
+                continue
             print(f"  [!] settings sheet: {label} anchor did not match — reapply by hand against SettingsRoot.tsx")
             continue
         tsx = tsx.replace(upstream, patched, 1)
@@ -1930,8 +1941,20 @@ def check_status():
         speech_ok = "android-arm64" in c
     print(f"[*] Local Speech (SenseVoice Android): {'[PASS]' if speech_ok else '[FAIL]'}")
 
+    # 12. Mobile Settings Sheet & Back Button
+    set_tsx = os.path.join(REPO_DIR, "packages", "client", "ui-settings-general", "src", "client", "SettingsRoot.tsx")
+    set_css = os.path.join(REPO_DIR, "packages", "client", "ui-settings-general", "src", "client", "SettingsRoot.module.css")
+    set_ok = False
+    if os.path.exists(set_tsx) and os.path.exists(set_css):
+        with open(set_tsx, "r", encoding="utf-8") as f:
+            t = f.read()
+        with open(set_css, "r", encoding="utf-8") as f:
+            s = f.read()
+        set_ok = "mobileHeader" in t and "mobileBack" in t and ".mobileHeader" in s and ".mobileBack" in s
+    print(f"[*] Mobile Settings & Back Button:     {'[PASS]' if set_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok
     return all_ok
 
 
