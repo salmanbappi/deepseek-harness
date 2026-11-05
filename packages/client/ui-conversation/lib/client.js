@@ -33,6 +33,7 @@ window.__ModuleLoader__.load({
 		let react_jsx_runtime = require("react/jsx-runtime");
 		let react = require("react");
 		react = __toESM(react, 1);
+		let zod = require("zod");
 		let react_dom = require("react-dom");
 		//#region ../../../vendor/cosmokit/lib/index.js
 		/** Return true when a value is `null` or `undefined`. */
@@ -40,7 +41,7 @@ window.__ModuleLoader__.load({
 			return value === null || value === void 0;
 		}
 		/** Return true for non-array object values. */
-		function isPlainObject$1(data) {
+		function isPlainObject(data) {
 			return data && typeof data === "object" && !Array.isArray(data);
 		}
 		/** Filter object entries and return a new object. */
@@ -52,7 +53,7 @@ window.__ModuleLoader__.load({
 			return Object.fromEntries(Object.entries(object).map(([key, value]) => [key, transform(value, key)]));
 		}
 		/** Pick selected keys from an object, optionally including `undefined` values. */
-		function pick$1(source, keys, forced) {
+		function pick(source, keys, forced) {
 			if (!keys) return { ...source };
 			const result = {};
 			for (const key of keys) if (forced || source[key] !== void 0) result[key] = source[key];
@@ -150,7 +151,7 @@ window.__ModuleLoader__.load({
 		Binary.fromHex;
 		Binary.toHex;
 		/** Deep-clone common JavaScript values while preserving prototypes and cycles. */
-		function clone$1(source, refs = /* @__PURE__ */ new Map()) {
+		function clone(source, refs = /* @__PURE__ */ new Map()) {
 			if (!source || typeof source !== "object") return source;
 			if (is$1("Date", source)) return new Date(source.valueOf());
 			if (is$1("RegExp", source)) return new RegExp(source.source, source.flags);
@@ -162,7 +163,7 @@ window.__ModuleLoader__.load({
 				const result = [];
 				refs.set(source, result);
 				source.forEach((value, index) => {
-					result[index] = Reflect.apply(clone$1, null, [value, refs]);
+					result[index] = Reflect.apply(clone, null, [value, refs]);
 				});
 				return result;
 			}
@@ -170,7 +171,7 @@ window.__ModuleLoader__.load({
 			refs.set(source, result);
 			for (const key of Reflect.ownKeys(source)) {
 				const descriptor = { ...Reflect.getOwnPropertyDescriptor(source, key) };
-				if ("value" in descriptor) descriptor.value = Reflect.apply(clone$1, null, [descriptor.value, refs]);
+				if ("value" in descriptor) descriptor.value = Reflect.apply(clone, null, [descriptor.value, refs]);
 				Reflect.defineProperty(result, key, descriptor);
 			}
 			return result;
@@ -456,7 +457,7 @@ window.__ModuleLoader__.load({
 		};
 		Schema.prototype.pattern = function pattern(regexp) {
 			const schema = Schema(this);
-			const pattern = pick$1(regexp, ["source", "flags"]);
+			const pattern = pick(regexp, ["source", "flags"]);
 			schema.meta = {
 				...schema.meta,
 				pattern
@@ -574,7 +575,7 @@ window.__ModuleLoader__.load({
 					fallback = current?.meta.default;
 				}
 				if (isNullable(fallback)) return [data];
-				data = clone$1(fallback);
+				data = clone(fallback);
 			}
 			const callback = resolvers[schema.type];
 			if (!callback) throw new ValidationError(`unsupported type "${schema.type}"`, options);
@@ -775,7 +776,7 @@ window.__ModuleLoader__.load({
 			return [data.map((_, index) => property(data, index, inner, options))];
 		});
 		Schema.extend("dict", (data, { inner, sKey }, options, strict) => {
-			if (!isPlainObject$1(data)) throw new ValidationError(`expected object but got ${data}`, options);
+			if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
 			const result = {};
 			for (const key in data) {
 				let rKey;
@@ -798,20 +799,20 @@ window.__ModuleLoader__.load({
 			result.push(...data.slice(list.length));
 			return [result];
 		});
-		function merge$1(result, data) {
+		function merge(result, data) {
 			for (const key in data) {
 				if (key in result) continue;
 				result[key] = data[key];
 			}
 		}
 		Schema.extend("object", (data, { dict }, options, strict) => {
-			if (!isPlainObject$1(data)) throw new ValidationError(`expected object but got ${data}`, options);
+			if (!isPlainObject(data)) throw new ValidationError(`expected object but got ${data}`, options);
 			const result = {};
 			for (const key in dict) {
 				const value = property(data, key, dict[key], options);
 				if (!isNullable(value) || key in data) result[key] = value;
 			}
-			if (!strict) merge$1(result, data);
+			if (!strict) merge(result, data);
 			return [result];
 		});
 		Schema.extend("union", (data, { list, toString }, options, strict) => {
@@ -831,10 +832,10 @@ window.__ModuleLoader__.load({
 				if (isNullable(value)) continue;
 				if (isNullable(result)) result = value;
 				else if (typeof result !== typeof value) throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
-				else if (typeof value === "object") merge$1(result ??= {}, value);
+				else if (typeof value === "object") merge(result ??= {}, value);
 				else if (result !== value) throw new ValidationError(`expected ${toString()} but got ${JSON.stringify(data)}`, options);
 			}
-			if (!strict && isPlainObject$1(data)) merge$1(result, data);
+			if (!strict && isPlainObject(data)) merge(result, data);
 			return [result];
 		});
 		Schema.extend("transform", (data, { inner, callback, preserve }, options) => {
@@ -2447,6 +2448,26 @@ window.__ModuleLoader__.load({
 		}
 		//#endregion
 		//#region lib/types/client/conversation/assembler.js
+		/**
+		* Failure of an incremental Conversation update.
+		* When `rebuilt` is true, every active view already shows a complete rebuild of
+		* the loaded window, and `cause` is the original failure. When it is false, the
+		* rebuild or its view replacement also failed, and `cause` is an
+		* `AggregateError` of both failures; the next flush retries that rebuild or replacement.
+		*/
+		var ConversationUpdateError = class extends Error {
+			/** Whether every active view shows the complete rebuild. */
+			rebuilt;
+			/**
+			* @param rebuilt - whether every active view shows the complete rebuild.
+			* @param options - the original failure, or an `AggregateError` of both failures, as `cause`.
+			*/
+			constructor(rebuilt, options) {
+				super(rebuilt ? "conversation update failed; the loaded window was rebuilt" : "conversation update failed, and rebuilding the loaded window also failed", options);
+				this.name = "ConversationUpdateError";
+				this.rebuilt = rebuilt;
+			}
+		};
 		const PUBLICATION_RANK = {
 			none: 0,
 			"animation-frame": 1,
@@ -2538,7 +2559,11 @@ window.__ModuleLoader__.load({
 			groups = /* @__PURE__ */ new Map();
 			pendingGroupStores = /* @__PURE__ */ new Set();
 			activeTargets = /* @__PURE__ */ new Set();
+			/** Matches of the event in dispatch, kept by index; dispatch is not reentrant and reuses both arrays. */
+			matchedDefinitions = [];
+			matchedResults = [];
 			hasMore = false;
+			rebuildPending = false;
 			replacePending = true;
 			timelineDirty = true;
 			/**
@@ -2685,26 +2710,58 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Materialize dirty Contexts and advance every active view builder.
+			* When an incremental update throws, the assembler replays the complete loaded
+			* window into new Contexts and replaces every active view before it throws a
+			* {@link ConversationUpdateError}. A Definition that throws on every incremental
+			* update therefore makes each flush replay the whole window. A failure on the
+			* complete-replacement path propagates unchanged, publishes no view, and keeps
+			* the replacement pending for the next flush.
 			* @returns whether any view snapshot was rebuilt or incrementally applied.
+			* @throws {@link ConversationUpdateError} when an incremental update fails.
 			*/
 			flush() {
+				if (this.rebuildPending) this.rebuildWindow();
 				if (!this.replacePending && this.dirty.size === 0 && !this.timelineDirty) return false;
-				if (this.replacePending) {
-					this.replaceLocationData();
-					const updated = [];
-					const changedTurns = this.locationIndex.takeChangedTurns();
-					for (const target of this.activeTargets) {
-						const view = this.views.get(target);
-						if (view === void 0) continue;
-						this.updateView(view, true, this.buildTargetNodes(target, this.contextsByTarget.get(target)), changedTurns);
-						updated.push(view);
-					}
-					this.replacePending = false;
-					this.dirty.clear();
-					this.dirtyByTarget.clear();
-					this.timelineDirty = false;
-					return this.publishViews(updated);
+				if (this.replacePending) return this.flushReplacement();
+				try {
+					return this.flushIncremental();
+				} catch (error) {
+					return this.recoverIncremental(error);
 				}
+			}
+			flushReplacement() {
+				this.replaceLocationData();
+				const updated = [];
+				const changedTurns = this.locationIndex.takeChangedTurns();
+				for (const target of this.activeTargets) {
+					const view = this.views.get(target);
+					if (view === void 0) continue;
+					this.updateView(view, true, this.buildTargetNodes(target, this.contextsByTarget.get(target)), changedTurns);
+					updated.push(view);
+				}
+				this.replacePending = false;
+				this.dirty.clear();
+				this.dirtyByTarget.clear();
+				this.timelineDirty = false;
+				return this.publishViews(updated);
+			}
+			/** Replace partial incremental state with a complete rebuild, then report the original failure. */
+			recoverIncremental(error) {
+				try {
+					this.rebuildWindow();
+					this.flushReplacement();
+				} catch (recoveryError) {
+					throw new ConversationUpdateError(false, { cause: new AggregateError([error, recoveryError], "conversation update and its rebuild failed") });
+				}
+				throw new ConversationUpdateError(true, { cause: error });
+			}
+			/** Rebuild every Context from the loaded inputs; a failed rebuild stays pending for the next flush. */
+			rebuildWindow() {
+				this.rebuildPending = true;
+				this.replaceWindow(this.sortedInputs(), this.hasMore);
+				this.rebuildPending = false;
+			}
+			flushIncremental() {
 				const updated = [];
 				if (this.applyDirtyLocationData()) this.timelineDirty = true;
 				const changedTurns = this.locationIndex.takeChangedTurns();
@@ -2725,7 +2782,8 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Add one target to the monotonic active set and materialize its current snapshot.
-			* Pending Context work is flushed before the first complete replacement.
+			* Pending Context work is flushed before the first complete replacement. When that
+			* flush throws, the target stays inactive and a later activation retries it.
 			* @param target - registered or subsequently registered view target.
 			* @returns whether any active target snapshot changed.
 			*/
@@ -2794,25 +2852,45 @@ window.__ModuleLoader__.load({
 					location ??= this.locationIndex.locationOf(event);
 					return role === "start" ? startMatch ??= conversationMatch(input, role, location) : updateMatch ??= conversationMatch(input, role, location);
 				};
-				let firstTarget;
-				let secondTarget;
-				let otherTargets;
-				let publication = "none";
+				const definitions = this.matchedDefinitions;
+				const results = this.matchedResults;
+				definitions.length = 0;
+				results.length = 0;
 				const routes = this.eventDefinitions.forEvent?.(event.type);
 				if (routes === void 0) for (const definition of this.eventDefinitions.entries()) {
 					const result = definition.match(event);
 					if (result === null) continue;
-					if (definition.target !== void 0 && definition.target !== firstTarget && definition.target !== secondTarget) if (firstTarget === void 0) firstTarget = definition.target;
-					else if (secondTarget === void 0) secondTarget = definition.target;
-					else (otherTargets ??= /* @__PURE__ */ new Set()).add(definition.target);
-					publication = maximumPublication(publication, accept.call(this, definition, result.id, matchFor(result.role)));
+					definitions.push(definition);
+					results.push(result);
 				}
 				else for (const { definition, match } of routes) {
 					const result = match(event);
 					if (result === null) continue;
-					if (definition.target !== void 0 && definition.target !== firstTarget && definition.target !== secondTarget) if (firstTarget === void 0) firstTarget = definition.target;
-					else if (secondTarget === void 0) secondTarget = definition.target;
-					else (otherTargets ??= /* @__PURE__ */ new Set()).add(definition.target);
+					definitions.push(definition);
+					results.push(result);
+				}
+				let claims;
+				for (let index = 0; index < results.length; index++) {
+					if (results[index].exclusive !== true) continue;
+					const definition = definitions[index];
+					const target = definition.target;
+					if (target === void 0) throw new Error(`conversation Definition "${definition.kind}" claims ${event.type} at seq ${String(event.seq)} without a target`);
+					const claimant = claims?.get(target);
+					if (claimant !== void 0) throw new Error(`conversation Definitions "${claimant}" and "${definition.kind}" both claim ${event.type} at seq ${String(event.seq)} on target "${target}"`);
+					(claims ??= /* @__PURE__ */ new Map()).set(target, definition.kind);
+				}
+				let firstTarget;
+				let secondTarget;
+				let otherTargets;
+				let publication = "none";
+				for (let index = 0; index < results.length; index++) {
+					const definition = definitions[index];
+					const result = results[index];
+					const target = definition.target;
+					if (target !== void 0 && result.exclusive !== true && claims?.has(target) === true) continue;
+					if (target !== void 0 && target !== firstTarget && target !== secondTarget) if (firstTarget === void 0) firstTarget = target;
+					else if (secondTarget === void 0) secondTarget = target;
+					else (otherTargets ??= /* @__PURE__ */ new Set()).add(target);
 					publication = maximumPublication(publication, accept.call(this, definition, result.id, matchFor(result.role)));
 				}
 				const fallback = this.eventDefinitions.fallbackEntry();
@@ -3467,8 +3545,8 @@ window.__ModuleLoader__.load({
 				}, "ui-conversation historical image cache");
 			}
 			/**
-			* Resolve and cache one session-authorized image URL.
-			* @param sessionId - Session authorization and lifetime scope.
+			* Resolve and cache one stored image URL.
+			* @param sessionId - Session binding that owns the cached URL lifetime.
 			* @param attachment - Durable image reference.
 			* @returns browser URL valid until the Session binding is released.
 			*/
@@ -3490,7 +3568,7 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Return an already-displayable URL without starting a read.
-			* @param sessionId - Session authorization and lifetime scope.
+			* @param sessionId - Session binding that owns the cached URL lifetime.
 			* @param attachment - Durable image reference.
 			* @returns current preview or canonical URL when cached.
 			*/
@@ -3502,7 +3580,7 @@ window.__ModuleLoader__.load({
 			* Adopt a submission preview while fetching the durable admitted bytes.
 			* The preview is available synchronously, then replaced and revoked when
 			* the canonical attachment read completes.
-			* @param sessionId - Session authorization and lifetime scope.
+			* @param sessionId - Session binding that owns the cached URL lifetime.
 			* @param attachment - Durable image reference the URL temporarily displays.
 			* @param url - browser URL to adopt.
 			* @returns whether the cache took ownership.
@@ -3532,7 +3610,7 @@ window.__ModuleLoader__.load({
 				return true;
 			}
 			loadCanonical(key, entry, attachment) {
-				return entry.binding.session.readAttachment(attachment.attachmentId).then((result) => {
+				return entry.binding.session.readAttachment(attachment).then((result) => {
 					if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
 					this.assertLive(key, entry);
 					let url;
@@ -3640,6 +3718,307 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
+		//#region lib/types/client/conversation/interaction-registry.js
+		/** Effect-owned registrations; active surfaces belong to individual Chat views. */
+		var ConversationInteractionRegistry = class extends ConversationDefinitionRegistry {
+			ids = [];
+			/**
+			* Register a synchronous handler and its keyed renderer identity.
+			* @param definition - uniquely named plugin handler.
+			* @returns idempotent disposer tied to the registering plugin's lifetime.
+			*/
+			register(definition) {
+				if (definition.id === "") throw new Error("text interaction ID must not be empty");
+				return this.registerDefinition(definition.id, definition, `Duplicate text interaction: ${definition.id}`, `uiConversation.interactions.register(${JSON.stringify(definition.id)})`);
+			}
+			/**
+			* Offer a gesture until one handler opens its surface; opening never prevents browser defaults.
+			* @param sessionId - conversation where the gesture occurred.
+			* @param gesture - synchronous access to the browser event and DOM text.
+			* @returns selected renderer ID, or null when no plugin opens a surface.
+			*/
+			dispatch(sessionId, gesture) {
+				for (const definition of this.entries()) {
+					const state = { opened: false };
+					let dispatching = true;
+					try {
+						definition.onInteraction({
+							...gesture,
+							sessionId,
+							open: () => {
+								if (dispatching) state.opened = true;
+							},
+							preventDefault: () => {
+								if (dispatching) gesture.preventDefault();
+							}
+						});
+					} finally {
+						dispatching = false;
+					}
+					if (state.opened) return definition.id;
+				}
+				return null;
+			}
+			/**
+			* Observe registration changes so Chat views can dismiss stale surfaces.
+			* @returns stable IDs until the registry changes.
+			*/
+			getSnapshot() {
+				return this.ids;
+			}
+			refresh() {
+				this.ids = [...this.definitions.keys()];
+				super.refresh();
+			}
+		};
+		//#endregion
+		//#region lib/types/client/conversation/user-text-document.js
+		var UserTextTransformError = class extends Error {
+			ruleId;
+			constructor(ruleId, cause) {
+				super(`user-text rule "${ruleId}" failed to evaluate`, { cause });
+				this.ruleId = ruleId;
+				this.name = "UserTextTransformError";
+			}
+		};
+		/** Data-layer cache owned by one caller; initialization and refresh share one reconciliation. */
+		var UserTextDocument = class {
+			text;
+			rules;
+			initial = [];
+			output = [];
+			matchers = /* @__PURE__ */ new Map();
+			complete = false;
+			evaluating = false;
+			/**
+			* Reconcile original text using current rule definitions and valid query records.
+			* @param input - original text and readonly Facts, compared by fields actually read.
+			* @param rules - unique definitions ordered by ascending order and stable ID.
+			* @returns complete readonly nodes; failures retain caches but publish no partial result.
+			*/
+			evaluate(input, rules) {
+				if (this.evaluating) throw new Error("user-text document evaluation cannot be reentrant");
+				this.evaluating = true;
+				try {
+					const { changed, matchers } = this.prepare(input, rules);
+					if (!changed && this.complete) return this.output;
+					this.complete = false;
+					this.output = alignNodes(this.reconcile(input, matchers), this.output, this.initial);
+					this.complete = true;
+					return this.output;
+				} finally {
+					this.evaluating = false;
+				}
+			}
+			prepare(input, rules) {
+				let changed = this.rules !== rules;
+				if (this.text !== input.text) {
+					changed = true;
+					this.text = input.text;
+					this.matchers.clear();
+					this.initial = input.text.length === 0 ? [] : [textNode(input.text, 0, input.text.length)];
+					this.output = this.initial;
+				}
+				const ids = new Set(rules.map((rule) => rule.id));
+				const matchers = [];
+				for (const definition of rules) {
+					let matcher = this.matchers.get(definition.id);
+					if (matcher === void 0 || matcher.definition !== definition || factsChanged(matcher.reads, input)) {
+						matcher = {
+							definition,
+							queries: [],
+							reads: /* @__PURE__ */ new Map()
+						};
+						this.matchers.set(definition.id, matcher);
+						changed = true;
+					}
+					matchers.push(matcher);
+				}
+				for (const id of this.matchers.keys()) if (!ids.has(id)) this.matchers.delete(id);
+				this.rules = rules;
+				return {
+					changed,
+					matchers
+				};
+			}
+			reconcile(input, matchers) {
+				const traversals = matchers.map((matcher) => ({
+					matcher,
+					added: [],
+					index: -1,
+					head: void 0
+				}));
+				const nodes = [];
+				let cursor = 0;
+				try {
+					while (true) {
+						let winner;
+						for (const traversal of traversals) {
+							const node = nextCandidate(traversal, input, cursor);
+							if (node !== void 0 && (winner === void 0 || node.start < winner.start)) winner = node;
+						}
+						if (winner === void 0) {
+							if (cursor < input.text.length) nodes.push(textNode(input.text, cursor, input.text.length));
+							return nodes;
+						}
+						if (cursor < winner.start) nodes.push(textNode(input.text, cursor, winner.start));
+						nodes.push(winner);
+						cursor = winner.end;
+					}
+				} finally {
+					for (const { matcher, added } of traversals) if (added.length > 0) matcher.queries = mergeQueries(matcher.queries, added);
+				}
+			}
+		};
+		function factsChanged(reads, input) {
+			for (const [key, value] of reads) if (!Object.is(value, input.facts[key])) return true;
+			return false;
+		}
+		function withFacts(input, reads, run) {
+			let active = true;
+			try {
+				return run({ read: (key) => {
+					if (!active) throw new Error("user-text transform context is closed; read is synchronous only");
+					const value = input.facts[key];
+					reads.set(key, value);
+					return value;
+				} });
+			} finally {
+				active = false;
+			}
+		}
+		function nextCandidate(traversal, input, cursor) {
+			const { matcher } = traversal;
+			if (traversal.head === void 0 || traversal.head.node !== void 0 && traversal.head.node.start < cursor) {
+				let next = matcher.queries[traversal.index + 1];
+				while (next !== void 0 && next.from <= cursor) {
+					traversal.index++;
+					next = matcher.queries[traversal.index + 1];
+				}
+				const recorded = matcher.queries[traversal.index];
+				if (recorded !== void 0 && (recorded.error !== void 0 ? recorded.from === cursor : recorded.node === void 0 || recorded.node.start >= cursor)) traversal.head = recorded;
+				else {
+					let node;
+					let error;
+					try {
+						node = withFacts(input, matcher.reads, (context) => matcher.definition.match(input.text, cursor, context));
+						if (node !== void 0) validateCandidate(input.text, matcher.definition.id, cursor, node);
+					} catch (cause) {
+						error = new UserTextTransformError(matcher.definition.id, cause);
+					}
+					traversal.head = {
+						from: cursor,
+						node,
+						error
+					};
+					traversal.added.push(traversal.head);
+				}
+			}
+			if (traversal.head.error !== void 0) throw traversal.head.error;
+			return traversal.head.node;
+		}
+		function validateCandidate(text, ruleId, from, node) {
+			if (!Number.isInteger(node.start) || !Number.isInteger(node.end) || node.start < from || node.end <= node.start || node.end > text.length) throw new Error(`invalid candidate range [${node.start}, ${node.end}); expected a nonempty range from ${from} to ${text.length}`);
+			if (node.id === "text") {
+				if (node.data.text !== text.slice(node.start, node.end)) throw new Error("text candidate must preserve its original substring");
+			} else if (node.id !== ruleId) throw new Error(`candidate must use rule ID "${ruleId}" or text`);
+		}
+		function mergeQueries(previous, added) {
+			if (previous.length === 0) return added;
+			const merged = [];
+			const remaining = previous.values();
+			let old = remaining.next().value;
+			for (const query of added) {
+				while (old !== void 0 && old.from < query.from) {
+					merged.push(old);
+					old = remaining.next().value;
+				}
+				merged.push(query);
+			}
+			while (old !== void 0) {
+				merged.push(old);
+				old = remaining.next().value;
+			}
+			return merged;
+		}
+		function textNode(text, start, end) {
+			return {
+				id: "text",
+				start,
+				end,
+				data: { text: text.slice(start, end) }
+			};
+		}
+		function alignNodes(output, previous, input) {
+			let previousIndex = 0;
+			let inputIndex = 0;
+			let aligned;
+			for (const [index, node] of output.entries()) {
+				let inputNode = input[inputIndex];
+				while (inputNode && inputNode.start < node.start) inputNode = input[++inputIndex];
+				let previousNode = previous[previousIndex];
+				while (previousNode && previousNode.start < node.start) previousNode = previous[++previousIndex];
+				const reused = inputNode && equalNode(node, inputNode) ? inputNode : previousNode && equalNode(node, previousNode) ? previousNode : node;
+				if (reused !== node && !aligned) aligned = output.slice(0, index);
+				aligned?.push(reused);
+			}
+			const nodes = aligned ?? output;
+			if (equalElements(nodes, previous)) return previous;
+			return equalElements(nodes, input) ? input : nodes;
+		}
+		function equalElements(left, right) {
+			return left === right || left.length === right.length && left.every((node, index) => node === right[index]);
+		}
+		function equalNode(left, right) {
+			return Object.is(left, right) || left.id === right.id && left.start === right.start && left.end === right.end && equalJson(left.data, right.data);
+		}
+		function equalJson(left, right) {
+			if (Object.is(left, right)) return true;
+			if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+			if (Array.isArray(left) !== Array.isArray(right)) return false;
+			const keys = Object.keys(left);
+			if (keys.length !== Object.keys(right).length) return false;
+			return keys.every((key) => Object.hasOwn(right, key) && equalJson(Reflect.get(left, key), Reflect.get(right, key)));
+		}
+		//#endregion
+		//#region lib/types/client/conversation/user-text-registry.js
+		/** Observable rule revision with no retained documents or document subscriptions. */
+		var UserTextRegistry = class extends ConversationDefinitionRegistry {
+			rules = [];
+			revision = 0;
+			/**
+			* Register a uniquely named rule; invalid IDs, duplicate IDs and non-finite order throw before publication.
+			* @param rule - readonly synchronous candidate matcher with a nonempty ID other than the reserved `text` ID.
+			* @returns idempotent disposer; removal synchronously publishes a new revision.
+			*/
+			register(rule) {
+				if (rule.id.length === 0) throw new Error("user-text rule ID must not be empty");
+				if (rule.id === "text") throw new Error("user-text rule \"text\" is reserved for original text");
+				if (!Number.isFinite(rule.order)) throw new Error(`user-text rule "${rule.id}" order must be finite`);
+				return this.registerDefinition(rule.id, rule, `user-text rule "${rule.id}" is already registered`, `uiConversation.userText.register(${JSON.stringify(rule.id)})`);
+			}
+			/**
+			* Create an independent document evaluator; it reads current rules at each call and never subscribes.
+			* @returns callback owning its document cache, released when the caller releases the callback.
+			*/
+			createEvaluator() {
+				const document = new UserTextDocument();
+				return (input) => document.evaluate(input, this.rules);
+			}
+			/**
+			* Read the observable rule revision.
+			* @returns monotonic revision, stable until a successful registration or disposal.
+			*/
+			getSnapshot() {
+				return this.revision;
+			}
+			refresh() {
+				this.rules = [...this.definitions.values()].sort((a, b) => a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+				this.revision++;
+				super.refresh();
+			}
+		};
+		//#endregion
 		//#region lib/types/client/conversation/assembly.js
 		/** Per-Session target-neutral Conversation assembly. */
 		var BoundConversation = class {
@@ -3678,8 +4057,7 @@ window.__ModuleLoader__.load({
 				return source;
 			}
 			activate(target) {
-				if (this.assembler.activateTarget(target)) this.snapshot.set(this.currentSnapshot());
-				this.openTurn.set(this.assembler.openTurn());
+				this.publishing(() => this.assembler.activateTarget(target));
 			}
 			rebuild() {
 				this.publish(this.assembler.rebuildRegistry());
@@ -3739,7 +4117,21 @@ window.__ModuleLoader__.load({
 				this.frame = void 0;
 			}
 			flush() {
-				if (this.assembler.flush()) this.snapshot.set(this.currentSnapshot());
+				this.publishing(() => this.assembler.flush());
+			}
+			/** Publish an assembler result, including a complete rebuild that the assembler finished before it reported a failure. */
+			publishing(operation) {
+				let changed;
+				try {
+					changed = operation();
+				} catch (error) {
+					if (error instanceof ConversationUpdateError && error.rebuilt) this.publishSnapshot(true);
+					throw error;
+				}
+				this.publishSnapshot(changed);
+			}
+			publishSnapshot(changed) {
+				if (changed) this.snapshot.set(this.currentSnapshot());
 				this.openTurn.set(this.assembler.openTurn());
 			}
 			currentSnapshot() {
@@ -3758,6 +4150,10 @@ window.__ModuleLoader__.load({
 			views;
 			/** Business grouping rules over already materialized target Nodes. */
 			groups;
+			/** Pure text rules and parser snapshots, independent of durable Session assembly. */
+			userText;
+			/** Plugin-owned handlers for selection and context-menu gestures. */
+			interactions;
 			bindings = new WeakMapWithValues();
 			images;
 			/**
@@ -3770,6 +4166,8 @@ window.__ModuleLoader__.load({
 				this.events = new ConversationEventRegistry(ctx);
 				this.views = new ConversationViewRegistry(ctx);
 				this.groups = new ConversationGroupRegistry(ctx, this.views);
+				this.userText = new UserTextRegistry(ctx);
+				this.interactions = new ConversationInteractionRegistry(ctx);
 				this.images = new HistoricalImageCache(ctx, sessions);
 				const rebuild = () => {
 					for (const record of this.bindings.values) record.binding.rebuild();
@@ -3824,9 +4222,9 @@ window.__ModuleLoader__.load({
 				return binding;
 			}
 			/**
-			* Resolve one session-authorized durable image URL, cached per Session so
+			* Resolve one Gateway-authorized durable image URL, cached per Session so
 			* every Conversation target shares one read and one browser URL.
-			* @param sessionId - Session authorization and lifetime scope.
+			* @param sessionId - Session binding that owns the cached URL lifetime.
 			* @param attachment - Durable image reference from a session event.
 			* @returns browser URL valid until the Session binding is released.
 			*/
@@ -3835,7 +4233,7 @@ window.__ModuleLoader__.load({
 			}
 			/**
 			* Read a cached durable image URL synchronously when one is available.
-			* @param sessionId - Session authorization and lifetime scope.
+			* @param sessionId - Session binding that owns the cached URL lifetime.
 			* @param attachment - Durable image reference from a session event.
 			* @returns current preview or canonical URL, if cached.
 			*/
@@ -3846,7 +4244,7 @@ window.__ModuleLoader__.load({
 			* Adopt an already-displayable URL for one durable reference (see
 			* HistoricalImageCache.seed): the transcript node then renders it without a
 			* byte round-trip.
-			* @param sessionId - Session authorization and lifetime scope.
+			* @param sessionId - Session binding that owns the cached URL lifetime.
 			* @param attachment - Durable image reference the URL displays.
 			* @param url - browser URL to adopt.
 			* @returns whether the cache took URL ownership.
@@ -3886,4016 +4284,219 @@ window.__ModuleLoader__.load({
 			}
 		};
 		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/core.js
-		var _a$2;
-		function $constructor(name, initializer, params) {
-			function init(inst, def) {
-				if (!inst._zod) Object.defineProperty(inst, "_zod", {
-					value: {
-						def,
-						constr: _,
-						traits: /* @__PURE__ */ new Set()
-					},
-					enumerable: false
-				});
-				if (inst._zod.traits.has(name)) return;
-				inst._zod.traits.add(name);
-				initializer(inst, def);
-				const proto = _.prototype;
-				const keys = Object.keys(proto);
-				for (let i = 0; i < keys.length; i++) {
-					const k = keys[i];
-					if (!(k in inst)) inst[k] = proto[k].bind(inst);
-				}
-			}
-			const Parent = params?.Parent ?? Object;
-			class Definition extends Parent {}
-			Object.defineProperty(Definition, "name", { value: name });
-			function _(def) {
-				var _a;
-				const inst = params?.Parent ? new Definition() : this;
-				init(inst, def);
-				(_a = inst._zod).deferred ?? (_a.deferred = []);
-				for (const fn of inst._zod.deferred) fn();
-				return inst;
-			}
-			Object.defineProperty(_, "init", { value: init });
-			Object.defineProperty(_, Symbol.hasInstance, { value: (inst) => {
-				if (params?.Parent && inst instanceof params.Parent) return true;
-				return inst?._zod?.traits?.has(name);
-			} });
-			Object.defineProperty(_, "name", { value: name });
-			return _;
+		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/user-text/UserText.module.css.mjs
+		const css$9 = ".BNl2La_root{display:contents}.BNl2La_ellipsis{text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;display:block;overflow:hidden}";
+		const tagId$9 = "@deepseek-ai/dsh-client-ui-conversation/UserText.module.css";
+		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$9) + "]") === null) {
+			const tag = document.createElement("style");
+			tag.dataset.plugin = "@deepseek-ai/dsh-client-ui-conversation";
+			tag.dataset.pluginCss = tagId$9;
+			tag.textContent = css$9;
+			document.head.appendChild(tag);
 		}
-		var $ZodAsyncError = class extends Error {
-			constructor() {
-				super(`Encountered Promise during synchronous parse. Use .parseAsync() instead.`);
-			}
+		var UserText_module_css_default = {
+			"ellipsis": "BNl2La_ellipsis",
+			"root": "BNl2La_root"
 		};
-		var $ZodEncodeError = class extends Error {
-			constructor(name) {
-				super(`Encountered unidirectional transform during encode: ${name}`);
-				this.name = "ZodEncodeError";
-			}
-		};
-		(_a$2 = globalThis).__zod_globalConfig ?? (_a$2.__zod_globalConfig = {});
-		const globalConfig = globalThis.__zod_globalConfig;
-		function config(newConfig) {
-			if (newConfig) Object.assign(globalConfig, newConfig);
-			return globalConfig;
-		}
 		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/util.js
-		function getEnumValues(entries) {
-			const numericValues = Object.values(entries).filter((v) => typeof v === "number");
-			return Object.entries(entries).filter(([k, _]) => numericValues.indexOf(+k) === -1).map(([_, v]) => v);
-		}
-		function jsonStringifyReplacer(_, value) {
-			if (typeof value === "bigint") return value.toString();
-			return value;
-		}
-		function cached(getter) {
-			return { get value() {
-				{
-					const value = getter();
-					Object.defineProperty(this, "value", { value });
-					return value;
-				}
-				throw new Error("cached value already set");
-			} };
-		}
-		function nullish(input) {
-			return input === null || input === void 0;
-		}
-		function cleanRegex(source) {
-			const start = source.startsWith("^") ? 1 : 0;
-			const end = source.endsWith("$") ? source.length - 1 : source.length;
-			return source.slice(start, end);
-		}
-		function floatSafeRemainder(val, step) {
-			const ratio = val / step;
-			const roundedRatio = Math.round(ratio);
-			const tolerance = Number.EPSILON * Math.max(Math.abs(ratio), 1);
-			if (Math.abs(ratio - roundedRatio) < tolerance) return 0;
-			return ratio - roundedRatio;
-		}
-		const EVALUATING = /* @__PURE__*/ Symbol("evaluating");
-		function defineLazy(object, key, getter) {
-			let value = void 0;
-			Object.defineProperty(object, key, {
-				get() {
-					if (value === EVALUATING) return;
-					if (value === void 0) {
-						value = EVALUATING;
-						value = getter();
-					}
-					return value;
-				},
-				set(v) {
-					Object.defineProperty(object, key, { value: v });
-				},
-				configurable: true
-			});
-		}
-		function assignProp(target, prop, value) {
-			Object.defineProperty(target, prop, {
-				value,
-				writable: true,
-				enumerable: true,
-				configurable: true
-			});
-		}
-		function mergeDefs(...defs) {
-			const mergedDescriptors = {};
-			for (const def of defs) Object.assign(mergedDescriptors, Object.getOwnPropertyDescriptors(def));
-			return Object.defineProperties({}, mergedDescriptors);
-		}
-		function esc(str) {
-			return JSON.stringify(str);
-		}
-		function slugify(input) {
-			return input.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
-		}
-		const captureStackTrace = "captureStackTrace" in Error ? Error.captureStackTrace : (..._args) => {};
-		function isObject(data) {
-			return typeof data === "object" && data !== null && !Array.isArray(data);
-		}
-		const allowsEval = /* @__PURE__*/ cached(() => {
-			if (globalConfig.jitless) return false;
-			if (typeof navigator !== "undefined" && navigator?.userAgent?.includes("Cloudflare")) return false;
+		//#region lib/types/client/user-text/UserText.js
+		/** User-text presentation delegates evaluation to its data-layer document and renders JSON business nodes. */
+		/**
+		* Render original text through pure matching rules and business-owned node Slots.
+		* A failed parse retains the entire original text and reports the rule error.
+		* @param props - original text, confirmed facts, display policy, and framework seats.
+		* @returns ordered inline nodes with raw-text fallbacks for missing registrations.
+		*/
+		function UserText({ text, facts, interactive = false, ellipsis = false, useUserTextRevision, createUserTextEvaluator, reportTransformFailure, renderSlot }) {
+			useUserTextRevision((revision) => revision);
+			const evaluate = (0, react.useMemo)(createUserTextEvaluator, [createUserTextEvaluator]);
+			let nodes;
+			let error;
 			try {
-				new Function("");
-				return true;
-			} catch (_) {
-				return false;
-			}
-		});
-		function isPlainObject(o) {
-			if (isObject(o) === false) return false;
-			const ctor = o.constructor;
-			if (ctor === void 0) return true;
-			if (typeof ctor !== "function") return true;
-			const prot = ctor.prototype;
-			if (isObject(prot) === false) return false;
-			if (Object.prototype.hasOwnProperty.call(prot, "isPrototypeOf") === false) return false;
-			return true;
-		}
-		function shallowClone(o) {
-			if (isPlainObject(o)) return { ...o };
-			if (Array.isArray(o)) return [...o];
-			if (o instanceof Map) return new Map(o);
-			if (o instanceof Set) return new Set(o);
-			return o;
-		}
-		const propertyKeyTypes = /* @__PURE__*/ new Set([
-			"string",
-			"number",
-			"symbol"
-		]);
-		function escapeRegex(str) {
-			return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		}
-		function clone(inst, def, params) {
-			const cl = new inst._zod.constr(def ?? inst._zod.def);
-			if (!def || params?.parent) cl._zod.parent = inst;
-			return cl;
-		}
-		function normalizeParams(_params) {
-			const params = _params;
-			if (!params) return {};
-			if (typeof params === "string") return { error: () => params };
-			if (params?.message !== void 0) {
-				if (params?.error !== void 0) throw new Error("Cannot specify both `message` and `error` params");
-				params.error = params.message;
-			}
-			delete params.message;
-			if (typeof params.error === "string") return {
-				...params,
-				error: () => params.error
-			};
-			return params;
-		}
-		function optionalKeys(shape) {
-			return Object.keys(shape).filter((k) => {
-				return shape[k]._zod.optin === "optional" && shape[k]._zod.optout === "optional";
-			});
-		}
-		const NUMBER_FORMAT_RANGES = {
-			safeint: [Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
-			int32: [-2147483648, 2147483647],
-			uint32: [0, 4294967295],
-			float32: [-34028234663852886e22, 34028234663852886e22],
-			float64: [-Number.MAX_VALUE, Number.MAX_VALUE]
-		};
-		function pick(schema, mask) {
-			const currDef = schema._zod.def;
-			const checks = currDef.checks;
-			if (checks && checks.length > 0) throw new Error(".pick() cannot be used on object schemas containing refinements");
-			return clone(schema, mergeDefs(schema._zod.def, {
-				get shape() {
-					const newShape = {};
-					for (const key in mask) {
-						if (!(key in currDef.shape)) throw new Error(`Unrecognized key: "${key}"`);
-						if (!mask[key]) continue;
-						newShape[key] = currDef.shape[key];
-					}
-					assignProp(this, "shape", newShape);
-					return newShape;
-				},
-				checks: []
-			}));
-		}
-		function omit(schema, mask) {
-			const currDef = schema._zod.def;
-			const checks = currDef.checks;
-			if (checks && checks.length > 0) throw new Error(".omit() cannot be used on object schemas containing refinements");
-			return clone(schema, mergeDefs(schema._zod.def, {
-				get shape() {
-					const newShape = { ...schema._zod.def.shape };
-					for (const key in mask) {
-						if (!(key in currDef.shape)) throw new Error(`Unrecognized key: "${key}"`);
-						if (!mask[key]) continue;
-						delete newShape[key];
-					}
-					assignProp(this, "shape", newShape);
-					return newShape;
-				},
-				checks: []
-			}));
-		}
-		function extend(schema, shape) {
-			if (!isPlainObject(shape)) throw new Error("Invalid input to extend: expected a plain object");
-			const checks = schema._zod.def.checks;
-			if (checks && checks.length > 0) {
-				const existingShape = schema._zod.def.shape;
-				for (const key in shape) if (Object.getOwnPropertyDescriptor(existingShape, key) !== void 0) throw new Error("Cannot overwrite keys on object schemas containing refinements. Use `.safeExtend()` instead.");
-			}
-			return clone(schema, mergeDefs(schema._zod.def, { get shape() {
-				const _shape = {
-					...schema._zod.def.shape,
-					...shape
-				};
-				assignProp(this, "shape", _shape);
-				return _shape;
-			} }));
-		}
-		function safeExtend(schema, shape) {
-			if (!isPlainObject(shape)) throw new Error("Invalid input to safeExtend: expected a plain object");
-			return clone(schema, mergeDefs(schema._zod.def, { get shape() {
-				const _shape = {
-					...schema._zod.def.shape,
-					...shape
-				};
-				assignProp(this, "shape", _shape);
-				return _shape;
-			} }));
-		}
-		function merge(a, b) {
-			if (a._zod.def.checks?.length) throw new Error(".merge() cannot be used on object schemas containing refinements. Use .safeExtend() instead.");
-			return clone(a, mergeDefs(a._zod.def, {
-				get shape() {
-					const _shape = {
-						...a._zod.def.shape,
-						...b._zod.def.shape
-					};
-					assignProp(this, "shape", _shape);
-					return _shape;
-				},
-				get catchall() {
-					return b._zod.def.catchall;
-				},
-				checks: b._zod.def.checks ?? []
-			}));
-		}
-		function partial(Class, schema, mask) {
-			const checks = schema._zod.def.checks;
-			if (checks && checks.length > 0) throw new Error(".partial() cannot be used on object schemas containing refinements");
-			return clone(schema, mergeDefs(schema._zod.def, {
-				get shape() {
-					const oldShape = schema._zod.def.shape;
-					const shape = { ...oldShape };
-					if (mask) for (const key in mask) {
-						if (!(key in oldShape)) throw new Error(`Unrecognized key: "${key}"`);
-						if (!mask[key]) continue;
-						shape[key] = Class ? new Class({
-							type: "optional",
-							innerType: oldShape[key]
-						}) : oldShape[key];
-					}
-					else for (const key in oldShape) shape[key] = Class ? new Class({
-						type: "optional",
-						innerType: oldShape[key]
-					}) : oldShape[key];
-					assignProp(this, "shape", shape);
-					return shape;
-				},
-				checks: []
-			}));
-		}
-		function required(Class, schema, mask) {
-			return clone(schema, mergeDefs(schema._zod.def, { get shape() {
-				const oldShape = schema._zod.def.shape;
-				const shape = { ...oldShape };
-				if (mask) for (const key in mask) {
-					if (!(key in shape)) throw new Error(`Unrecognized key: "${key}"`);
-					if (!mask[key]) continue;
-					shape[key] = new Class({
-						type: "nonoptional",
-						innerType: oldShape[key]
-					});
-				}
-				else for (const key in oldShape) shape[key] = new Class({
-					type: "nonoptional",
-					innerType: oldShape[key]
+				nodes = evaluate({
+					text,
+					facts
 				});
-				assignProp(this, "shape", shape);
-				return shape;
-			} }));
-		}
-		function aborted(x, startIndex = 0) {
-			if (x.aborted === true) return true;
-			for (let i = startIndex; i < x.issues.length; i++) if (x.issues[i]?.continue !== true) return true;
-			return false;
-		}
-		function explicitlyAborted(x, startIndex = 0) {
-			if (x.aborted === true) return true;
-			for (let i = startIndex; i < x.issues.length; i++) if (x.issues[i]?.continue === false) return true;
-			return false;
-		}
-		function prefixIssues(path, issues) {
-			return issues.map((iss) => {
-				var _a;
-				(_a = iss).path ?? (_a.path = []);
-				iss.path.unshift(path);
-				return iss;
+			} catch (cause) {
+				error = cause;
+			}
+			const failed = nodes === void 0;
+			(0, react.useEffect)(() => {
+				if (failed) reportTransformFailure(error);
+			}, [
+				failed,
+				error,
+				reportTransformFailure
+			]);
+			const content = (0, react.useMemo)(() => nodes === void 0 ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.UserTextRun, { text }) : (0, react_jsx_runtime.jsx)(react_jsx_runtime.Fragment, { children: nodes.map((node) => {
+				const raw = text.slice(node.start, node.end);
+				return (0, react_jsx_runtime.jsx)(react.Fragment, { children: renderSlot("conversation.user.text.node", {
+					node,
+					raw,
+					interactive
+				}, {
+					entryKey: node.id,
+					fallback: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.UserTextRun, { text: node.id === "text" ? node.data.display ?? raw : raw })
+				}) }, `${node.id}:${node.start}`);
+			}) }), [
+				nodes,
+				text,
+				interactive,
+				renderSlot
+			]);
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.HoverCardGroup, {
+				as: "span",
+				className: ellipsis ? UserText_module_css_default.ellipsis : UserText_module_css_default.root,
+				children: content
 			});
 		}
-		function unwrapMessage(message) {
-			return typeof message === "string" ? message : message?.message;
+		/**
+		* Display an unmatched substring without business interpretation.
+		* @param props - parser-produced plain-text node.
+		* @returns its inline text.
+		*/
+		function PlainUserText({ node }) {
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.UserTextRun, { text: node.data.display ?? node.data.text });
 		}
-		function finalizeIssue(iss, ctx, config) {
-			const message = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config.customError?.(iss)) ?? unwrapMessage(config.localeError?.(iss)) ?? "Invalid input";
-			const { inst: _inst, continue: _continue, input: _input, ...rest } = iss;
-			rest.path ?? (rest.path = []);
-			rest.message = message;
-			if (ctx?.reportInput) rest.input = _input;
-			return rest;
-		}
-		function getLengthableOrigin(input) {
-			if (Array.isArray(input)) return "array";
-			if (typeof input === "string") return "string";
-			return "unknown";
-		}
-		function issue(...args) {
-			const [iss, input, inst] = args;
-			if (typeof iss === "string") return {
-				message: iss,
-				code: "custom",
-				input,
-				inst
-			};
-			return { ...iss };
+		/**
+		* Display a confirmed Session label without inventing navigation behavior.
+		* @param props - Session reference JSON and its original spelling.
+		* @returns the existing non-interactive Session chip.
+		*/
+		function SessionReference({ node, raw }) {
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.ReferenceChip, {
+				appearance: "session",
+				label: node.data.label,
+				title: raw
+			});
 		}
 		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/errors.js
-		const initializer$1 = (inst, def) => {
-			inst.name = "$ZodError";
-			Object.defineProperty(inst, "_zod", {
-				value: inst._zod,
-				enumerable: false
-			});
-			Object.defineProperty(inst, "issues", {
-				value: def,
-				enumerable: false
-			});
-			inst.message = JSON.stringify(def, jsonStringifyReplacer, 2);
-			Object.defineProperty(inst, "toString", {
-				value: () => inst.message,
-				enumerable: false
-			});
+		//#region lib/types/client/user-text/session-reference-rule.js
+		/** Find the nearest Session reference; bare labels read their Facts only at a non-wire @ position. */
+		const sessionReferenceRule = {
+			id: "session",
+			order: 10,
+			match(text, from, context) {
+				let labels;
+				let readLabels = false;
+				const wire = /@\[([^\]\n]+)\]\(dsh-session:[^)\s]+\)/uy;
+				for (let start = text.indexOf("@", from); start >= 0; start = text.indexOf("@", start + 1)) {
+					wire.lastIndex = start;
+					const explicit = wire.exec(text);
+					if (explicit !== null) return {
+						id: "session",
+						start,
+						end: start + explicit[0].length,
+						data: { label: explicit[1] }
+					};
+					if (!readLabels) {
+						labels = context.read("sessionLabels");
+						readLabels = true;
+					}
+					let best;
+					for (const label of labels ?? []) {
+						if (label.length === 0 || !text.startsWith(label, start + 1)) continue;
+						const end = start + label.length + 1;
+						if (best === void 0 || end > best.end) best = {
+							id: "session",
+							start,
+							end,
+							data: { label }
+						};
+					}
+					if (best !== void 0) return best;
+				}
+			}
 		};
-		const $ZodError = $constructor("$ZodError", initializer$1);
-		const $ZodRealError = $constructor("$ZodError", initializer$1, { Parent: Error });
-		function flattenError(error, mapper = (issue) => issue.message) {
-			const fieldErrors = {};
-			const formErrors = [];
-			for (const sub of error.issues) if (sub.path.length > 0) {
-				fieldErrors[sub.path[0]] = fieldErrors[sub.path[0]] || [];
-				fieldErrors[sub.path[0]].push(mapper(sub));
-			} else formErrors.push(mapper(sub));
+		//#endregion
+		//#region lib/types/client/user-text/whitespace-rules.js
+		function replacement(text, start, end, display) {
 			return {
-				formErrors,
-				fieldErrors
-			};
-		}
-		function formatError(error, mapper = (issue) => issue.message) {
-			const fieldErrors = { _errors: [] };
-			const processError = (error, path = []) => {
-				for (const issue of error.issues) if (issue.code === "invalid_union" && issue.errors.length) issue.errors.map((issues) => processError({ issues }, [...path, ...issue.path]));
-				else if (issue.code === "invalid_key") processError({ issues: issue.issues }, [...path, ...issue.path]);
-				else if (issue.code === "invalid_element") processError({ issues: issue.issues }, [...path, ...issue.path]);
-				else {
-					const fullpath = [...path, ...issue.path];
-					if (fullpath.length === 0) fieldErrors._errors.push(mapper(issue));
-					else {
-						let curr = fieldErrors;
-						let i = 0;
-						while (i < fullpath.length) {
-							const el = fullpath[i];
-							if (!(i === fullpath.length - 1)) curr[el] = curr[el] || { _errors: [] };
-							else {
-								curr[el] = curr[el] || { _errors: [] };
-								curr[el]._errors.push(mapper(issue));
-							}
-							curr = curr[el];
-							i++;
-						}
-					}
+				id: "text",
+				start,
+				end,
+				data: {
+					text: text.slice(start, end),
+					display
 				}
 			};
-			processError(error);
-			return fieldErrors;
 		}
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/parse.js
-		const _parse = (_Err) => (schema, value, _ctx, _params) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				async: false
-			} : { async: false };
-			const result = schema._zod.run({
-				value,
-				issues: []
-			}, ctx);
-			if (result instanceof Promise) throw new $ZodAsyncError();
-			if (result.issues.length) {
-				const e = new ((_params?.Err) ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())));
-				captureStackTrace(e, _params?.callee);
-				throw e;
-			}
-			return result.value;
-		};
-		const _parseAsync = (_Err) => async (schema, value, _ctx, params) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				async: true
-			} : { async: true };
-			let result = schema._zod.run({
-				value,
-				issues: []
-			}, ctx);
-			if (result instanceof Promise) result = await result;
-			if (result.issues.length) {
-				const e = new ((params?.Err) ?? _Err)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())));
-				captureStackTrace(e, params?.callee);
-				throw e;
-			}
-			return result.value;
-		};
-		const _safeParse = (_Err) => (schema, value, _ctx) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				async: false
-			} : { async: false };
-			const result = schema._zod.run({
-				value,
-				issues: []
-			}, ctx);
-			if (result instanceof Promise) throw new $ZodAsyncError();
-			return result.issues.length ? {
-				success: false,
-				error: new (_Err ?? $ZodError)(result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
-			} : {
-				success: true,
-				data: result.value
-			};
-		};
-		const safeParse$1 = /* @__PURE__*/ _safeParse($ZodRealError);
-		const _safeParseAsync = (_Err) => async (schema, value, _ctx) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				async: true
-			} : { async: true };
-			let result = schema._zod.run({
-				value,
-				issues: []
-			}, ctx);
-			if (result instanceof Promise) result = await result;
-			return result.issues.length ? {
-				success: false,
-				error: new _Err(result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
-			} : {
-				success: true,
-				data: result.value
-			};
-		};
-		const safeParseAsync$1 = /* @__PURE__*/ _safeParseAsync($ZodRealError);
-		const _encode = (_Err) => (schema, value, _ctx) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				direction: "backward"
-			} : { direction: "backward" };
-			return _parse(_Err)(schema, value, ctx);
-		};
-		const _decode = (_Err) => (schema, value, _ctx) => {
-			return _parse(_Err)(schema, value, _ctx);
-		};
-		const _encodeAsync = (_Err) => async (schema, value, _ctx) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				direction: "backward"
-			} : { direction: "backward" };
-			return _parseAsync(_Err)(schema, value, ctx);
-		};
-		const _decodeAsync = (_Err) => async (schema, value, _ctx) => {
-			return _parseAsync(_Err)(schema, value, _ctx);
-		};
-		const _safeEncode = (_Err) => (schema, value, _ctx) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				direction: "backward"
-			} : { direction: "backward" };
-			return _safeParse(_Err)(schema, value, ctx);
-		};
-		const _safeDecode = (_Err) => (schema, value, _ctx) => {
-			return _safeParse(_Err)(schema, value, _ctx);
-		};
-		const _safeEncodeAsync = (_Err) => async (schema, value, _ctx) => {
-			const ctx = _ctx ? {
-				..._ctx,
-				direction: "backward"
-			} : { direction: "backward" };
-			return _safeParseAsync(_Err)(schema, value, ctx);
-		};
-		const _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
-			return _safeParseAsync(_Err)(schema, value, _ctx);
-		};
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/regexes.js
-		/**
-		* @deprecated CUID v1 is deprecated by its authors due to information leakage
-		* (timestamps embedded in the id). Use {@link cuid2} instead.
-		* See https://github.com/paralleldrive/cuid.
-		*/
-		const cuid = /^[cC][0-9a-z]{6,}$/;
-		const cuid2 = /^[0-9a-z]+$/;
-		const ulid = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/;
-		const xid = /^[0-9a-vA-V]{20}$/;
-		const ksuid = /^[A-Za-z0-9]{27}$/;
-		const nanoid = /^[a-zA-Z0-9_-]{21}$/;
-		/** ISO 8601-1 duration regex. Does not support the 8601-2 extensions like negative durations or fractional/negative components. */
-		const duration$1 = /^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/;
-		/** A regex for any UUID-like identifier: 8-4-4-4-12 hex pattern */
-		const guid = /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
-		/** Returns a regex for validating an RFC 9562/4122 UUID.
-		*
-		* @param version Optionally specify a version 1-8. If no version is specified, all versions are supported. */
-		const uuid = (version) => {
-			if (!version) return /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/;
-			return new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${version}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`);
-		};
-		/** Practical email validation */
-		const email = /^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/;
-		const _emoji$1 = `^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$`;
-		function emoji() {
-			return new RegExp(_emoji$1, "u");
-		}
-		const ipv4 = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
-		const ipv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/;
-		const cidrv4 = /^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/;
-		const cidrv6 = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|([0-9a-fA-F]{1,4})?::([0-9a-fA-F]{1,4}:?){0,6})\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
-		const base64 = /^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/;
-		const base64url = /^[A-Za-z0-9_-]*$/;
-		const httpProtocol = /^https?$/;
-		const e164 = /^\+[1-9]\d{6,14}$/;
-		const dateSource = `(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))`;
-		const date$1 = /*@__PURE__*/ new RegExp(`^${dateSource}$`);
-		function timeSource(args) {
-			const hhmm = `(?:[01]\\d|2[0-3]):[0-5]\\d`;
-			return typeof args.precision === "number" ? args.precision === -1 ? `${hhmm}` : args.precision === 0 ? `${hhmm}:[0-5]\\d` : `${hhmm}:[0-5]\\d\\.\\d{${args.precision}}` : `${hhmm}(?::[0-5]\\d(?:\\.\\d+)?)?`;
-		}
-		function time$1(args) {
-			return new RegExp(`^${timeSource(args)}$`);
-		}
-		function datetime$1(args) {
-			const time = timeSource({ precision: args.precision });
-			const opts = ["Z"];
-			if (args.local) opts.push("");
-			if (args.offset) opts.push(`([+-](?:[01]\\d|2[0-3]):[0-5]\\d)`);
-			const timeRegex = `${time}(?:${opts.join("|")})`;
-			return new RegExp(`^${dateSource}T(?:${timeRegex})$`);
-		}
-		const string$1 = (params) => {
-			const regex = params ? `[\\s\\S]{${params?.minimum ?? 0},${params?.maximum ?? ""}}` : `[\\s\\S]*`;
-			return new RegExp(`^${regex}$`);
-		};
-		const integer = /^-?\d+$/;
-		const number$1 = /^-?\d+(?:\.\d+)?$/;
-		const boolean$1 = /^(?:true|false)$/i;
-		const lowercase = /^[^A-Z]*$/;
-		const uppercase = /^[^a-z]*$/;
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/checks.js
-		const $ZodCheck = /*@__PURE__*/ $constructor("$ZodCheck", (inst, def) => {
-			var _a;
-			inst._zod ?? (inst._zod = {});
-			inst._zod.def = def;
-			(_a = inst._zod).onattach ?? (_a.onattach = []);
-		});
-		const numericOriginMap = {
-			number: "number",
-			bigint: "bigint",
-			object: "date"
-		};
-		const $ZodCheckLessThan = /*@__PURE__*/ $constructor("$ZodCheckLessThan", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			const origin = numericOriginMap[typeof def.value];
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				const curr = (def.inclusive ? bag.maximum : bag.exclusiveMaximum) ?? Number.POSITIVE_INFINITY;
-				if (def.value < curr) if (def.inclusive) bag.maximum = def.value;
-				else bag.exclusiveMaximum = def.value;
-			});
-			inst._zod.check = (payload) => {
-				if (def.inclusive ? payload.value <= def.value : payload.value < def.value) return;
-				payload.issues.push({
-					origin,
-					code: "too_big",
-					maximum: typeof def.value === "object" ? def.value.getTime() : def.value,
-					input: payload.value,
-					inclusive: def.inclusive,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckGreaterThan = /*@__PURE__*/ $constructor("$ZodCheckGreaterThan", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			const origin = numericOriginMap[typeof def.value];
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				const curr = (def.inclusive ? bag.minimum : bag.exclusiveMinimum) ?? Number.NEGATIVE_INFINITY;
-				if (def.value > curr) if (def.inclusive) bag.minimum = def.value;
-				else bag.exclusiveMinimum = def.value;
-			});
-			inst._zod.check = (payload) => {
-				if (def.inclusive ? payload.value >= def.value : payload.value > def.value) return;
-				payload.issues.push({
-					origin,
-					code: "too_small",
-					minimum: typeof def.value === "object" ? def.value.getTime() : def.value,
-					input: payload.value,
-					inclusive: def.inclusive,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckMultipleOf = /*@__PURE__*/ $constructor("$ZodCheckMultipleOf", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			inst._zod.onattach.push((inst) => {
-				var _a;
-				(_a = inst._zod.bag).multipleOf ?? (_a.multipleOf = def.value);
-			});
-			inst._zod.check = (payload) => {
-				if (typeof payload.value !== typeof def.value) throw new Error("Cannot mix number and bigint in multiple_of check.");
-				if (typeof payload.value === "bigint" ? payload.value % def.value === BigInt(0) : floatSafeRemainder(payload.value, def.value) === 0) return;
-				payload.issues.push({
-					origin: typeof payload.value,
-					code: "not_multiple_of",
-					divisor: def.value,
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckNumberFormat = /*@__PURE__*/ $constructor("$ZodCheckNumberFormat", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			def.format = def.format || "float64";
-			const isInt = def.format?.includes("int");
-			const origin = isInt ? "int" : "number";
-			const [minimum, maximum] = NUMBER_FORMAT_RANGES[def.format];
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				bag.format = def.format;
-				bag.minimum = minimum;
-				bag.maximum = maximum;
-				if (isInt) bag.pattern = integer;
-			});
-			inst._zod.check = (payload) => {
-				const input = payload.value;
-				if (isInt) {
-					if (!Number.isInteger(input)) {
-						payload.issues.push({
-							expected: origin,
-							format: def.format,
-							code: "invalid_type",
-							continue: false,
-							input,
-							inst
-						});
-						return;
-					}
-					if (!Number.isSafeInteger(input)) {
-						if (input > 0) payload.issues.push({
-							input,
-							code: "too_big",
-							maximum: Number.MAX_SAFE_INTEGER,
-							note: "Integers must be within the safe integer range.",
-							inst,
-							origin,
-							inclusive: true,
-							continue: !def.abort
-						});
-						else payload.issues.push({
-							input,
-							code: "too_small",
-							minimum: Number.MIN_SAFE_INTEGER,
-							note: "Integers must be within the safe integer range.",
-							inst,
-							origin,
-							inclusive: true,
-							continue: !def.abort
-						});
-						return;
-					}
+		/** Offer the next whitespace run whose display collapses to one space. */
+		const collapseWhitespaceRule = {
+			id: "text.collapse-whitespace",
+			order: 1010,
+			match(text, from, context) {
+				if (!context.read("collapseWhitespace")) return void 0;
+				const spaces = /\s+/gu;
+				spaces.lastIndex = from;
+				for (let match = spaces.exec(text); match !== null; match = spaces.exec(text)) {
+					if (match.index > 0 && /\s/u.test(text.slice(match.index - 1, match.index)) || match[0] === " ") continue;
+					return replacement(text, match.index, match.index + match[0].length, " ");
 				}
-				if (input < minimum) payload.issues.push({
-					origin: "number",
-					input,
-					code: "too_small",
-					minimum,
-					inclusive: true,
-					inst,
-					continue: !def.abort
-				});
-				if (input > maximum) payload.issues.push({
-					origin: "number",
-					input,
-					code: "too_big",
-					maximum,
-					inclusive: true,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckMaxLength = /*@__PURE__*/ $constructor("$ZodCheckMaxLength", (inst, def) => {
-			var _a;
-			$ZodCheck.init(inst, def);
-			(_a = inst._zod.def).when ?? (_a.when = (payload) => {
-				const val = payload.value;
-				return !nullish(val) && val.length !== void 0;
-			});
-			inst._zod.onattach.push((inst) => {
-				const curr = inst._zod.bag.maximum ?? Number.POSITIVE_INFINITY;
-				if (def.maximum < curr) inst._zod.bag.maximum = def.maximum;
-			});
-			inst._zod.check = (payload) => {
-				const input = payload.value;
-				if (input.length <= def.maximum) return;
-				const origin = getLengthableOrigin(input);
-				payload.issues.push({
-					origin,
-					code: "too_big",
-					maximum: def.maximum,
-					inclusive: true,
-					input,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckMinLength = /*@__PURE__*/ $constructor("$ZodCheckMinLength", (inst, def) => {
-			var _a;
-			$ZodCheck.init(inst, def);
-			(_a = inst._zod.def).when ?? (_a.when = (payload) => {
-				const val = payload.value;
-				return !nullish(val) && val.length !== void 0;
-			});
-			inst._zod.onattach.push((inst) => {
-				const curr = inst._zod.bag.minimum ?? Number.NEGATIVE_INFINITY;
-				if (def.minimum > curr) inst._zod.bag.minimum = def.minimum;
-			});
-			inst._zod.check = (payload) => {
-				const input = payload.value;
-				if (input.length >= def.minimum) return;
-				const origin = getLengthableOrigin(input);
-				payload.issues.push({
-					origin,
-					code: "too_small",
-					minimum: def.minimum,
-					inclusive: true,
-					input,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckLengthEquals = /*@__PURE__*/ $constructor("$ZodCheckLengthEquals", (inst, def) => {
-			var _a;
-			$ZodCheck.init(inst, def);
-			(_a = inst._zod.def).when ?? (_a.when = (payload) => {
-				const val = payload.value;
-				return !nullish(val) && val.length !== void 0;
-			});
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				bag.minimum = def.length;
-				bag.maximum = def.length;
-				bag.length = def.length;
-			});
-			inst._zod.check = (payload) => {
-				const input = payload.value;
-				const length = input.length;
-				if (length === def.length) return;
-				const origin = getLengthableOrigin(input);
-				const tooBig = length > def.length;
-				payload.issues.push({
-					origin,
-					...tooBig ? {
-						code: "too_big",
-						maximum: def.length
-					} : {
-						code: "too_small",
-						minimum: def.length
-					},
-					inclusive: true,
-					exact: true,
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckStringFormat = /*@__PURE__*/ $constructor("$ZodCheckStringFormat", (inst, def) => {
-			var _a, _b;
-			$ZodCheck.init(inst, def);
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				bag.format = def.format;
-				if (def.pattern) {
-					bag.patterns ?? (bag.patterns = /* @__PURE__ */ new Set());
-					bag.patterns.add(def.pattern);
-				}
-			});
-			if (def.pattern) (_a = inst._zod).check ?? (_a.check = (payload) => {
-				def.pattern.lastIndex = 0;
-				if (def.pattern.test(payload.value)) return;
-				payload.issues.push({
-					origin: "string",
-					code: "invalid_format",
-					format: def.format,
-					input: payload.value,
-					...def.pattern ? { pattern: def.pattern.toString() } : {},
-					inst,
-					continue: !def.abort
-				});
-			});
-			else (_b = inst._zod).check ?? (_b.check = () => {});
-		});
-		const $ZodCheckRegex = /*@__PURE__*/ $constructor("$ZodCheckRegex", (inst, def) => {
-			$ZodCheckStringFormat.init(inst, def);
-			inst._zod.check = (payload) => {
-				def.pattern.lastIndex = 0;
-				if (def.pattern.test(payload.value)) return;
-				payload.issues.push({
-					origin: "string",
-					code: "invalid_format",
-					format: "regex",
-					input: payload.value,
-					pattern: def.pattern.toString(),
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckLowerCase = /*@__PURE__*/ $constructor("$ZodCheckLowerCase", (inst, def) => {
-			def.pattern ?? (def.pattern = lowercase);
-			$ZodCheckStringFormat.init(inst, def);
-		});
-		const $ZodCheckUpperCase = /*@__PURE__*/ $constructor("$ZodCheckUpperCase", (inst, def) => {
-			def.pattern ?? (def.pattern = uppercase);
-			$ZodCheckStringFormat.init(inst, def);
-		});
-		const $ZodCheckIncludes = /*@__PURE__*/ $constructor("$ZodCheckIncludes", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			const escapedRegex = escapeRegex(def.includes);
-			const pattern = new RegExp(typeof def.position === "number" ? `^.{${def.position}}${escapedRegex}` : escapedRegex);
-			def.pattern = pattern;
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				bag.patterns ?? (bag.patterns = /* @__PURE__ */ new Set());
-				bag.patterns.add(pattern);
-			});
-			inst._zod.check = (payload) => {
-				if (payload.value.includes(def.includes, def.position)) return;
-				payload.issues.push({
-					origin: "string",
-					code: "invalid_format",
-					format: "includes",
-					includes: def.includes,
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckStartsWith = /*@__PURE__*/ $constructor("$ZodCheckStartsWith", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			const pattern = new RegExp(`^${escapeRegex(def.prefix)}.*`);
-			def.pattern ?? (def.pattern = pattern);
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				bag.patterns ?? (bag.patterns = /* @__PURE__ */ new Set());
-				bag.patterns.add(pattern);
-			});
-			inst._zod.check = (payload) => {
-				if (payload.value.startsWith(def.prefix)) return;
-				payload.issues.push({
-					origin: "string",
-					code: "invalid_format",
-					format: "starts_with",
-					prefix: def.prefix,
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckEndsWith = /*@__PURE__*/ $constructor("$ZodCheckEndsWith", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			const pattern = new RegExp(`.*${escapeRegex(def.suffix)}$`);
-			def.pattern ?? (def.pattern = pattern);
-			inst._zod.onattach.push((inst) => {
-				const bag = inst._zod.bag;
-				bag.patterns ?? (bag.patterns = /* @__PURE__ */ new Set());
-				bag.patterns.add(pattern);
-			});
-			inst._zod.check = (payload) => {
-				if (payload.value.endsWith(def.suffix)) return;
-				payload.issues.push({
-					origin: "string",
-					code: "invalid_format",
-					format: "ends_with",
-					suffix: def.suffix,
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodCheckOverwrite = /*@__PURE__*/ $constructor("$ZodCheckOverwrite", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			inst._zod.check = (payload) => {
-				payload.value = def.tx(payload.value);
-			};
-		});
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/doc.js
-		var Doc = class {
-			constructor(args = []) {
-				this.content = [];
-				this.indent = 0;
-				if (this) this.args = args;
-			}
-			indented(fn) {
-				this.indent += 1;
-				fn(this);
-				this.indent -= 1;
-			}
-			write(arg) {
-				if (typeof arg === "function") {
-					arg(this, { execution: "sync" });
-					arg(this, { execution: "async" });
-					return;
-				}
-				const lines = arg.split("\n").filter((x) => x);
-				const minIndent = Math.min(...lines.map((x) => x.length - x.trimStart().length));
-				const dedented = lines.map((x) => x.slice(minIndent)).map((x) => " ".repeat(this.indent * 2) + x);
-				for (const line of dedented) this.content.push(line);
-			}
-			compile() {
-				const F = Function;
-				const args = this?.args;
-				const lines = [...(this?.content ?? [``]).map((x) => `  ${x}`)];
-				return new F(...args, lines.join("\n"));
 			}
 		};
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/versions.js
-		const version = {
-			major: 4,
-			minor: 4,
-			patch: 3
-		};
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/schemas.js
-		const $ZodType = /*@__PURE__*/ $constructor("$ZodType", (inst, def) => {
-			var _a;
-			inst ?? (inst = {});
-			inst._zod.def = def;
-			inst._zod.bag = inst._zod.bag || {};
-			inst._zod.version = version;
-			const checks = [...inst._zod.def.checks ?? []];
-			if (inst._zod.traits.has("$ZodCheck")) checks.unshift(inst);
-			for (const ch of checks) for (const fn of ch._zod.onattach) fn(inst);
-			if (checks.length === 0) {
-				(_a = inst._zod).deferred ?? (_a.deferred = []);
-				inst._zod.deferred?.push(() => {
-					inst._zod.run = inst._zod.parse;
-				});
-			} else {
-				const runChecks = (payload, checks, ctx) => {
-					let isAborted = aborted(payload);
-					let asyncResult;
-					for (const ch of checks) {
-						if (ch._zod.def.when) {
-							if (explicitlyAborted(payload)) continue;
-							if (!ch._zod.def.when(payload)) continue;
-						} else if (isAborted) continue;
-						const currLen = payload.issues.length;
-						const _ = ch._zod.check(payload);
-						if (_ instanceof Promise && ctx?.async === false) throw new $ZodAsyncError();
-						if (asyncResult || _ instanceof Promise) asyncResult = (asyncResult ?? Promise.resolve()).then(async () => {
-							await _;
-							if (payload.issues.length === currLen) return;
-							if (!isAborted) isAborted = aborted(payload, currLen);
-						});
-						else {
-							if (payload.issues.length === currLen) continue;
-							if (!isAborted) isAborted = aborted(payload, currLen);
-						}
-					}
-					if (asyncResult) return asyncResult.then(() => {
-						return payload;
-					});
-					return payload;
-				};
-				const handleCanaryResult = (canary, payload, ctx) => {
-					if (aborted(canary)) {
-						canary.aborted = true;
-						return canary;
-					}
-					const checkResult = runChecks(payload, checks, ctx);
-					if (checkResult instanceof Promise) {
-						if (ctx.async === false) throw new $ZodAsyncError();
-						return checkResult.then((checkResult) => inst._zod.parse(checkResult, ctx));
-					}
-					return inst._zod.parse(checkResult, ctx);
-				};
-				inst._zod.run = (payload, ctx) => {
-					if (ctx.skipChecks) return inst._zod.parse(payload, ctx);
-					if (ctx.direction === "backward") {
-						const canary = inst._zod.parse({
-							value: payload.value,
-							issues: []
-						}, {
-							...ctx,
-							skipChecks: true
-						});
-						if (canary instanceof Promise) return canary.then((canary) => {
-							return handleCanaryResult(canary, payload, ctx);
-						});
-						return handleCanaryResult(canary, payload, ctx);
-					}
-					const result = inst._zod.parse(payload, ctx);
-					if (result instanceof Promise) {
-						if (ctx.async === false) throw new $ZodAsyncError();
-						return result.then((result) => runChecks(result, checks, ctx));
-					}
-					return runChecks(result, checks, ctx);
-				};
-			}
-			defineLazy(inst, "~standard", () => ({
-				validate: (value) => {
-					try {
-						const r = safeParse$1(inst, value);
-						return r.success ? { value: r.data } : { issues: r.error?.issues };
-					} catch (_) {
-						return safeParseAsync$1(inst, value).then((r) => r.success ? { value: r.data } : { issues: r.error?.issues });
-					}
-				},
-				vendor: "zod",
-				version: 1
-			}));
-		});
-		const $ZodString = /*@__PURE__*/ $constructor("$ZodString", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.pattern = [...inst?._zod.bag?.patterns ?? []].pop() ?? string$1(inst._zod.bag);
-			inst._zod.parse = (payload, _) => {
-				if (def.coerce) try {
-					payload.value = String(payload.value);
-				} catch (_) {}
-				if (typeof payload.value === "string") return payload;
-				payload.issues.push({
-					expected: "string",
-					code: "invalid_type",
-					input: payload.value,
-					inst
-				});
-				return payload;
-			};
-		});
-		const $ZodStringFormat = /*@__PURE__*/ $constructor("$ZodStringFormat", (inst, def) => {
-			$ZodCheckStringFormat.init(inst, def);
-			$ZodString.init(inst, def);
-		});
-		const $ZodGUID = /*@__PURE__*/ $constructor("$ZodGUID", (inst, def) => {
-			def.pattern ?? (def.pattern = guid);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodUUID = /*@__PURE__*/ $constructor("$ZodUUID", (inst, def) => {
-			if (def.version) {
-				const v = {
-					v1: 1,
-					v2: 2,
-					v3: 3,
-					v4: 4,
-					v5: 5,
-					v6: 6,
-					v7: 7,
-					v8: 8
-				}[def.version];
-				if (v === void 0) throw new Error(`Invalid UUID version: "${def.version}"`);
-				def.pattern ?? (def.pattern = uuid(v));
-			} else def.pattern ?? (def.pattern = uuid());
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodEmail = /*@__PURE__*/ $constructor("$ZodEmail", (inst, def) => {
-			def.pattern ?? (def.pattern = email);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodURL = /*@__PURE__*/ $constructor("$ZodURL", (inst, def) => {
-			$ZodStringFormat.init(inst, def);
-			inst._zod.check = (payload) => {
-				try {
-					const trimmed = payload.value.trim();
-					if (!def.normalize && def.protocol?.source === httpProtocol.source) {
-						if (!/^https?:\/\//i.test(trimmed)) {
-							payload.issues.push({
-								code: "invalid_format",
-								format: "url",
-								note: "Invalid URL format",
-								input: payload.value,
-								inst,
-								continue: !def.abort
-							});
-							return;
-						}
-					}
-					const url = new URL(trimmed);
-					if (def.hostname) {
-						def.hostname.lastIndex = 0;
-						if (!def.hostname.test(url.hostname)) payload.issues.push({
-							code: "invalid_format",
-							format: "url",
-							note: "Invalid hostname",
-							pattern: def.hostname.source,
-							input: payload.value,
-							inst,
-							continue: !def.abort
-						});
-					}
-					if (def.protocol) {
-						def.protocol.lastIndex = 0;
-						if (!def.protocol.test(url.protocol.endsWith(":") ? url.protocol.slice(0, -1) : url.protocol)) payload.issues.push({
-							code: "invalid_format",
-							format: "url",
-							note: "Invalid protocol",
-							pattern: def.protocol.source,
-							input: payload.value,
-							inst,
-							continue: !def.abort
-						});
-					}
-					if (def.normalize) payload.value = url.href;
-					else payload.value = trimmed;
-					return;
-				} catch (_) {
-					payload.issues.push({
-						code: "invalid_format",
-						format: "url",
-						input: payload.value,
-						inst,
-						continue: !def.abort
-					});
+		/** Offer original document-edge whitespace, winning same-start collisions with collapse. */
+		const trimWhitespaceRule = {
+			id: "text.trim-whitespace",
+			order: 1e3,
+			match(text, from, context) {
+				if (!context.read("trimWhitespace")) return void 0;
+				if (from === 0) {
+					const leading = /^\s+/u.exec(text);
+					if (leading !== null) return replacement(text, 0, leading[0].length, "");
 				}
-			};
-		});
-		const $ZodEmoji = /*@__PURE__*/ $constructor("$ZodEmoji", (inst, def) => {
-			def.pattern ?? (def.pattern = emoji());
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodNanoID = /*@__PURE__*/ $constructor("$ZodNanoID", (inst, def) => {
-			def.pattern ?? (def.pattern = nanoid);
-			$ZodStringFormat.init(inst, def);
-		});
-		/**
-		* @deprecated CUID v1 is deprecated by its authors due to information leakage
-		* (timestamps embedded in the id). Use {@link $ZodCUID2} instead.
-		* See https://github.com/paralleldrive/cuid.
-		*/
-		const $ZodCUID = /*@__PURE__*/ $constructor("$ZodCUID", (inst, def) => {
-			def.pattern ?? (def.pattern = cuid);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodCUID2 = /*@__PURE__*/ $constructor("$ZodCUID2", (inst, def) => {
-			def.pattern ?? (def.pattern = cuid2);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodULID = /*@__PURE__*/ $constructor("$ZodULID", (inst, def) => {
-			def.pattern ?? (def.pattern = ulid);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodXID = /*@__PURE__*/ $constructor("$ZodXID", (inst, def) => {
-			def.pattern ?? (def.pattern = xid);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodKSUID = /*@__PURE__*/ $constructor("$ZodKSUID", (inst, def) => {
-			def.pattern ?? (def.pattern = ksuid);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodISODateTime = /*@__PURE__*/ $constructor("$ZodISODateTime", (inst, def) => {
-			def.pattern ?? (def.pattern = datetime$1(def));
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodISODate = /*@__PURE__*/ $constructor("$ZodISODate", (inst, def) => {
-			def.pattern ?? (def.pattern = date$1);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodISOTime = /*@__PURE__*/ $constructor("$ZodISOTime", (inst, def) => {
-			def.pattern ?? (def.pattern = time$1(def));
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodISODuration = /*@__PURE__*/ $constructor("$ZodISODuration", (inst, def) => {
-			def.pattern ?? (def.pattern = duration$1);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodIPv4 = /*@__PURE__*/ $constructor("$ZodIPv4", (inst, def) => {
-			def.pattern ?? (def.pattern = ipv4);
-			$ZodStringFormat.init(inst, def);
-			inst._zod.bag.format = `ipv4`;
-		});
-		const $ZodIPv6 = /*@__PURE__*/ $constructor("$ZodIPv6", (inst, def) => {
-			def.pattern ?? (def.pattern = ipv6);
-			$ZodStringFormat.init(inst, def);
-			inst._zod.bag.format = `ipv6`;
-			inst._zod.check = (payload) => {
-				try {
-					new URL(`http://[${payload.value}]`);
-				} catch {
-					payload.issues.push({
-						code: "invalid_format",
-						format: "ipv6",
-						input: payload.value,
-						inst,
-						continue: !def.abort
-					});
-				}
-			};
-		});
-		const $ZodCIDRv4 = /*@__PURE__*/ $constructor("$ZodCIDRv4", (inst, def) => {
-			def.pattern ?? (def.pattern = cidrv4);
-			$ZodStringFormat.init(inst, def);
-		});
-		const $ZodCIDRv6 = /*@__PURE__*/ $constructor("$ZodCIDRv6", (inst, def) => {
-			def.pattern ?? (def.pattern = cidrv6);
-			$ZodStringFormat.init(inst, def);
-			inst._zod.check = (payload) => {
-				const parts = payload.value.split("/");
-				try {
-					if (parts.length !== 2) throw new Error();
-					const [address, prefix] = parts;
-					if (!prefix) throw new Error();
-					const prefixNum = Number(prefix);
-					if (`${prefixNum}` !== prefix) throw new Error();
-					if (prefixNum < 0 || prefixNum > 128) throw new Error();
-					new URL(`http://[${address}]`);
-				} catch {
-					payload.issues.push({
-						code: "invalid_format",
-						format: "cidrv6",
-						input: payload.value,
-						inst,
-						continue: !def.abort
-					});
-				}
-			};
-		});
-		function isValidBase64(data) {
-			if (data === "") return true;
-			if (/\s/.test(data)) return false;
-			if (data.length % 4 !== 0) return false;
-			try {
-				atob(data);
-				return true;
-			} catch {
-				return false;
-			}
-		}
-		const $ZodBase64 = /*@__PURE__*/ $constructor("$ZodBase64", (inst, def) => {
-			def.pattern ?? (def.pattern = base64);
-			$ZodStringFormat.init(inst, def);
-			inst._zod.bag.contentEncoding = "base64";
-			inst._zod.check = (payload) => {
-				if (isValidBase64(payload.value)) return;
-				payload.issues.push({
-					code: "invalid_format",
-					format: "base64",
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		function isValidBase64URL(data) {
-			if (!base64url.test(data)) return false;
-			const base64 = data.replace(/[-_]/g, (c) => c === "-" ? "+" : "/");
-			return isValidBase64(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="));
-		}
-		const $ZodBase64URL = /*@__PURE__*/ $constructor("$ZodBase64URL", (inst, def) => {
-			def.pattern ?? (def.pattern = base64url);
-			$ZodStringFormat.init(inst, def);
-			inst._zod.bag.contentEncoding = "base64url";
-			inst._zod.check = (payload) => {
-				if (isValidBase64URL(payload.value)) return;
-				payload.issues.push({
-					code: "invalid_format",
-					format: "base64url",
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodE164 = /*@__PURE__*/ $constructor("$ZodE164", (inst, def) => {
-			def.pattern ?? (def.pattern = e164);
-			$ZodStringFormat.init(inst, def);
-		});
-		function isValidJWT(token, algorithm = null) {
-			try {
-				const tokensParts = token.split(".");
-				if (tokensParts.length !== 3) return false;
-				const [header] = tokensParts;
-				if (!header) return false;
-				const parsedHeader = JSON.parse(atob(header));
-				if ("typ" in parsedHeader && parsedHeader?.typ !== "JWT") return false;
-				if (!parsedHeader.alg) return false;
-				if (algorithm && (!("alg" in parsedHeader) || parsedHeader.alg !== algorithm)) return false;
-				return true;
-			} catch {
-				return false;
-			}
-		}
-		const $ZodJWT = /*@__PURE__*/ $constructor("$ZodJWT", (inst, def) => {
-			$ZodStringFormat.init(inst, def);
-			inst._zod.check = (payload) => {
-				if (isValidJWT(payload.value, def.alg)) return;
-				payload.issues.push({
-					code: "invalid_format",
-					format: "jwt",
-					input: payload.value,
-					inst,
-					continue: !def.abort
-				});
-			};
-		});
-		const $ZodNumber = /*@__PURE__*/ $constructor("$ZodNumber", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.pattern = inst._zod.bag.pattern ?? number$1;
-			inst._zod.parse = (payload, _ctx) => {
-				if (def.coerce) try {
-					payload.value = Number(payload.value);
-				} catch (_) {}
-				const input = payload.value;
-				if (typeof input === "number" && !Number.isNaN(input) && Number.isFinite(input)) return payload;
-				const received = typeof input === "number" ? Number.isNaN(input) ? "NaN" : !Number.isFinite(input) ? "Infinity" : void 0 : void 0;
-				payload.issues.push({
-					expected: "number",
-					code: "invalid_type",
-					input,
-					inst,
-					...received ? { received } : {}
-				});
-				return payload;
-			};
-		});
-		const $ZodNumberFormat = /*@__PURE__*/ $constructor("$ZodNumberFormat", (inst, def) => {
-			$ZodCheckNumberFormat.init(inst, def);
-			$ZodNumber.init(inst, def);
-		});
-		const $ZodBoolean = /*@__PURE__*/ $constructor("$ZodBoolean", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.pattern = boolean$1;
-			inst._zod.parse = (payload, _ctx) => {
-				if (def.coerce) try {
-					payload.value = Boolean(payload.value);
-				} catch (_) {}
-				const input = payload.value;
-				if (typeof input === "boolean") return payload;
-				payload.issues.push({
-					expected: "boolean",
-					code: "invalid_type",
-					input,
-					inst
-				});
-				return payload;
-			};
-		});
-		const $ZodUnknown = /*@__PURE__*/ $constructor("$ZodUnknown", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.parse = (payload) => payload;
-		});
-		const $ZodNever = /*@__PURE__*/ $constructor("$ZodNever", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.parse = (payload, _ctx) => {
-				payload.issues.push({
-					expected: "never",
-					code: "invalid_type",
-					input: payload.value,
-					inst
-				});
-				return payload;
-			};
-		});
-		function handleArrayResult(result, final, index) {
-			if (result.issues.length) final.issues.push(...prefixIssues(index, result.issues));
-			final.value[index] = result.value;
-		}
-		const $ZodArray = /*@__PURE__*/ $constructor("$ZodArray", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.parse = (payload, ctx) => {
-				const input = payload.value;
-				if (!Array.isArray(input)) {
-					payload.issues.push({
-						expected: "array",
-						code: "invalid_type",
-						input,
-						inst
-					});
-					return payload;
-				}
-				payload.value = Array(input.length);
-				const proms = [];
-				for (let i = 0; i < input.length; i++) {
-					const item = input[i];
-					const result = def.element._zod.run({
-						value: item,
-						issues: []
-					}, ctx);
-					if (result instanceof Promise) proms.push(result.then((result) => handleArrayResult(result, payload, i)));
-					else handleArrayResult(result, payload, i);
-				}
-				if (proms.length) return Promise.all(proms).then(() => payload);
-				return payload;
-			};
-		});
-		function handlePropertyResult(result, final, key, input, isOptionalIn, isOptionalOut) {
-			const isPresent = key in input;
-			if (result.issues.length) {
-				if (isOptionalIn && isOptionalOut && !isPresent) return;
-				final.issues.push(...prefixIssues(key, result.issues));
-			}
-			if (!isPresent && !isOptionalIn) {
-				if (!result.issues.length) final.issues.push({
-					code: "invalid_type",
-					expected: "nonoptional",
-					input: void 0,
-					path: [key]
-				});
-				return;
-			}
-			if (result.value === void 0) {
-				if (isPresent) final.value[key] = void 0;
-			} else final.value[key] = result.value;
-		}
-		function normalizeDef(def) {
-			const keys = Object.keys(def.shape);
-			for (const k of keys) if (!def.shape?.[k]?._zod?.traits?.has("$ZodType")) throw new Error(`Invalid element at key "${k}": expected a Zod schema`);
-			const okeys = optionalKeys(def.shape);
-			return {
-				...def,
-				keys,
-				keySet: new Set(keys),
-				numKeys: keys.length,
-				optionalKeys: new Set(okeys)
-			};
-		}
-		function handleCatchall(proms, input, payload, ctx, def, inst) {
-			const unrecognized = [];
-			const keySet = def.keySet;
-			const _catchall = def.catchall._zod;
-			const t = _catchall.def.type;
-			const isOptionalIn = _catchall.optin === "optional";
-			const isOptionalOut = _catchall.optout === "optional";
-			for (const key in input) {
-				if (key === "__proto__") continue;
-				if (keySet.has(key)) continue;
-				if (t === "never") {
-					unrecognized.push(key);
-					continue;
-				}
-				const r = _catchall.run({
-					value: input[key],
-					issues: []
-				}, ctx);
-				if (r instanceof Promise) proms.push(r.then((r) => handlePropertyResult(r, payload, key, input, isOptionalIn, isOptionalOut)));
-				else handlePropertyResult(r, payload, key, input, isOptionalIn, isOptionalOut);
-			}
-			if (unrecognized.length) payload.issues.push({
-				code: "unrecognized_keys",
-				keys: unrecognized,
-				input,
-				inst
-			});
-			if (!proms.length) return payload;
-			return Promise.all(proms).then(() => {
-				return payload;
-			});
-		}
-		const $ZodObject = /*@__PURE__*/ $constructor("$ZodObject", (inst, def) => {
-			$ZodType.init(inst, def);
-			if (!Object.getOwnPropertyDescriptor(def, "shape")?.get) {
-				const sh = def.shape;
-				Object.defineProperty(def, "shape", { get: () => {
-					const newSh = { ...sh };
-					Object.defineProperty(def, "shape", { value: newSh });
-					return newSh;
-				} });
-			}
-			const _normalized = cached(() => normalizeDef(def));
-			defineLazy(inst._zod, "propValues", () => {
-				const shape = def.shape;
-				const propValues = {};
-				for (const key in shape) {
-					const field = shape[key]._zod;
-					if (field.values) {
-						propValues[key] ?? (propValues[key] = /* @__PURE__ */ new Set());
-						for (const v of field.values) propValues[key].add(v);
-					}
-				}
-				return propValues;
-			});
-			const isObject$1 = isObject;
-			const catchall = def.catchall;
-			let value;
-			inst._zod.parse = (payload, ctx) => {
-				value ?? (value = _normalized.value);
-				const input = payload.value;
-				if (!isObject$1(input)) {
-					payload.issues.push({
-						expected: "object",
-						code: "invalid_type",
-						input,
-						inst
-					});
-					return payload;
-				}
-				payload.value = {};
-				const proms = [];
-				const shape = value.shape;
-				for (const key of value.keys) {
-					const el = shape[key];
-					const isOptionalIn = el._zod.optin === "optional";
-					const isOptionalOut = el._zod.optout === "optional";
-					const r = el._zod.run({
-						value: input[key],
-						issues: []
-					}, ctx);
-					if (r instanceof Promise) proms.push(r.then((r) => handlePropertyResult(r, payload, key, input, isOptionalIn, isOptionalOut)));
-					else handlePropertyResult(r, payload, key, input, isOptionalIn, isOptionalOut);
-				}
-				if (!catchall) return proms.length ? Promise.all(proms).then(() => payload) : payload;
-				return handleCatchall(proms, input, payload, ctx, _normalized.value, inst);
-			};
-		});
-		const $ZodObjectJIT = /*@__PURE__*/ $constructor("$ZodObjectJIT", (inst, def) => {
-			$ZodObject.init(inst, def);
-			const superParse = inst._zod.parse;
-			const _normalized = cached(() => normalizeDef(def));
-			const generateFastpass = (shape) => {
-				const doc = new Doc([
-					"shape",
-					"payload",
-					"ctx"
-				]);
-				const normalized = _normalized.value;
-				const parseStr = (key) => {
-					const k = esc(key);
-					return `shape[${k}]._zod.run({ value: input[${k}], issues: [] }, ctx)`;
-				};
-				doc.write(`const input = payload.value;`);
-				const ids = Object.create(null);
-				let counter = 0;
-				for (const key of normalized.keys) ids[key] = `key_${counter++}`;
-				doc.write(`const newResult = {};`);
-				for (const key of normalized.keys) {
-					const id = ids[key];
-					const k = esc(key);
-					const schema = shape[key];
-					const isOptionalIn = schema?._zod?.optin === "optional";
-					const isOptionalOut = schema?._zod?.optout === "optional";
-					doc.write(`const ${id} = ${parseStr(key)};`);
-					if (isOptionalIn && isOptionalOut) doc.write(`
-        if (${id}.issues.length) {
-          if (${k} in input) {
-            payload.issues = payload.issues.concat(${id}.issues.map(iss => ({
-              ...iss,
-              path: iss.path ? [${k}, ...iss.path] : [${k}]
-            })));
-          }
-        }
-        
-        if (${id}.value === undefined) {
-          if (${k} in input) {
-            newResult[${k}] = undefined;
-          }
-        } else {
-          newResult[${k}] = ${id}.value;
-        }
-        
-      `);
-					else if (!isOptionalIn) doc.write(`
-        const ${id}_present = ${k} in input;
-        if (${id}.issues.length) {
-          payload.issues = payload.issues.concat(${id}.issues.map(iss => ({
-            ...iss,
-            path: iss.path ? [${k}, ...iss.path] : [${k}]
-          })));
-        }
-        if (!${id}_present && !${id}.issues.length) {
-          payload.issues.push({
-            code: "invalid_type",
-            expected: "nonoptional",
-            input: undefined,
-            path: [${k}]
-          });
-        }
-
-        if (${id}_present) {
-          if (${id}.value === undefined) {
-            newResult[${k}] = undefined;
-          } else {
-            newResult[${k}] = ${id}.value;
-          }
-        }
-
-      `);
-					else doc.write(`
-        if (${id}.issues.length) {
-          payload.issues = payload.issues.concat(${id}.issues.map(iss => ({
-            ...iss,
-            path: iss.path ? [${k}, ...iss.path] : [${k}]
-          })));
-        }
-        
-        if (${id}.value === undefined) {
-          if (${k} in input) {
-            newResult[${k}] = undefined;
-          }
-        } else {
-          newResult[${k}] = ${id}.value;
-        }
-        
-      `);
-				}
-				doc.write(`payload.value = newResult;`);
-				doc.write(`return payload;`);
-				const fn = doc.compile();
-				return (payload, ctx) => fn(shape, payload, ctx);
-			};
-			let fastpass;
-			const isObject$2 = isObject;
-			const jit = !globalConfig.jitless;
-			const fastEnabled = jit && allowsEval.value;
-			const catchall = def.catchall;
-			let value;
-			inst._zod.parse = (payload, ctx) => {
-				value ?? (value = _normalized.value);
-				const input = payload.value;
-				if (!isObject$2(input)) {
-					payload.issues.push({
-						expected: "object",
-						code: "invalid_type",
-						input,
-						inst
-					});
-					return payload;
-				}
-				if (jit && fastEnabled && ctx?.async === false && ctx.jitless !== true) {
-					if (!fastpass) fastpass = generateFastpass(def.shape);
-					payload = fastpass(payload, ctx);
-					if (!catchall) return payload;
-					return handleCatchall([], input, payload, ctx, value, inst);
-				}
-				return superParse(payload, ctx);
-			};
-		});
-		function handleUnionResults(results, final, inst, ctx) {
-			for (const result of results) if (result.issues.length === 0) {
-				final.value = result.value;
-				return final;
-			}
-			const nonaborted = results.filter((r) => !aborted(r));
-			if (nonaborted.length === 1) {
-				final.value = nonaborted[0].value;
-				return nonaborted[0];
-			}
-			final.issues.push({
-				code: "invalid_union",
-				input: final.value,
-				inst,
-				errors: results.map((result) => result.issues.map((iss) => finalizeIssue(iss, ctx, config())))
-			});
-			return final;
-		}
-		const $ZodUnion = /*@__PURE__*/ $constructor("$ZodUnion", (inst, def) => {
-			$ZodType.init(inst, def);
-			defineLazy(inst._zod, "optin", () => def.options.some((o) => o._zod.optin === "optional") ? "optional" : void 0);
-			defineLazy(inst._zod, "optout", () => def.options.some((o) => o._zod.optout === "optional") ? "optional" : void 0);
-			defineLazy(inst._zod, "values", () => {
-				if (def.options.every((o) => o._zod.values)) return new Set(def.options.flatMap((option) => Array.from(option._zod.values)));
-			});
-			defineLazy(inst._zod, "pattern", () => {
-				if (def.options.every((o) => o._zod.pattern)) {
-					const patterns = def.options.map((o) => o._zod.pattern);
-					return new RegExp(`^(${patterns.map((p) => cleanRegex(p.source)).join("|")})$`);
-				}
-			});
-			const first = def.options.length === 1 ? def.options[0]._zod.run : null;
-			inst._zod.parse = (payload, ctx) => {
-				if (first) return first(payload, ctx);
-				let async = false;
-				const results = [];
-				for (const option of def.options) {
-					const result = option._zod.run({
-						value: payload.value,
-						issues: []
-					}, ctx);
-					if (result instanceof Promise) {
-						results.push(result);
-						async = true;
-					} else {
-						if (result.issues.length === 0) return result;
-						results.push(result);
-					}
-				}
-				if (!async) return handleUnionResults(results, payload, inst, ctx);
-				return Promise.all(results).then((results) => {
-					return handleUnionResults(results, payload, inst, ctx);
-				});
-			};
-		});
-		const $ZodIntersection = /*@__PURE__*/ $constructor("$ZodIntersection", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.parse = (payload, ctx) => {
-				const input = payload.value;
-				const left = def.left._zod.run({
-					value: input,
-					issues: []
-				}, ctx);
-				const right = def.right._zod.run({
-					value: input,
-					issues: []
-				}, ctx);
-				if (left instanceof Promise || right instanceof Promise) return Promise.all([left, right]).then(([left, right]) => {
-					return handleIntersectionResults(payload, left, right);
-				});
-				return handleIntersectionResults(payload, left, right);
-			};
-		});
-		function mergeValues(a, b) {
-			if (a === b) return {
-				valid: true,
-				data: a
-			};
-			if (a instanceof Date && b instanceof Date && +a === +b) return {
-				valid: true,
-				data: a
-			};
-			if (isPlainObject(a) && isPlainObject(b)) {
-				const bKeys = Object.keys(b);
-				const sharedKeys = Object.keys(a).filter((key) => bKeys.indexOf(key) !== -1);
-				const newObj = {
-					...a,
-					...b
-				};
-				for (const key of sharedKeys) {
-					const sharedValue = mergeValues(a[key], b[key]);
-					if (!sharedValue.valid) return {
-						valid: false,
-						mergeErrorPath: [key, ...sharedValue.mergeErrorPath]
-					};
-					newObj[key] = sharedValue.data;
-				}
-				return {
-					valid: true,
-					data: newObj
-				};
-			}
-			if (Array.isArray(a) && Array.isArray(b)) {
-				if (a.length !== b.length) return {
-					valid: false,
-					mergeErrorPath: []
-				};
-				const newArray = [];
-				for (let index = 0; index < a.length; index++) {
-					const itemA = a[index];
-					const itemB = b[index];
-					const sharedValue = mergeValues(itemA, itemB);
-					if (!sharedValue.valid) return {
-						valid: false,
-						mergeErrorPath: [index, ...sharedValue.mergeErrorPath]
-					};
-					newArray.push(sharedValue.data);
-				}
-				return {
-					valid: true,
-					data: newArray
-				};
-			}
-			return {
-				valid: false,
-				mergeErrorPath: []
-			};
-		}
-		function handleIntersectionResults(result, left, right) {
-			const unrecKeys = /* @__PURE__ */ new Map();
-			let unrecIssue;
-			for (const iss of left.issues) if (iss.code === "unrecognized_keys") {
-				unrecIssue ?? (unrecIssue = iss);
-				for (const k of iss.keys) {
-					if (!unrecKeys.has(k)) unrecKeys.set(k, {});
-					unrecKeys.get(k).l = true;
-				}
-			} else result.issues.push(iss);
-			for (const iss of right.issues) if (iss.code === "unrecognized_keys") for (const k of iss.keys) {
-				if (!unrecKeys.has(k)) unrecKeys.set(k, {});
-				unrecKeys.get(k).r = true;
-			}
-			else result.issues.push(iss);
-			const bothKeys = [...unrecKeys].filter(([, f]) => f.l && f.r).map(([k]) => k);
-			if (bothKeys.length && unrecIssue) result.issues.push({
-				...unrecIssue,
-				keys: bothKeys
-			});
-			if (aborted(result)) return result;
-			const merged = mergeValues(left.value, right.value);
-			if (!merged.valid) throw new Error(`Unmergable intersection. Error path: ${JSON.stringify(merged.mergeErrorPath)}`);
-			result.value = merged.data;
-			return result;
-		}
-		const $ZodEnum = /*@__PURE__*/ $constructor("$ZodEnum", (inst, def) => {
-			$ZodType.init(inst, def);
-			const values = getEnumValues(def.entries);
-			const valuesSet = new Set(values);
-			inst._zod.values = valuesSet;
-			inst._zod.pattern = new RegExp(`^(${values.filter((k) => propertyKeyTypes.has(typeof k)).map((o) => typeof o === "string" ? escapeRegex(o) : o.toString()).join("|")})$`);
-			inst._zod.parse = (payload, _ctx) => {
-				const input = payload.value;
-				if (valuesSet.has(input)) return payload;
-				payload.issues.push({
-					code: "invalid_value",
-					values,
-					input,
-					inst
-				});
-				return payload;
-			};
-		});
-		const $ZodTransform = /*@__PURE__*/ $constructor("$ZodTransform", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.optin = "optional";
-			inst._zod.parse = (payload, ctx) => {
-				if (ctx.direction === "backward") throw new $ZodEncodeError(inst.constructor.name);
-				const _out = def.transform(payload.value, payload);
-				if (ctx.async) return (_out instanceof Promise ? _out : Promise.resolve(_out)).then((output) => {
-					payload.value = output;
-					payload.fallback = true;
-					return payload;
-				});
-				if (_out instanceof Promise) throw new $ZodAsyncError();
-				payload.value = _out;
-				payload.fallback = true;
-				return payload;
-			};
-		});
-		function handleOptionalResult(result, input) {
-			if (input === void 0 && (result.issues.length || result.fallback)) return {
-				issues: [],
-				value: void 0
-			};
-			return result;
-		}
-		const $ZodOptional = /*@__PURE__*/ $constructor("$ZodOptional", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.optin = "optional";
-			inst._zod.optout = "optional";
-			defineLazy(inst._zod, "values", () => {
-				return def.innerType._zod.values ? new Set([...def.innerType._zod.values, void 0]) : void 0;
-			});
-			defineLazy(inst._zod, "pattern", () => {
-				const pattern = def.innerType._zod.pattern;
-				return pattern ? new RegExp(`^(${cleanRegex(pattern.source)})?$`) : void 0;
-			});
-			inst._zod.parse = (payload, ctx) => {
-				if (def.innerType._zod.optin === "optional") {
-					const input = payload.value;
-					const result = def.innerType._zod.run(payload, ctx);
-					if (result instanceof Promise) return result.then((r) => handleOptionalResult(r, input));
-					return handleOptionalResult(result, input);
-				}
-				if (payload.value === void 0) return payload;
-				return def.innerType._zod.run(payload, ctx);
-			};
-		});
-		const $ZodExactOptional = /*@__PURE__*/ $constructor("$ZodExactOptional", (inst, def) => {
-			$ZodOptional.init(inst, def);
-			defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-			defineLazy(inst._zod, "pattern", () => def.innerType._zod.pattern);
-			inst._zod.parse = (payload, ctx) => {
-				return def.innerType._zod.run(payload, ctx);
-			};
-		});
-		const $ZodNullable = /*@__PURE__*/ $constructor("$ZodNullable", (inst, def) => {
-			$ZodType.init(inst, def);
-			defineLazy(inst._zod, "optin", () => def.innerType._zod.optin);
-			defineLazy(inst._zod, "optout", () => def.innerType._zod.optout);
-			defineLazy(inst._zod, "pattern", () => {
-				const pattern = def.innerType._zod.pattern;
-				return pattern ? new RegExp(`^(${cleanRegex(pattern.source)}|null)$`) : void 0;
-			});
-			defineLazy(inst._zod, "values", () => {
-				return def.innerType._zod.values ? new Set([...def.innerType._zod.values, null]) : void 0;
-			});
-			inst._zod.parse = (payload, ctx) => {
-				if (payload.value === null) return payload;
-				return def.innerType._zod.run(payload, ctx);
-			};
-		});
-		const $ZodDefault = /*@__PURE__*/ $constructor("$ZodDefault", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.optin = "optional";
-			defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-			inst._zod.parse = (payload, ctx) => {
-				if (ctx.direction === "backward") return def.innerType._zod.run(payload, ctx);
-				if (payload.value === void 0) {
-					payload.value = def.defaultValue;
-					/**
-					* $ZodDefault returns the default value immediately in forward direction.
-					* It doesn't pass the default value into the validator ("prefault"). There's no reason to pass the default value through validation. The validity of the default is enforced by TypeScript statically. Otherwise, it's the responsibility of the user to ensure the default is valid. In the case of pipes with divergent in/out types, you can specify the default on the `in` schema of your ZodPipe to set a "prefault" for the pipe.   */
-					return payload;
-				}
-				const result = def.innerType._zod.run(payload, ctx);
-				if (result instanceof Promise) return result.then((result) => handleDefaultResult(result, def));
-				return handleDefaultResult(result, def);
-			};
-		});
-		function handleDefaultResult(payload, def) {
-			if (payload.value === void 0) payload.value = def.defaultValue;
-			return payload;
-		}
-		const $ZodPrefault = /*@__PURE__*/ $constructor("$ZodPrefault", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.optin = "optional";
-			defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-			inst._zod.parse = (payload, ctx) => {
-				if (ctx.direction === "backward") return def.innerType._zod.run(payload, ctx);
-				if (payload.value === void 0) payload.value = def.defaultValue;
-				return def.innerType._zod.run(payload, ctx);
-			};
-		});
-		const $ZodNonOptional = /*@__PURE__*/ $constructor("$ZodNonOptional", (inst, def) => {
-			$ZodType.init(inst, def);
-			defineLazy(inst._zod, "values", () => {
-				const v = def.innerType._zod.values;
-				return v ? new Set([...v].filter((x) => x !== void 0)) : void 0;
-			});
-			inst._zod.parse = (payload, ctx) => {
-				const result = def.innerType._zod.run(payload, ctx);
-				if (result instanceof Promise) return result.then((result) => handleNonOptionalResult(result, inst));
-				return handleNonOptionalResult(result, inst);
-			};
-		});
-		function handleNonOptionalResult(payload, inst) {
-			if (!payload.issues.length && payload.value === void 0) payload.issues.push({
-				code: "invalid_type",
-				expected: "nonoptional",
-				input: payload.value,
-				inst
-			});
-			return payload;
-		}
-		const $ZodCatch = /*@__PURE__*/ $constructor("$ZodCatch", (inst, def) => {
-			$ZodType.init(inst, def);
-			inst._zod.optin = "optional";
-			defineLazy(inst._zod, "optout", () => def.innerType._zod.optout);
-			defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-			inst._zod.parse = (payload, ctx) => {
-				if (ctx.direction === "backward") return def.innerType._zod.run(payload, ctx);
-				const result = def.innerType._zod.run(payload, ctx);
-				if (result instanceof Promise) return result.then((result) => {
-					payload.value = result.value;
-					if (result.issues.length) {
-						payload.value = def.catchValue({
-							...payload,
-							error: { issues: result.issues.map((iss) => finalizeIssue(iss, ctx, config())) },
-							input: payload.value
-						});
-						payload.issues = [];
-						payload.fallback = true;
-					}
-					return payload;
-				});
-				payload.value = result.value;
-				if (result.issues.length) {
-					payload.value = def.catchValue({
-						...payload,
-						error: { issues: result.issues.map((iss) => finalizeIssue(iss, ctx, config())) },
-						input: payload.value
-					});
-					payload.issues = [];
-					payload.fallback = true;
-				}
-				return payload;
-			};
-		});
-		const $ZodPipe = /*@__PURE__*/ $constructor("$ZodPipe", (inst, def) => {
-			$ZodType.init(inst, def);
-			defineLazy(inst._zod, "values", () => def.in._zod.values);
-			defineLazy(inst._zod, "optin", () => def.in._zod.optin);
-			defineLazy(inst._zod, "optout", () => def.out._zod.optout);
-			defineLazy(inst._zod, "propValues", () => def.in._zod.propValues);
-			inst._zod.parse = (payload, ctx) => {
-				if (ctx.direction === "backward") {
-					const right = def.out._zod.run(payload, ctx);
-					if (right instanceof Promise) return right.then((right) => handlePipeResult(right, def.in, ctx));
-					return handlePipeResult(right, def.in, ctx);
-				}
-				const left = def.in._zod.run(payload, ctx);
-				if (left instanceof Promise) return left.then((left) => handlePipeResult(left, def.out, ctx));
-				return handlePipeResult(left, def.out, ctx);
-			};
-		});
-		function handlePipeResult(left, next, ctx) {
-			if (left.issues.length) {
-				left.aborted = true;
-				return left;
-			}
-			return next._zod.run({
-				value: left.value,
-				issues: left.issues,
-				fallback: left.fallback
-			}, ctx);
-		}
-		const $ZodReadonly = /*@__PURE__*/ $constructor("$ZodReadonly", (inst, def) => {
-			$ZodType.init(inst, def);
-			defineLazy(inst._zod, "propValues", () => def.innerType._zod.propValues);
-			defineLazy(inst._zod, "values", () => def.innerType._zod.values);
-			defineLazy(inst._zod, "optin", () => def.innerType?._zod?.optin);
-			defineLazy(inst._zod, "optout", () => def.innerType?._zod?.optout);
-			inst._zod.parse = (payload, ctx) => {
-				if (ctx.direction === "backward") return def.innerType._zod.run(payload, ctx);
-				const result = def.innerType._zod.run(payload, ctx);
-				if (result instanceof Promise) return result.then(handleReadonlyResult);
-				return handleReadonlyResult(result);
-			};
-		});
-		function handleReadonlyResult(payload) {
-			payload.value = Object.freeze(payload.value);
-			return payload;
-		}
-		const $ZodCustom = /*@__PURE__*/ $constructor("$ZodCustom", (inst, def) => {
-			$ZodCheck.init(inst, def);
-			$ZodType.init(inst, def);
-			inst._zod.parse = (payload, _) => {
-				return payload;
-			};
-			inst._zod.check = (payload) => {
-				const input = payload.value;
-				const r = def.fn(input);
-				if (r instanceof Promise) return r.then((r) => handleRefineResult(r, payload, input, inst));
-				handleRefineResult(r, payload, input, inst);
-			};
-		});
-		function handleRefineResult(result, payload, input, inst) {
-			if (!result) {
-				const _iss = {
-					code: "custom",
-					input,
-					inst,
-					path: [...inst._zod.def.path ?? []],
-					continue: !inst._zod.def.abort
-				};
-				if (inst._zod.def.params) _iss.params = inst._zod.def.params;
-				payload.issues.push(issue(_iss));
-			}
-		}
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/registries.js
-		var _a$1;
-		var $ZodRegistry = class {
-			constructor() {
-				this._map = /* @__PURE__ */ new WeakMap();
-				this._idmap = /* @__PURE__ */ new Map();
-			}
-			add(schema, ..._meta) {
-				const meta = _meta[0];
-				this._map.set(schema, meta);
-				if (meta && typeof meta === "object" && "id" in meta) this._idmap.set(meta.id, schema);
-				return this;
-			}
-			clear() {
-				this._map = /* @__PURE__ */ new WeakMap();
-				this._idmap = /* @__PURE__ */ new Map();
-				return this;
-			}
-			remove(schema) {
-				const meta = this._map.get(schema);
-				if (meta && typeof meta === "object" && "id" in meta) this._idmap.delete(meta.id);
-				this._map.delete(schema);
-				return this;
-			}
-			get(schema) {
-				const p = schema._zod.parent;
-				if (p) {
-					const pm = { ...this.get(p) ?? {} };
-					delete pm.id;
-					const f = {
-						...pm,
-						...this._map.get(schema)
-					};
-					return Object.keys(f).length ? f : void 0;
-				}
-				return this._map.get(schema);
-			}
-			has(schema) {
-				return this._map.has(schema);
+				let start = text.length;
+				const whitespace = /\s/u;
+				while (start > 0 && whitespace.test(text.charAt(start - 1))) start--;
+				return start === text.length || start < from ? void 0 : replacement(text, start, text.length, "");
 			}
 		};
-		function registry() {
-			return new $ZodRegistry();
-		}
-		(_a$1 = globalThis).__zod_globalRegistry ?? (_a$1.__zod_globalRegistry = registry());
-		const globalRegistry = globalThis.__zod_globalRegistry;
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/api.js
-		// @__NO_SIDE_EFFECTS__
-		function _string(Class, params) {
-			return new Class({
-				type: "string",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _email(Class, params) {
-			return new Class({
-				type: "string",
-				format: "email",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _guid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "guid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _uuid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "uuid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _uuidv4(Class, params) {
-			return new Class({
-				type: "string",
-				format: "uuid",
-				check: "string_format",
-				abort: false,
-				version: "v4",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _uuidv6(Class, params) {
-			return new Class({
-				type: "string",
-				format: "uuid",
-				check: "string_format",
-				abort: false,
-				version: "v6",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _uuidv7(Class, params) {
-			return new Class({
-				type: "string",
-				format: "uuid",
-				check: "string_format",
-				abort: false,
-				version: "v7",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _url(Class, params) {
-			return new Class({
-				type: "string",
-				format: "url",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _emoji(Class, params) {
-			return new Class({
-				type: "string",
-				format: "emoji",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _nanoid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "nanoid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		/**
-		* @deprecated CUID v1 is deprecated by its authors due to information leakage
-		* (timestamps embedded in the id). Use {@link _cuid2} instead.
-		* See https://github.com/paralleldrive/cuid.
-		*/
-		// @__NO_SIDE_EFFECTS__
-		function _cuid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "cuid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _cuid2(Class, params) {
-			return new Class({
-				type: "string",
-				format: "cuid2",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _ulid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "ulid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _xid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "xid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _ksuid(Class, params) {
-			return new Class({
-				type: "string",
-				format: "ksuid",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _ipv4(Class, params) {
-			return new Class({
-				type: "string",
-				format: "ipv4",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _ipv6(Class, params) {
-			return new Class({
-				type: "string",
-				format: "ipv6",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _cidrv4(Class, params) {
-			return new Class({
-				type: "string",
-				format: "cidrv4",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _cidrv6(Class, params) {
-			return new Class({
-				type: "string",
-				format: "cidrv6",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _base64(Class, params) {
-			return new Class({
-				type: "string",
-				format: "base64",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _base64url(Class, params) {
-			return new Class({
-				type: "string",
-				format: "base64url",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _e164(Class, params) {
-			return new Class({
-				type: "string",
-				format: "e164",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _jwt(Class, params) {
-			return new Class({
-				type: "string",
-				format: "jwt",
-				check: "string_format",
-				abort: false,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _isoDateTime(Class, params) {
-			return new Class({
-				type: "string",
-				format: "datetime",
-				check: "string_format",
-				offset: false,
-				local: false,
-				precision: null,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _isoDate(Class, params) {
-			return new Class({
-				type: "string",
-				format: "date",
-				check: "string_format",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _isoTime(Class, params) {
-			return new Class({
-				type: "string",
-				format: "time",
-				check: "string_format",
-				precision: null,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _isoDuration(Class, params) {
-			return new Class({
-				type: "string",
-				format: "duration",
-				check: "string_format",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _number(Class, params) {
-			return new Class({
-				type: "number",
-				checks: [],
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _int(Class, params) {
-			return new Class({
-				type: "number",
-				check: "number_format",
-				abort: false,
-				format: "safeint",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _boolean(Class, params) {
-			return new Class({
-				type: "boolean",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _unknown(Class) {
-			return new Class({ type: "unknown" });
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _never(Class, params) {
-			return new Class({
-				type: "never",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _lt(value, params) {
-			return new $ZodCheckLessThan({
-				check: "less_than",
-				...normalizeParams(params),
-				value,
-				inclusive: false
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _lte(value, params) {
-			return new $ZodCheckLessThan({
-				check: "less_than",
-				...normalizeParams(params),
-				value,
-				inclusive: true
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _gt(value, params) {
-			return new $ZodCheckGreaterThan({
-				check: "greater_than",
-				...normalizeParams(params),
-				value,
-				inclusive: false
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _gte(value, params) {
-			return new $ZodCheckGreaterThan({
-				check: "greater_than",
-				...normalizeParams(params),
-				value,
-				inclusive: true
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _multipleOf(value, params) {
-			return new $ZodCheckMultipleOf({
-				check: "multiple_of",
-				...normalizeParams(params),
-				value
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _maxLength(maximum, params) {
-			return new $ZodCheckMaxLength({
-				check: "max_length",
-				...normalizeParams(params),
-				maximum
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _minLength(minimum, params) {
-			return new $ZodCheckMinLength({
-				check: "min_length",
-				...normalizeParams(params),
-				minimum
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _length(length, params) {
-			return new $ZodCheckLengthEquals({
-				check: "length_equals",
-				...normalizeParams(params),
-				length
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _regex(pattern, params) {
-			return new $ZodCheckRegex({
-				check: "string_format",
-				format: "regex",
-				...normalizeParams(params),
-				pattern
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _lowercase(params) {
-			return new $ZodCheckLowerCase({
-				check: "string_format",
-				format: "lowercase",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _uppercase(params) {
-			return new $ZodCheckUpperCase({
-				check: "string_format",
-				format: "uppercase",
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _includes(includes, params) {
-			return new $ZodCheckIncludes({
-				check: "string_format",
-				format: "includes",
-				...normalizeParams(params),
-				includes
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _startsWith(prefix, params) {
-			return new $ZodCheckStartsWith({
-				check: "string_format",
-				format: "starts_with",
-				...normalizeParams(params),
-				prefix
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _endsWith(suffix, params) {
-			return new $ZodCheckEndsWith({
-				check: "string_format",
-				format: "ends_with",
-				...normalizeParams(params),
-				suffix
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _overwrite(tx) {
-			return new $ZodCheckOverwrite({
-				check: "overwrite",
-				tx
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _normalize(form) {
-			return /* @__PURE__ */ _overwrite((input) => input.normalize(form));
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _trim() {
-			return /* @__PURE__ */ _overwrite((input) => input.trim());
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _toLowerCase() {
-			return /* @__PURE__ */ _overwrite((input) => input.toLowerCase());
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _toUpperCase() {
-			return /* @__PURE__ */ _overwrite((input) => input.toUpperCase());
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _slugify() {
-			return /* @__PURE__ */ _overwrite((input) => slugify(input));
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _array(Class, element, params) {
-			return new Class({
-				type: "array",
-				element,
-				...normalizeParams(params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _refine(Class, fn, _params) {
-			return new Class({
-				type: "custom",
-				check: "custom",
-				fn,
-				...normalizeParams(_params)
-			});
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _superRefine(fn, params) {
-			const ch = /* @__PURE__ */ _check((payload) => {
-				payload.addIssue = (issue$2) => {
-					if (typeof issue$2 === "string") payload.issues.push(issue(issue$2, payload.value, ch._zod.def));
-					else {
-						const _issue = issue$2;
-						if (_issue.fatal) _issue.continue = false;
-						_issue.code ?? (_issue.code = "custom");
-						_issue.input ?? (_issue.input = payload.value);
-						_issue.inst ?? (_issue.inst = ch);
-						_issue.continue ?? (_issue.continue = !ch._zod.def.abort);
-						payload.issues.push(issue(_issue));
-					}
-				};
-				return fn(payload.value, payload);
-			}, params);
-			return ch;
-		}
-		// @__NO_SIDE_EFFECTS__
-		function _check(fn, params) {
-			const ch = new $ZodCheck({
-				check: "custom",
-				...normalizeParams(params)
-			});
-			ch._zod.check = fn;
-			return ch;
-		}
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/to-json-schema.js
-		function initializeContext(params) {
-			let target = params?.target ?? "draft-2020-12";
-			if (target === "draft-4") target = "draft-04";
-			if (target === "draft-7") target = "draft-07";
-			return {
-				processors: params.processors ?? {},
-				metadataRegistry: params?.metadata ?? globalRegistry,
-				target,
-				unrepresentable: params?.unrepresentable ?? "throw",
-				override: params?.override ?? (() => {}),
-				io: params?.io ?? "output",
-				counter: 0,
-				seen: /* @__PURE__ */ new Map(),
-				cycles: params?.cycles ?? "ref",
-				reused: params?.reused ?? "inline",
-				external: params?.external ?? void 0
-			};
-		}
-		function process(schema, ctx, _params = {
-			path: [],
-			schemaPath: []
-		}) {
-			var _a;
-			const def = schema._zod.def;
-			const seen = ctx.seen.get(schema);
-			if (seen) {
-				seen.count++;
-				if (_params.schemaPath.includes(schema)) seen.cycle = _params.path;
-				return seen.schema;
-			}
-			const result = {
-				schema: {},
-				count: 1,
-				cycle: void 0,
-				path: _params.path
-			};
-			ctx.seen.set(schema, result);
-			const overrideSchema = schema._zod.toJSONSchema?.();
-			if (overrideSchema) result.schema = overrideSchema;
-			else {
-				const params = {
-					..._params,
-					schemaPath: [..._params.schemaPath, schema],
-					path: _params.path
-				};
-				if (schema._zod.processJSONSchema) schema._zod.processJSONSchema(ctx, result.schema, params);
-				else {
-					const _json = result.schema;
-					const processor = ctx.processors[def.type];
-					if (!processor) throw new Error(`[toJSONSchema]: Non-representable type encountered: ${def.type}`);
-					processor(schema, ctx, _json, params);
-				}
-				const parent = schema._zod.parent;
-				if (parent) {
-					if (!result.ref) result.ref = parent;
-					process(parent, ctx, params);
-					ctx.seen.get(parent).isParent = true;
-				}
-			}
-			const meta = ctx.metadataRegistry.get(schema);
-			if (meta) Object.assign(result.schema, meta);
-			if (ctx.io === "input" && isTransforming(schema)) {
-				delete result.schema.examples;
-				delete result.schema.default;
-			}
-			if (ctx.io === "input" && "_prefault" in result.schema) (_a = result.schema).default ?? (_a.default = result.schema._prefault);
-			delete result.schema._prefault;
-			return ctx.seen.get(schema).schema;
-		}
-		function extractDefs(ctx, schema) {
-			const root = ctx.seen.get(schema);
-			if (!root) throw new Error("Unprocessed schema. This is a bug in Zod.");
-			const idToSchema = /* @__PURE__ */ new Map();
-			for (const entry of ctx.seen.entries()) {
-				const id = ctx.metadataRegistry.get(entry[0])?.id;
-				if (id) {
-					const existing = idToSchema.get(id);
-					if (existing && existing !== entry[0]) throw new Error(`Duplicate schema id "${id}" detected during JSON Schema conversion. Two different schemas cannot share the same id when converted together.`);
-					idToSchema.set(id, entry[0]);
-				}
-			}
-			const makeURI = (entry) => {
-				const defsSegment = ctx.target === "draft-2020-12" ? "$defs" : "definitions";
-				if (ctx.external) {
-					const externalId = ctx.external.registry.get(entry[0])?.id;
-					const uriGenerator = ctx.external.uri ?? ((id) => id);
-					if (externalId) return { ref: uriGenerator(externalId) };
-					const id = entry[1].defId ?? entry[1].schema.id ?? `schema${ctx.counter++}`;
-					entry[1].defId = id;
-					return {
-						defId: id,
-						ref: `${uriGenerator("__shared")}#/${defsSegment}/${id}`
-					};
-				}
-				if (entry[1] === root) return { ref: "#" };
-				const defUriPrefix = `#/${defsSegment}/`;
-				const defId = entry[1].schema.id ?? `__schema${ctx.counter++}`;
-				return {
-					defId,
-					ref: defUriPrefix + defId
-				};
-			};
-			const extractToDef = (entry) => {
-				if (entry[1].schema.$ref) return;
-				const seen = entry[1];
-				const { ref, defId } = makeURI(entry);
-				seen.def = { ...seen.schema };
-				if (defId) seen.defId = defId;
-				const schema = seen.schema;
-				for (const key in schema) delete schema[key];
-				schema.$ref = ref;
-			};
-			if (ctx.cycles === "throw") for (const entry of ctx.seen.entries()) {
-				const seen = entry[1];
-				if (seen.cycle) throw new Error(`Cycle detected: #/${seen.cycle?.join("/")}/<root>
-
-Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.`);
-			}
-			for (const entry of ctx.seen.entries()) {
-				const seen = entry[1];
-				if (schema === entry[0]) {
-					extractToDef(entry);
-					continue;
-				}
-				if (ctx.external) {
-					const ext = ctx.external.registry.get(entry[0])?.id;
-					if (schema !== entry[0] && ext) {
-						extractToDef(entry);
-						continue;
-					}
-				}
-				if (ctx.metadataRegistry.get(entry[0])?.id) {
-					extractToDef(entry);
-					continue;
-				}
-				if (seen.cycle) {
-					extractToDef(entry);
-					continue;
-				}
-				if (seen.count > 1) {
-					if (ctx.reused === "ref") {
-						extractToDef(entry);
-						continue;
-					}
-				}
-			}
-		}
-		function finalize(ctx, schema) {
-			const root = ctx.seen.get(schema);
-			if (!root) throw new Error("Unprocessed schema. This is a bug in Zod.");
-			const flattenRef = (zodSchema) => {
-				const seen = ctx.seen.get(zodSchema);
-				if (seen.ref === null) return;
-				const schema = seen.def ?? seen.schema;
-				const _cached = { ...schema };
-				const ref = seen.ref;
-				seen.ref = null;
-				if (ref) {
-					flattenRef(ref);
-					const refSeen = ctx.seen.get(ref);
-					const refSchema = refSeen.schema;
-					if (refSchema.$ref && (ctx.target === "draft-07" || ctx.target === "draft-04" || ctx.target === "openapi-3.0")) {
-						schema.allOf = schema.allOf ?? [];
-						schema.allOf.push(refSchema);
-					} else Object.assign(schema, refSchema);
-					Object.assign(schema, _cached);
-					if (zodSchema._zod.parent === ref) for (const key in schema) {
-						if (key === "$ref" || key === "allOf") continue;
-						if (!(key in _cached)) delete schema[key];
-					}
-					if (refSchema.$ref && refSeen.def) for (const key in schema) {
-						if (key === "$ref" || key === "allOf") continue;
-						if (key in refSeen.def && JSON.stringify(schema[key]) === JSON.stringify(refSeen.def[key])) delete schema[key];
-					}
-				}
-				const parent = zodSchema._zod.parent;
-				if (parent && parent !== ref) {
-					flattenRef(parent);
-					const parentSeen = ctx.seen.get(parent);
-					if (parentSeen?.schema.$ref) {
-						schema.$ref = parentSeen.schema.$ref;
-						if (parentSeen.def) for (const key in schema) {
-							if (key === "$ref" || key === "allOf") continue;
-							if (key in parentSeen.def && JSON.stringify(schema[key]) === JSON.stringify(parentSeen.def[key])) delete schema[key];
-						}
-					}
-				}
-				ctx.override({
-					zodSchema,
-					jsonSchema: schema,
-					path: seen.path ?? []
-				});
-			};
-			for (const entry of [...ctx.seen.entries()].reverse()) flattenRef(entry[0]);
-			const result = {};
-			if (ctx.target === "draft-2020-12") result.$schema = "https://json-schema.org/draft/2020-12/schema";
-			else if (ctx.target === "draft-07") result.$schema = "http://json-schema.org/draft-07/schema#";
-			else if (ctx.target === "draft-04") result.$schema = "http://json-schema.org/draft-04/schema#";
-			else if (ctx.target === "openapi-3.0") {}
-			if (ctx.external?.uri) {
-				const id = ctx.external.registry.get(schema)?.id;
-				if (!id) throw new Error("Schema is missing an `id` property");
-				result.$id = ctx.external.uri(id);
-			}
-			Object.assign(result, root.def ?? root.schema);
-			const rootMetaId = ctx.metadataRegistry.get(schema)?.id;
-			if (rootMetaId !== void 0 && result.id === rootMetaId) delete result.id;
-			const defs = ctx.external?.defs ?? {};
-			for (const entry of ctx.seen.entries()) {
-				const seen = entry[1];
-				if (seen.def && seen.defId) {
-					if (seen.def.id === seen.defId) delete seen.def.id;
-					defs[seen.defId] = seen.def;
-				}
-			}
-			if (ctx.external) {} else if (Object.keys(defs).length > 0) if (ctx.target === "draft-2020-12") result.$defs = defs;
-			else result.definitions = defs;
-			try {
-				const finalized = JSON.parse(JSON.stringify(result));
-				Object.defineProperty(finalized, "~standard", {
-					value: {
-						...schema["~standard"],
-						jsonSchema: {
-							input: createStandardJSONSchemaMethod(schema, "input", ctx.processors),
-							output: createStandardJSONSchemaMethod(schema, "output", ctx.processors)
-						}
-					},
-					enumerable: false,
-					writable: false
-				});
-				return finalized;
-			} catch (_err) {
-				throw new Error("Error converting schema to JSON.");
-			}
-		}
-		function isTransforming(_schema, _ctx) {
-			const ctx = _ctx ?? { seen: /* @__PURE__ */ new Set() };
-			if (ctx.seen.has(_schema)) return false;
-			ctx.seen.add(_schema);
-			const def = _schema._zod.def;
-			if (def.type === "transform") return true;
-			if (def.type === "array") return isTransforming(def.element, ctx);
-			if (def.type === "set") return isTransforming(def.valueType, ctx);
-			if (def.type === "lazy") return isTransforming(def.getter(), ctx);
-			if (def.type === "promise" || def.type === "optional" || def.type === "nonoptional" || def.type === "nullable" || def.type === "readonly" || def.type === "default" || def.type === "prefault") return isTransforming(def.innerType, ctx);
-			if (def.type === "intersection") return isTransforming(def.left, ctx) || isTransforming(def.right, ctx);
-			if (def.type === "record" || def.type === "map") return isTransforming(def.keyType, ctx) || isTransforming(def.valueType, ctx);
-			if (def.type === "pipe") {
-				if (_schema._zod.traits.has("$ZodCodec")) return true;
-				return isTransforming(def.in, ctx) || isTransforming(def.out, ctx);
-			}
-			if (def.type === "object") {
-				for (const key in def.shape) if (isTransforming(def.shape[key], ctx)) return true;
-				return false;
-			}
-			if (def.type === "union") {
-				for (const option of def.options) if (isTransforming(option, ctx)) return true;
-				return false;
-			}
-			if (def.type === "tuple") {
-				for (const item of def.items) if (isTransforming(item, ctx)) return true;
-				if (def.rest && isTransforming(def.rest, ctx)) return true;
-				return false;
-			}
-			return false;
-		}
-		/**
-		* Creates a toJSONSchema method for a schema instance.
-		* This encapsulates the logic of initializing context, processing, extracting defs, and finalizing.
-		*/
-		const createToJSONSchemaMethod = (schema, processors = {}) => (params) => {
-			const ctx = initializeContext({
-				...params,
-				processors
-			});
-			process(schema, ctx);
-			extractDefs(ctx, schema);
-			return finalize(ctx, schema);
-		};
-		const createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) => {
-			const { libraryOptions, target } = params ?? {};
-			const ctx = initializeContext({
-				...libraryOptions ?? {},
-				target,
-				io,
-				processors
-			});
-			process(schema, ctx);
-			extractDefs(ctx, schema);
-			return finalize(ctx, schema);
-		};
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/core/json-schema-processors.js
-		const formatMap = {
-			guid: "uuid",
-			url: "uri",
-			datetime: "date-time",
-			json_string: "json-string",
-			regex: ""
-		};
-		const stringProcessor = (schema, ctx, _json, _params) => {
-			const json = _json;
-			json.type = "string";
-			const { minimum, maximum, format, patterns, contentEncoding } = schema._zod.bag;
-			if (typeof minimum === "number") json.minLength = minimum;
-			if (typeof maximum === "number") json.maxLength = maximum;
-			if (format) {
-				json.format = formatMap[format] ?? format;
-				if (json.format === "") delete json.format;
-				if (format === "time") delete json.format;
-			}
-			if (contentEncoding) json.contentEncoding = contentEncoding;
-			if (patterns && patterns.size > 0) {
-				const regexes = [...patterns];
-				if (regexes.length === 1) json.pattern = regexes[0].source;
-				else if (regexes.length > 1) json.allOf = [...regexes.map((regex) => ({
-					...ctx.target === "draft-07" || ctx.target === "draft-04" || ctx.target === "openapi-3.0" ? { type: "string" } : {},
-					pattern: regex.source
-				}))];
-			}
-		};
-		const numberProcessor = (schema, ctx, _json, _params) => {
-			const json = _json;
-			const { minimum, maximum, format, multipleOf, exclusiveMaximum, exclusiveMinimum } = schema._zod.bag;
-			if (typeof format === "string" && format.includes("int")) json.type = "integer";
-			else json.type = "number";
-			const exMin = typeof exclusiveMinimum === "number" && exclusiveMinimum >= (minimum ?? Number.NEGATIVE_INFINITY);
-			const exMax = typeof exclusiveMaximum === "number" && exclusiveMaximum <= (maximum ?? Number.POSITIVE_INFINITY);
-			const legacy = ctx.target === "draft-04" || ctx.target === "openapi-3.0";
-			if (exMin) if (legacy) {
-				json.minimum = exclusiveMinimum;
-				json.exclusiveMinimum = true;
-			} else json.exclusiveMinimum = exclusiveMinimum;
-			else if (typeof minimum === "number") json.minimum = minimum;
-			if (exMax) if (legacy) {
-				json.maximum = exclusiveMaximum;
-				json.exclusiveMaximum = true;
-			} else json.exclusiveMaximum = exclusiveMaximum;
-			else if (typeof maximum === "number") json.maximum = maximum;
-			if (typeof multipleOf === "number") json.multipleOf = multipleOf;
-		};
-		const booleanProcessor = (_schema, _ctx, json, _params) => {
-			json.type = "boolean";
-		};
-		const neverProcessor = (_schema, _ctx, json, _params) => {
-			json.not = {};
-		};
-		const enumProcessor = (schema, _ctx, json, _params) => {
-			const def = schema._zod.def;
-			const values = getEnumValues(def.entries);
-			if (values.every((v) => typeof v === "number")) json.type = "number";
-			if (values.every((v) => typeof v === "string")) json.type = "string";
-			json.enum = values;
-		};
-		const customProcessor = (_schema, ctx, _json, _params) => {
-			if (ctx.unrepresentable === "throw") throw new Error("Custom types cannot be represented in JSON Schema");
-		};
-		const transformProcessor = (_schema, ctx, _json, _params) => {
-			if (ctx.unrepresentable === "throw") throw new Error("Transforms cannot be represented in JSON Schema");
-		};
-		const arrayProcessor = (schema, ctx, _json, params) => {
-			const json = _json;
-			const def = schema._zod.def;
-			const { minimum, maximum } = schema._zod.bag;
-			if (typeof minimum === "number") json.minItems = minimum;
-			if (typeof maximum === "number") json.maxItems = maximum;
-			json.type = "array";
-			json.items = process(def.element, ctx, {
-				...params,
-				path: [...params.path, "items"]
-			});
-		};
-		const objectProcessor = (schema, ctx, _json, params) => {
-			const json = _json;
-			const def = schema._zod.def;
-			json.type = "object";
-			json.properties = {};
-			const shape = def.shape;
-			for (const key in shape) json.properties[key] = process(shape[key], ctx, {
-				...params,
-				path: [
-					...params.path,
-					"properties",
-					key
-				]
-			});
-			const allKeys = new Set(Object.keys(shape));
-			const requiredKeys = new Set([...allKeys].filter((key) => {
-				const v = def.shape[key]._zod;
-				if (ctx.io === "input") return v.optin === void 0;
-				else return v.optout === void 0;
-			}));
-			if (requiredKeys.size > 0) json.required = Array.from(requiredKeys);
-			if (def.catchall?._zod.def.type === "never") json.additionalProperties = false;
-			else if (!def.catchall) {
-				if (ctx.io === "output") json.additionalProperties = false;
-			} else if (def.catchall) json.additionalProperties = process(def.catchall, ctx, {
-				...params,
-				path: [...params.path, "additionalProperties"]
-			});
-		};
-		const unionProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			const isExclusive = def.inclusive === false;
-			const options = def.options.map((x, i) => process(x, ctx, {
-				...params,
-				path: [
-					...params.path,
-					isExclusive ? "oneOf" : "anyOf",
-					i
-				]
-			}));
-			if (isExclusive) json.oneOf = options;
-			else json.anyOf = options;
-		};
-		const intersectionProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			const a = process(def.left, ctx, {
-				...params,
-				path: [
-					...params.path,
-					"allOf",
-					0
-				]
-			});
-			const b = process(def.right, ctx, {
-				...params,
-				path: [
-					...params.path,
-					"allOf",
-					1
-				]
-			});
-			const isSimpleIntersection = (val) => "allOf" in val && Object.keys(val).length === 1;
-			json.allOf = [...isSimpleIntersection(a) ? a.allOf : [a], ...isSimpleIntersection(b) ? b.allOf : [b]];
-		};
-		const nullableProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			const inner = process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			if (ctx.target === "openapi-3.0") {
-				seen.ref = def.innerType;
-				json.nullable = true;
-			} else json.anyOf = [inner, { type: "null" }];
-		};
-		const nonoptionalProcessor = (schema, ctx, _json, params) => {
-			const def = schema._zod.def;
-			process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = def.innerType;
-		};
-		const defaultProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = def.innerType;
-			json.default = JSON.parse(JSON.stringify(def.defaultValue));
-		};
-		const prefaultProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = def.innerType;
-			if (ctx.io === "input") json._prefault = JSON.parse(JSON.stringify(def.defaultValue));
-		};
-		const catchProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = def.innerType;
-			let catchValue;
-			try {
-				catchValue = def.catchValue(void 0);
-			} catch {
-				throw new Error("Dynamic catch values are not supported in JSON Schema");
-			}
-			json.default = catchValue;
-		};
-		const pipeProcessor = (schema, ctx, _json, params) => {
-			const def = schema._zod.def;
-			const inIsTransform = def.in._zod.traits.has("$ZodTransform");
-			const innerType = ctx.io === "input" ? inIsTransform ? def.out : def.in : def.out;
-			process(innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = innerType;
-		};
-		const readonlyProcessor = (schema, ctx, json, params) => {
-			const def = schema._zod.def;
-			process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = def.innerType;
-			json.readOnly = true;
-		};
-		const optionalProcessor = (schema, ctx, _json, params) => {
-			const def = schema._zod.def;
-			process(def.innerType, ctx, params);
-			const seen = ctx.seen.get(schema);
-			seen.ref = def.innerType;
-		};
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/iso.js
-		const ZodISODateTime = /*@__PURE__*/ $constructor("ZodISODateTime", (inst, def) => {
-			$ZodISODateTime.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		function datetime(params) {
-			return /* @__PURE__ */ _isoDateTime(ZodISODateTime, params);
-		}
-		const ZodISODate = /*@__PURE__*/ $constructor("ZodISODate", (inst, def) => {
-			$ZodISODate.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		function date(params) {
-			return /* @__PURE__ */ _isoDate(ZodISODate, params);
-		}
-		const ZodISOTime = /*@__PURE__*/ $constructor("ZodISOTime", (inst, def) => {
-			$ZodISOTime.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		function time(params) {
-			return /* @__PURE__ */ _isoTime(ZodISOTime, params);
-		}
-		const ZodISODuration = /*@__PURE__*/ $constructor("ZodISODuration", (inst, def) => {
-			$ZodISODuration.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		function duration(params) {
-			return /* @__PURE__ */ _isoDuration(ZodISODuration, params);
-		}
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/errors.js
-		const initializer = (inst, issues) => {
-			$ZodError.init(inst, issues);
-			inst.name = "ZodError";
-			Object.defineProperties(inst, {
-				format: { value: (mapper) => formatError(inst, mapper) },
-				flatten: { value: (mapper) => flattenError(inst, mapper) },
-				addIssue: { value: (issue) => {
-					inst.issues.push(issue);
-					inst.message = JSON.stringify(inst.issues, jsonStringifyReplacer, 2);
-				} },
-				addIssues: { value: (issues) => {
-					inst.issues.push(...issues);
-					inst.message = JSON.stringify(inst.issues, jsonStringifyReplacer, 2);
-				} },
-				isEmpty: { get() {
-					return inst.issues.length === 0;
-				} }
-			});
-		};
-		const ZodRealError = /*@__PURE__*/ $constructor("ZodError", initializer, { Parent: Error });
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/parse.js
-		const parse = /* @__PURE__ */ _parse(ZodRealError);
-		const parseAsync = /* @__PURE__ */ _parseAsync(ZodRealError);
-		const safeParse = /* @__PURE__ */ _safeParse(ZodRealError);
-		const safeParseAsync = /* @__PURE__ */ _safeParseAsync(ZodRealError);
-		const encode = /* @__PURE__ */ _encode(ZodRealError);
-		const decode = /* @__PURE__ */ _decode(ZodRealError);
-		const encodeAsync = /* @__PURE__ */ _encodeAsync(ZodRealError);
-		const decodeAsync = /* @__PURE__ */ _decodeAsync(ZodRealError);
-		const safeEncode = /* @__PURE__ */ _safeEncode(ZodRealError);
-		const safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
-		const safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
-		const safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
-		//#endregion
-		//#region ../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/v4/classic/schemas.js
-		const _installedGroups = /* @__PURE__ */ new WeakMap();
-		function _installLazyMethods(inst, group, methods) {
-			const proto = Object.getPrototypeOf(inst);
-			let installed = _installedGroups.get(proto);
-			if (!installed) {
-				installed = /* @__PURE__ */ new Set();
-				_installedGroups.set(proto, installed);
-			}
-			if (installed.has(group)) return;
-			installed.add(group);
-			for (const key in methods) {
-				const fn = methods[key];
-				Object.defineProperty(proto, key, {
-					configurable: true,
-					enumerable: false,
-					get() {
-						const bound = fn.bind(this);
-						Object.defineProperty(this, key, {
-							configurable: true,
-							writable: true,
-							enumerable: true,
-							value: bound
-						});
-						return bound;
-					},
-					set(v) {
-						Object.defineProperty(this, key, {
-							configurable: true,
-							writable: true,
-							enumerable: true,
-							value: v
-						});
-					}
-				});
-			}
-		}
-		const ZodType = /*@__PURE__*/ $constructor("ZodType", (inst, def) => {
-			$ZodType.init(inst, def);
-			Object.assign(inst["~standard"], { jsonSchema: {
-				input: createStandardJSONSchemaMethod(inst, "input"),
-				output: createStandardJSONSchemaMethod(inst, "output")
-			} });
-			inst.toJSONSchema = createToJSONSchemaMethod(inst, {});
-			inst.def = def;
-			inst.type = def.type;
-			Object.defineProperty(inst, "_def", { value: def });
-			inst.parse = (data, params) => parse(inst, data, params, { callee: inst.parse });
-			inst.safeParse = (data, params) => safeParse(inst, data, params);
-			inst.parseAsync = async (data, params) => parseAsync(inst, data, params, { callee: inst.parseAsync });
-			inst.safeParseAsync = async (data, params) => safeParseAsync(inst, data, params);
-			inst.spa = inst.safeParseAsync;
-			inst.encode = (data, params) => encode(inst, data, params);
-			inst.decode = (data, params) => decode(inst, data, params);
-			inst.encodeAsync = async (data, params) => encodeAsync(inst, data, params);
-			inst.decodeAsync = async (data, params) => decodeAsync(inst, data, params);
-			inst.safeEncode = (data, params) => safeEncode(inst, data, params);
-			inst.safeDecode = (data, params) => safeDecode(inst, data, params);
-			inst.safeEncodeAsync = async (data, params) => safeEncodeAsync(inst, data, params);
-			inst.safeDecodeAsync = async (data, params) => safeDecodeAsync(inst, data, params);
-			_installLazyMethods(inst, "ZodType", {
-				check(...chks) {
-					const def = this.def;
-					return this.clone(mergeDefs(def, { checks: [...def.checks ?? [], ...chks.map((ch) => typeof ch === "function" ? { _zod: {
-						check: ch,
-						def: { check: "custom" },
-						onattach: []
-					} } : ch)] }), { parent: true });
-				},
-				with(...chks) {
-					return this.check(...chks);
-				},
-				clone(def, params) {
-					return clone(this, def, params);
-				},
-				brand() {
-					return this;
-				},
-				register(reg, meta) {
-					reg.add(this, meta);
-					return this;
-				},
-				refine(check, params) {
-					return this.check(refine(check, params));
-				},
-				superRefine(refinement, params) {
-					return this.check(superRefine(refinement, params));
-				},
-				overwrite(fn) {
-					return this.check(/* @__PURE__ */ _overwrite(fn));
-				},
-				optional() {
-					return optional(this);
-				},
-				exactOptional() {
-					return exactOptional(this);
-				},
-				nullable() {
-					return nullable(this);
-				},
-				nullish() {
-					return optional(nullable(this));
-				},
-				nonoptional(params) {
-					return nonoptional(this, params);
-				},
-				array() {
-					return array(this);
-				},
-				or(arg) {
-					return union([this, arg]);
-				},
-				and(arg) {
-					return intersection(this, arg);
-				},
-				transform(tx) {
-					return pipe(this, transform(tx));
-				},
-				default(d) {
-					return _default(this, d);
-				},
-				prefault(d) {
-					return prefault(this, d);
-				},
-				catch(params) {
-					return _catch(this, params);
-				},
-				pipe(target) {
-					return pipe(this, target);
-				},
-				readonly() {
-					return readonly(this);
-				},
-				describe(description) {
-					const cl = this.clone();
-					globalRegistry.add(cl, { description });
-					return cl;
-				},
-				meta(...args) {
-					if (args.length === 0) return globalRegistry.get(this);
-					const cl = this.clone();
-					globalRegistry.add(cl, args[0]);
-					return cl;
-				},
-				isOptional() {
-					return this.safeParse(void 0).success;
-				},
-				isNullable() {
-					return this.safeParse(null).success;
-				},
-				apply(fn) {
-					return fn(this);
-				}
-			});
-			Object.defineProperty(inst, "description", {
-				get() {
-					return globalRegistry.get(inst)?.description;
-				},
-				configurable: true
-			});
-			return inst;
-		});
-		/** @internal */
-		const _ZodString = /*@__PURE__*/ $constructor("_ZodString", (inst, def) => {
-			$ZodString.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => stringProcessor(inst, ctx, json, params);
-			const bag = inst._zod.bag;
-			inst.format = bag.format ?? null;
-			inst.minLength = bag.minimum ?? null;
-			inst.maxLength = bag.maximum ?? null;
-			_installLazyMethods(inst, "_ZodString", {
-				regex(...args) {
-					return this.check(/* @__PURE__ */ _regex(...args));
-				},
-				includes(...args) {
-					return this.check(/* @__PURE__ */ _includes(...args));
-				},
-				startsWith(...args) {
-					return this.check(/* @__PURE__ */ _startsWith(...args));
-				},
-				endsWith(...args) {
-					return this.check(/* @__PURE__ */ _endsWith(...args));
-				},
-				min(...args) {
-					return this.check(/* @__PURE__ */ _minLength(...args));
-				},
-				max(...args) {
-					return this.check(/* @__PURE__ */ _maxLength(...args));
-				},
-				length(...args) {
-					return this.check(/* @__PURE__ */ _length(...args));
-				},
-				nonempty(...args) {
-					return this.check(/* @__PURE__ */ _minLength(1, ...args));
-				},
-				lowercase(params) {
-					return this.check(/* @__PURE__ */ _lowercase(params));
-				},
-				uppercase(params) {
-					return this.check(/* @__PURE__ */ _uppercase(params));
-				},
-				trim() {
-					return this.check(/* @__PURE__ */ _trim());
-				},
-				normalize(...args) {
-					return this.check(/* @__PURE__ */ _normalize(...args));
-				},
-				toLowerCase() {
-					return this.check(/* @__PURE__ */ _toLowerCase());
-				},
-				toUpperCase() {
-					return this.check(/* @__PURE__ */ _toUpperCase());
-				},
-				slugify() {
-					return this.check(/* @__PURE__ */ _slugify());
-				}
-			});
-		});
-		const ZodString = /*@__PURE__*/ $constructor("ZodString", (inst, def) => {
-			$ZodString.init(inst, def);
-			_ZodString.init(inst, def);
-			inst.email = (params) => inst.check(/* @__PURE__ */ _email(ZodEmail, params));
-			inst.url = (params) => inst.check(/* @__PURE__ */ _url(ZodURL, params));
-			inst.jwt = (params) => inst.check(/* @__PURE__ */ _jwt(ZodJWT, params));
-			inst.emoji = (params) => inst.check(/* @__PURE__ */ _emoji(ZodEmoji, params));
-			inst.guid = (params) => inst.check(/* @__PURE__ */ _guid(ZodGUID, params));
-			inst.uuid = (params) => inst.check(/* @__PURE__ */ _uuid(ZodUUID, params));
-			inst.uuidv4 = (params) => inst.check(/* @__PURE__ */ _uuidv4(ZodUUID, params));
-			inst.uuidv6 = (params) => inst.check(/* @__PURE__ */ _uuidv6(ZodUUID, params));
-			inst.uuidv7 = (params) => inst.check(/* @__PURE__ */ _uuidv7(ZodUUID, params));
-			inst.nanoid = (params) => inst.check(/* @__PURE__ */ _nanoid(ZodNanoID, params));
-			inst.guid = (params) => inst.check(/* @__PURE__ */ _guid(ZodGUID, params));
-			inst.cuid = (params) => inst.check(/* @__PURE__ */ _cuid(ZodCUID, params));
-			inst.cuid2 = (params) => inst.check(/* @__PURE__ */ _cuid2(ZodCUID2, params));
-			inst.ulid = (params) => inst.check(/* @__PURE__ */ _ulid(ZodULID, params));
-			inst.base64 = (params) => inst.check(/* @__PURE__ */ _base64(ZodBase64, params));
-			inst.base64url = (params) => inst.check(/* @__PURE__ */ _base64url(ZodBase64URL, params));
-			inst.xid = (params) => inst.check(/* @__PURE__ */ _xid(ZodXID, params));
-			inst.ksuid = (params) => inst.check(/* @__PURE__ */ _ksuid(ZodKSUID, params));
-			inst.ipv4 = (params) => inst.check(/* @__PURE__ */ _ipv4(ZodIPv4, params));
-			inst.ipv6 = (params) => inst.check(/* @__PURE__ */ _ipv6(ZodIPv6, params));
-			inst.cidrv4 = (params) => inst.check(/* @__PURE__ */ _cidrv4(ZodCIDRv4, params));
-			inst.cidrv6 = (params) => inst.check(/* @__PURE__ */ _cidrv6(ZodCIDRv6, params));
-			inst.e164 = (params) => inst.check(/* @__PURE__ */ _e164(ZodE164, params));
-			inst.datetime = (params) => inst.check(datetime(params));
-			inst.date = (params) => inst.check(date(params));
-			inst.time = (params) => inst.check(time(params));
-			inst.duration = (params) => inst.check(duration(params));
-		});
-		function string(params) {
-			return /* @__PURE__ */ _string(ZodString, params);
-		}
-		const ZodStringFormat = /*@__PURE__*/ $constructor("ZodStringFormat", (inst, def) => {
-			$ZodStringFormat.init(inst, def);
-			_ZodString.init(inst, def);
-		});
-		const ZodEmail = /*@__PURE__*/ $constructor("ZodEmail", (inst, def) => {
-			$ZodEmail.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodGUID = /*@__PURE__*/ $constructor("ZodGUID", (inst, def) => {
-			$ZodGUID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodUUID = /*@__PURE__*/ $constructor("ZodUUID", (inst, def) => {
-			$ZodUUID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodURL = /*@__PURE__*/ $constructor("ZodURL", (inst, def) => {
-			$ZodURL.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodEmoji = /*@__PURE__*/ $constructor("ZodEmoji", (inst, def) => {
-			$ZodEmoji.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodNanoID = /*@__PURE__*/ $constructor("ZodNanoID", (inst, def) => {
-			$ZodNanoID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		/**
-		* @deprecated CUID v1 is deprecated by its authors due to information leakage
-		* (timestamps embedded in the id). Use {@link ZodCUID2} instead.
-		* See https://github.com/paralleldrive/cuid.
-		*/
-		const ZodCUID = /*@__PURE__*/ $constructor("ZodCUID", (inst, def) => {
-			$ZodCUID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodCUID2 = /*@__PURE__*/ $constructor("ZodCUID2", (inst, def) => {
-			$ZodCUID2.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodULID = /*@__PURE__*/ $constructor("ZodULID", (inst, def) => {
-			$ZodULID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodXID = /*@__PURE__*/ $constructor("ZodXID", (inst, def) => {
-			$ZodXID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodKSUID = /*@__PURE__*/ $constructor("ZodKSUID", (inst, def) => {
-			$ZodKSUID.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodIPv4 = /*@__PURE__*/ $constructor("ZodIPv4", (inst, def) => {
-			$ZodIPv4.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodIPv6 = /*@__PURE__*/ $constructor("ZodIPv6", (inst, def) => {
-			$ZodIPv6.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodCIDRv4 = /*@__PURE__*/ $constructor("ZodCIDRv4", (inst, def) => {
-			$ZodCIDRv4.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodCIDRv6 = /*@__PURE__*/ $constructor("ZodCIDRv6", (inst, def) => {
-			$ZodCIDRv6.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodBase64 = /*@__PURE__*/ $constructor("ZodBase64", (inst, def) => {
-			$ZodBase64.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodBase64URL = /*@__PURE__*/ $constructor("ZodBase64URL", (inst, def) => {
-			$ZodBase64URL.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodE164 = /*@__PURE__*/ $constructor("ZodE164", (inst, def) => {
-			$ZodE164.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodJWT = /*@__PURE__*/ $constructor("ZodJWT", (inst, def) => {
-			$ZodJWT.init(inst, def);
-			ZodStringFormat.init(inst, def);
-		});
-		const ZodNumber = /*@__PURE__*/ $constructor("ZodNumber", (inst, def) => {
-			$ZodNumber.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => numberProcessor(inst, ctx, json, params);
-			_installLazyMethods(inst, "ZodNumber", {
-				gt(value, params) {
-					return this.check(/* @__PURE__ */ _gt(value, params));
-				},
-				gte(value, params) {
-					return this.check(/* @__PURE__ */ _gte(value, params));
-				},
-				min(value, params) {
-					return this.check(/* @__PURE__ */ _gte(value, params));
-				},
-				lt(value, params) {
-					return this.check(/* @__PURE__ */ _lt(value, params));
-				},
-				lte(value, params) {
-					return this.check(/* @__PURE__ */ _lte(value, params));
-				},
-				max(value, params) {
-					return this.check(/* @__PURE__ */ _lte(value, params));
-				},
-				int(params) {
-					return this.check(int(params));
-				},
-				safe(params) {
-					return this.check(int(params));
-				},
-				positive(params) {
-					return this.check(/* @__PURE__ */ _gt(0, params));
-				},
-				nonnegative(params) {
-					return this.check(/* @__PURE__ */ _gte(0, params));
-				},
-				negative(params) {
-					return this.check(/* @__PURE__ */ _lt(0, params));
-				},
-				nonpositive(params) {
-					return this.check(/* @__PURE__ */ _lte(0, params));
-				},
-				multipleOf(value, params) {
-					return this.check(/* @__PURE__ */ _multipleOf(value, params));
-				},
-				step(value, params) {
-					return this.check(/* @__PURE__ */ _multipleOf(value, params));
-				},
-				finite() {
-					return this;
-				}
-			});
-			const bag = inst._zod.bag;
-			inst.minValue = Math.max(bag.minimum ?? Number.NEGATIVE_INFINITY, bag.exclusiveMinimum ?? Number.NEGATIVE_INFINITY) ?? null;
-			inst.maxValue = Math.min(bag.maximum ?? Number.POSITIVE_INFINITY, bag.exclusiveMaximum ?? Number.POSITIVE_INFINITY) ?? null;
-			inst.isInt = (bag.format ?? "").includes("int") || Number.isSafeInteger(bag.multipleOf ?? .5);
-			inst.isFinite = true;
-			inst.format = bag.format ?? null;
-		});
-		function number(params) {
-			return /* @__PURE__ */ _number(ZodNumber, params);
-		}
-		const ZodNumberFormat = /*@__PURE__*/ $constructor("ZodNumberFormat", (inst, def) => {
-			$ZodNumberFormat.init(inst, def);
-			ZodNumber.init(inst, def);
-		});
-		function int(params) {
-			return /* @__PURE__ */ _int(ZodNumberFormat, params);
-		}
-		const ZodBoolean = /*@__PURE__*/ $constructor("ZodBoolean", (inst, def) => {
-			$ZodBoolean.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => booleanProcessor(inst, ctx, json, params);
-		});
-		function boolean(params) {
-			return /* @__PURE__ */ _boolean(ZodBoolean, params);
-		}
-		const ZodUnknown = /*@__PURE__*/ $constructor("ZodUnknown", (inst, def) => {
-			$ZodUnknown.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => void 0;
-		});
-		function unknown() {
-			return /* @__PURE__ */ _unknown(ZodUnknown);
-		}
-		const ZodNever = /*@__PURE__*/ $constructor("ZodNever", (inst, def) => {
-			$ZodNever.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => neverProcessor(inst, ctx, json, params);
-		});
-		function never(params) {
-			return /* @__PURE__ */ _never(ZodNever, params);
-		}
-		const ZodArray = /*@__PURE__*/ $constructor("ZodArray", (inst, def) => {
-			$ZodArray.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => arrayProcessor(inst, ctx, json, params);
-			inst.element = def.element;
-			_installLazyMethods(inst, "ZodArray", {
-				min(n, params) {
-					return this.check(/* @__PURE__ */ _minLength(n, params));
-				},
-				nonempty(params) {
-					return this.check(/* @__PURE__ */ _minLength(1, params));
-				},
-				max(n, params) {
-					return this.check(/* @__PURE__ */ _maxLength(n, params));
-				},
-				length(n, params) {
-					return this.check(/* @__PURE__ */ _length(n, params));
-				},
-				unwrap() {
-					return this.element;
-				}
-			});
-		});
-		function array(element, params) {
-			return /* @__PURE__ */ _array(ZodArray, element, params);
-		}
-		const ZodObject = /*@__PURE__*/ $constructor("ZodObject", (inst, def) => {
-			$ZodObjectJIT.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => objectProcessor(inst, ctx, json, params);
-			defineLazy(inst, "shape", () => {
-				return def.shape;
-			});
-			_installLazyMethods(inst, "ZodObject", {
-				keyof() {
-					return _enum(Object.keys(this._zod.def.shape));
-				},
-				catchall(catchall) {
-					return this.clone({
-						...this._zod.def,
-						catchall
-					});
-				},
-				passthrough() {
-					return this.clone({
-						...this._zod.def,
-						catchall: unknown()
-					});
-				},
-				loose() {
-					return this.clone({
-						...this._zod.def,
-						catchall: unknown()
-					});
-				},
-				strict() {
-					return this.clone({
-						...this._zod.def,
-						catchall: never()
-					});
-				},
-				strip() {
-					return this.clone({
-						...this._zod.def,
-						catchall: void 0
-					});
-				},
-				extend(incoming) {
-					return extend(this, incoming);
-				},
-				safeExtend(incoming) {
-					return safeExtend(this, incoming);
-				},
-				merge(other) {
-					return merge(this, other);
-				},
-				pick(mask) {
-					return pick(this, mask);
-				},
-				omit(mask) {
-					return omit(this, mask);
-				},
-				partial(...args) {
-					return partial(ZodOptional, this, args[0]);
-				},
-				required(...args) {
-					return required(ZodNonOptional, this, args[0]);
-				}
-			});
-		});
-		function object(shape, params) {
-			return new ZodObject({
-				type: "object",
-				shape: shape ?? {},
-				...normalizeParams(params)
-			});
-		}
-		const ZodUnion = /*@__PURE__*/ $constructor("ZodUnion", (inst, def) => {
-			$ZodUnion.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => unionProcessor(inst, ctx, json, params);
-			inst.options = def.options;
-		});
-		function union(options, params) {
-			return new ZodUnion({
-				type: "union",
-				options,
-				...normalizeParams(params)
-			});
-		}
-		const ZodIntersection = /*@__PURE__*/ $constructor("ZodIntersection", (inst, def) => {
-			$ZodIntersection.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => intersectionProcessor(inst, ctx, json, params);
-		});
-		function intersection(left, right) {
-			return new ZodIntersection({
-				type: "intersection",
-				left,
-				right
-			});
-		}
-		const ZodEnum = /*@__PURE__*/ $constructor("ZodEnum", (inst, def) => {
-			$ZodEnum.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => enumProcessor(inst, ctx, json, params);
-			inst.enum = def.entries;
-			inst.options = Object.values(def.entries);
-			const keys = new Set(Object.keys(def.entries));
-			inst.extract = (values, params) => {
-				const newEntries = {};
-				for (const value of values) if (keys.has(value)) newEntries[value] = def.entries[value];
-				else throw new Error(`Key ${value} not found in enum`);
-				return new ZodEnum({
-					...def,
-					checks: [],
-					...normalizeParams(params),
-					entries: newEntries
-				});
-			};
-			inst.exclude = (values, params) => {
-				const newEntries = { ...def.entries };
-				for (const value of values) if (keys.has(value)) delete newEntries[value];
-				else throw new Error(`Key ${value} not found in enum`);
-				return new ZodEnum({
-					...def,
-					checks: [],
-					...normalizeParams(params),
-					entries: newEntries
-				});
-			};
-		});
-		function _enum(values, params) {
-			return new ZodEnum({
-				type: "enum",
-				entries: Array.isArray(values) ? Object.fromEntries(values.map((v) => [v, v])) : values,
-				...normalizeParams(params)
-			});
-		}
-		const ZodTransform = /*@__PURE__*/ $constructor("ZodTransform", (inst, def) => {
-			$ZodTransform.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => transformProcessor(inst, ctx, json, params);
-			inst._zod.parse = (payload, _ctx) => {
-				if (_ctx.direction === "backward") throw new $ZodEncodeError(inst.constructor.name);
-				payload.addIssue = (issue$1) => {
-					if (typeof issue$1 === "string") payload.issues.push(issue(issue$1, payload.value, def));
-					else {
-						const _issue = issue$1;
-						if (_issue.fatal) _issue.continue = false;
-						_issue.code ?? (_issue.code = "custom");
-						_issue.input ?? (_issue.input = payload.value);
-						_issue.inst ?? (_issue.inst = inst);
-						payload.issues.push(issue(_issue));
-					}
-				};
-				const output = def.transform(payload.value, payload);
-				if (output instanceof Promise) return output.then((output) => {
-					payload.value = output;
-					payload.fallback = true;
-					return payload;
-				});
-				payload.value = output;
-				payload.fallback = true;
-				return payload;
-			};
-		});
-		function transform(fn) {
-			return new ZodTransform({
-				type: "transform",
-				transform: fn
-			});
-		}
-		const ZodOptional = /*@__PURE__*/ $constructor("ZodOptional", (inst, def) => {
-			$ZodOptional.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => optionalProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-		});
-		function optional(innerType) {
-			return new ZodOptional({
-				type: "optional",
-				innerType
-			});
-		}
-		const ZodExactOptional = /*@__PURE__*/ $constructor("ZodExactOptional", (inst, def) => {
-			$ZodExactOptional.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => optionalProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-		});
-		function exactOptional(innerType) {
-			return new ZodExactOptional({
-				type: "optional",
-				innerType
-			});
-		}
-		const ZodNullable = /*@__PURE__*/ $constructor("ZodNullable", (inst, def) => {
-			$ZodNullable.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => nullableProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-		});
-		function nullable(innerType) {
-			return new ZodNullable({
-				type: "nullable",
-				innerType
-			});
-		}
-		const ZodDefault = /*@__PURE__*/ $constructor("ZodDefault", (inst, def) => {
-			$ZodDefault.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => defaultProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-			inst.removeDefault = inst.unwrap;
-		});
-		function _default(innerType, defaultValue) {
-			return new ZodDefault({
-				type: "default",
-				innerType,
-				get defaultValue() {
-					return typeof defaultValue === "function" ? defaultValue() : shallowClone(defaultValue);
-				}
-			});
-		}
-		const ZodPrefault = /*@__PURE__*/ $constructor("ZodPrefault", (inst, def) => {
-			$ZodPrefault.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => prefaultProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-		});
-		function prefault(innerType, defaultValue) {
-			return new ZodPrefault({
-				type: "prefault",
-				innerType,
-				get defaultValue() {
-					return typeof defaultValue === "function" ? defaultValue() : shallowClone(defaultValue);
-				}
-			});
-		}
-		const ZodNonOptional = /*@__PURE__*/ $constructor("ZodNonOptional", (inst, def) => {
-			$ZodNonOptional.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => nonoptionalProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-		});
-		function nonoptional(innerType, params) {
-			return new ZodNonOptional({
-				type: "nonoptional",
-				innerType,
-				...normalizeParams(params)
-			});
-		}
-		const ZodCatch = /*@__PURE__*/ $constructor("ZodCatch", (inst, def) => {
-			$ZodCatch.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => catchProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-			inst.removeCatch = inst.unwrap;
-		});
-		function _catch(innerType, catchValue) {
-			return new ZodCatch({
-				type: "catch",
-				innerType,
-				catchValue: typeof catchValue === "function" ? catchValue : () => catchValue
-			});
-		}
-		const ZodPipe = /*@__PURE__*/ $constructor("ZodPipe", (inst, def) => {
-			$ZodPipe.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => pipeProcessor(inst, ctx, json, params);
-			inst.in = def.in;
-			inst.out = def.out;
-		});
-		function pipe(in_, out) {
-			return new ZodPipe({
-				type: "pipe",
-				in: in_,
-				out
-			});
-		}
-		const ZodReadonly = /*@__PURE__*/ $constructor("ZodReadonly", (inst, def) => {
-			$ZodReadonly.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => readonlyProcessor(inst, ctx, json, params);
-			inst.unwrap = () => inst._zod.def.innerType;
-		});
-		function readonly(innerType) {
-			return new ZodReadonly({
-				type: "readonly",
-				innerType
-			});
-		}
-		const ZodCustom = /*@__PURE__*/ $constructor("ZodCustom", (inst, def) => {
-			$ZodCustom.init(inst, def);
-			ZodType.init(inst, def);
-			inst._zod.processJSONSchema = (ctx, json, params) => customProcessor(inst, ctx, json, params);
-		});
-		function refine(fn, _params = {}) {
-			return /* @__PURE__ */ _refine(ZodCustom, fn, _params);
-		}
-		function superRefine(fn, params) {
-			return /* @__PURE__ */ _superRefine(fn, params);
-		}
 		//#endregion
 		//#region lib/types/client/draft.js
 		/** Semantic draft snapshots shared by storage, programmatic input, and editor restoration. */
-		const referenceSchema = object({
-			source: string(),
-			ref: string(),
-			offset: number().int().nonnegative(),
-			length: number().int().positive(),
-			label: string(),
-			appearance: _enum([
+		const referenceSchema = zod.z.object({
+			source: zod.z.string(),
+			ref: zod.z.string(),
+			offset: zod.z.number().int().nonnegative(),
+			length: zod.z.number().int().positive(),
+			label: zod.z.string(),
+			appearance: zod.z.enum([
 				"session",
 				"file",
 				"folder"
 			]).optional(),
-			clipboardText: string(),
-			invalid: boolean().optional()
+			clipboardText: zod.z.string(),
+			invalid: zod.z.boolean().optional()
 		});
-		const snapshotSchema = object({
-			text: string(),
-			references: array(referenceSchema)
+		const commandSchema = zod.z.object({ token: zod.z.string() });
+		const quoteSchema = zod.z.object({
+			offset: zod.z.number().int().nonnegative(),
+			length: zod.z.number().int().positive(),
+			text: zod.z.string().refine((text) => text.trim() !== "")
+		});
+		const snapshotSchema = zod.z.object({
+			text: zod.z.string(),
+			references: zod.z.array(referenceSchema),
+			command: commandSchema.optional(),
+			quotes: zod.z.array(quoteSchema).optional()
 		}).refine((draft) => {
-			let end = 0;
+			const spelling = draft.command?.token.trimEnd();
+			if (spelling !== void 0 && (!/^\/\S/u.test(spelling) || !draft.text.startsWith(spelling))) return false;
+			let end = spelling?.length ?? 0;
 			for (const reference of draft.references) {
 				if (reference.offset < end || reference.length !== reference.clipboardText.length) return false;
 				end = reference.offset + reference.length;
 				if (end > draft.text.length || draft.text.slice(reference.offset, end) !== reference.clipboardText) return false;
 			}
+			for (const quote of draft.quotes ?? []) if (quote.length !== (0, _deepseek_ai_dsh_client_ui_primitives.formatQuoteText)(quote.text).length || draft.text.slice(quote.offset, quote.offset + quote.length) !== (0, _deepseek_ai_dsh_client_ui_primitives.formatQuoteText)(quote.text)) return false;
+			end = spelling?.length ?? 0;
+			for (const span of [...draft.references, ...draft.quotes ?? []].sort((a, b) => a.offset - b.offset)) {
+				if (span.offset < end) return false;
+				end = span.offset + span.length;
+				if (end > draft.text.length) return false;
+			}
 			return true;
-		}, "Draft references must identify ordered, non-overlapping text spans");
+		}, "Draft references must identify ordered, non-overlapping text spans after the leading command token");
 		/**
 		* Copy input into the semantic draft representation without editor runtime identities.
 		* @param input - plain text or caller-owned structured content.
@@ -7908,7 +4509,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			};
 			return {
 				text: input.text,
-				references: input.references.map(copyReference)
+				references: input.references.map(copyReference),
+				...input.command === void 0 ? {} : { command: { token: input.command.token } },
+				...input.quotes === void 0 ? {} : { quotes: input.quotes.map((quote) => ({ ...quote })) }
 			};
 		}
 		/**
@@ -7922,23 +4525,29 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			if (!parsed.success) return void 0;
 			return {
 				text: parsed.data.text,
+				...parsed.data.quotes === void 0 ? {} : { quotes: parsed.data.quotes },
 				references: parsed.data.references.map(({ appearance, invalid, ...reference }) => ({
 					...reference,
 					...appearance === void 0 ? {} : { appearance },
 					...invalid === void 0 ? {} : { invalid }
-				}))
+				})),
+				...parsed.data.command === void 0 ? {} : { command: { token: parsed.data.command.token } }
 			};
 		}
 		/**
 		* Export reference identities without their editor-local occurrence ids.
 		* @param text - current clipboard projection.
 		* @param occurrences - matching reference projections from the same document revision.
+		* @param commandToken - claim token of the command chip opening the document, if any.
+		* @param quotes - atomic quotes from the same document revision.
 		* @returns an editor-independent snapshot.
 		*/
-		function snapshotDraft(text, occurrences) {
+		function snapshotDraft(text, occurrences, commandToken, quotes = []) {
 			return {
 				text,
-				references: occurrences.map(copyReference)
+				references: occurrences.map(copyReference),
+				...commandToken === void 0 ? {} : { command: { token: commandToken } },
+				...quotes.length === 0 ? {} : { quotes: quotes.map((quote) => ({ ...quote })) }
 			};
 		}
 		function copyReference(reference) {
@@ -8157,7 +4766,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			input;
 			/** The per-session composer-block registry. */
 			blocks;
-			/** Live upload state per file-kind draft; images never appear here. */
+			/** Live upload state per draft that uploads when added: every file draft and every uploaded image draft. */
 			fileUploads = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({});
 			draftAttachments = /* @__PURE__ */ new Map();
 			fileUploadOperations = /* @__PURE__ */ new Map();
@@ -8202,20 +4811,25 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				if (!result.ok) throw new Error(`conversation.send failed: ${result.error.code}: ${result.error.message}`);
 			}
 			/**
-			* Submit ordered draft attachments with text through one host admission. A local
-			* submission echo enters the session snapshot synchronously; serialization
-			* and the prompt round-trip start after the browser can paint it. On the
-			* echo's observed retirement seeds admitted image previews into the durable
-			* cache and removes every attachment from the draft registry. On failure,
-			* every attachment remains registered so the composer can restore it.
+			* Submit ordered draft attachments with text through one host admission. A
+			* local submission echo is registered first and enters the session snapshot
+			* once the Host accepts the prompt; serialization and the prompt round-trip
+			* start after the browser can paint the composer's sending state. The
+			* outcome is success as soon as the Host accepts the prompt, which an Inbox
+			* row carrying the request id can show before the receipt. The echo's
+			* observed retirement seeds admitted image previews into the durable cache
+			* and removes every attachment from the draft registry; an accepted prompt
+			* whose echo retires unobserved also releases them. Until the Host accepts
+			* the prompt, every attachment remains registered for the composer.
 			* @param session - target session.
 			* @param text - serialized prompt text.
 			* @param attachmentIds - ordered draft-local attachment ids.
 			* @param mode - queue or steer delivery selected by composer policy.
 			* @param signal - optional cancellation for the complete Host admission.
+			* @param accept - called inside the Session's acceptance, before the echo renders, so the composer settles with it.
 			* @returns the Host admission outcome; local attachment preparation failures reject.
 			*/
-			async sendSession(session, text, attachmentIds, mode, signal) {
+			async sendSession(session, text, attachmentIds, mode, signal, accept) {
 				const attachments = this.resolveDraftAttachments(attachmentIds);
 				if (attachments.length !== attachmentIds.length) throw new Error("conversation.sendSession: one or more draft attachments are no longer available");
 				const uploads = this.fileUploads.getSnapshot();
@@ -8224,6 +4838,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					if (upload === void 0 || upload.status !== "ready") throw new Error("conversation.sendSession: one or more files have not finished uploading");
 					return upload;
 				};
+				const storedFileOf = (attachment) => uploadFor(attachment).file;
+				const imageReceipts = new Map(attachments.flatMap((attachment) => attachment.kind === "image" && uploads[attachment.id] !== void 0 ? [[attachment.id, uploadFor(attachment).receiptId]] : []));
 				const pendingAttachments = attachments.map((attachment) => attachment.kind === "image" ? {
 					type: "image",
 					value: {
@@ -8234,33 +4850,40 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					}
 				} : {
 					type: "file",
-					value: uploadFor(attachment).file
+					value: storedFileOf(attachment)
 				});
-				const serializeAttachments = () => Promise.all(attachments.map(async (attachment) => attachment.kind === "image" ? {
-					type: "image",
-					...await this.encodeImage(attachment.file)
-				} : {
-					type: "file",
-					receiptId: uploadFor(attachment).receiptId
+				const serializeAttachments = () => Promise.all(attachments.map(async (attachment) => {
+					if (attachment.kind === "file") return {
+						type: "file",
+						receiptId: uploadFor(attachment).receiptId
+					};
+					const receiptId = imageReceipts.get(attachment.id);
+					return receiptId === void 0 ? {
+						type: "image",
+						...await this.encodeImage(attachment.file)
+					} : {
+						type: "file",
+						receiptId
+					};
 				}));
-				if (session.getSnapshot().subagent !== null) {
-					const content = [...await serializeAttachments(), ...text === "" ? [] : [{
-						type: "text",
-						text
-					}]];
-					return (await session.prompt(content, mode, signal)).ok ? { kind: "success" } : { kind: "error" };
-				}
-				let finishRetirement;
-				const retirement = attachments.length === 0 ? void 0 : new Promise((resolve) => {
-					finishRetirement = resolve;
-				});
+				const ownership = {
+					accepted: false,
+					retiredUnobserved: false
+				};
+				const acceptance = Promise.withResolvers();
 				const submission = session.beginSubmission({
 					mode,
 					text,
 					attachments: pendingAttachments,
+					onAccept: () => {
+						ownership.accepted = true;
+						accept?.();
+						acceptance.resolve(void 0);
+					},
 					onRetire: (settlement) => {
-						this.settleSubmittedAttachments(session.sessionId, attachments, settlement);
-						finishRetirement?.(settlement);
+						if (settlement.reason === "observed") this.settleSubmittedAttachments(session.sessionId, attachments, settlement);
+						else if (ownership.accepted) this.releaseDraftAttachments(attachments);
+						else ownership.retiredUnobserved = true;
 					}
 				});
 				let content;
@@ -8274,26 +4897,32 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					submission.abandon();
 					throw error;
 				}
-				if (!(await session.prompt(content, mode, signal, submission.requestId)).ok) return { kind: "error" };
-				if (retirement !== void 0 && (await retirement).reason !== "observed") return { kind: "error" };
+				const result = await Promise.race([session.prompt(content, mode, signal, submission.requestId), acceptance.promise]);
+				if (result !== void 0 && !result.ok) return { kind: "error" };
+				ownership.accepted = true;
+				if (ownership.retiredUnobserved) this.releaseDraftAttachments(attachments);
 				return { kind: "success" };
 			}
 			/**
 			* Create runtime-only draft attachments. Files whose browser MIME is an
-			* accepted image type become image drafts (object URL preview, bytes sent
-			* with the prompt); every other file becomes a file draft whose background
-			* upload starts immediately and remains owned by this service across Session
-			* navigation until completion or explicit removal.
+			* accepted image type become image drafts with an object URL preview; every
+			* other file becomes a file draft. A file draft's background upload starts
+			* immediately, and so does an image draft's when `uploadImages` is set; the
+			* upload remains owned by this service across Session navigation until
+			* completion or explicit removal. An image draft without an upload sends its
+			* bytes with the prompt.
 			* @param sessionId - target Agent-scope identity.
 			* @param files - browser files to register.
+			* @param uploadImages - whether the Session accepts image uploads; a subagent continuation does not.
 			* @returns ordered draft descriptors.
 			*/
-			createDrafts(sessionId, files) {
+			createDrafts(sessionId, files, uploadImages) {
 				return files.map((file) => {
 					if (isImageMediaType(file.type)) {
 						const attachment = browserDraftAttachment(file);
 						this.draftAttachments.set(attachment.id, attachment);
 						probeDimensions(attachment);
+						if (uploadImages) this.beginFileUpload(sessionId, attachment);
 						return attachment;
 					}
 					const attachment = {
@@ -8307,25 +4936,28 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				});
 			}
 			/**
-			* Restart one failed file upload.
+			* Restart one failed file or image upload.
 			* @param sessionId - target Agent-scope identity.
 			* @param id - draft attachment id whose upload previously failed.
 			*/
 			retryFileUpload(sessionId, id) {
 				const attachment = this.draftAttachments.get(id);
-				if (attachment === void 0 || attachment.kind !== "file") return;
+				if (attachment === void 0) return;
 				if (this.fileUploads.getSnapshot()[id]?.status !== "error") return;
 				this.beginFileUpload(sessionId, attachment);
 			}
 			/**
-			* Stage carried file drafts again for a new Session.
+			* Stage carried file and image drafts again for a new Session.
 			* @param sessionId - target Agent-scope identity after a Workspace switch.
 			* @param ids - carried draft attachment ids.
+			* @param uploadImages - whether the target Session stages image uploads; an image draft otherwise sends inline.
 			*/
-			rebindDraftFiles(sessionId, ids) {
+			rebindDraftFiles(sessionId, ids, uploadImages) {
 				for (const id of ids) {
 					const attachment = this.draftAttachments.get(id);
-					if (attachment?.kind === "file") this.beginFileUpload(sessionId, attachment);
+					if (attachment === void 0) continue;
+					if (attachment.kind === "image" && !uploadImages) this.dropUpload(id);
+					else this.beginFileUpload(sessionId, attachment);
 				}
 			}
 			beginFileUpload(sessionId, attachment) {
@@ -8349,30 +4981,44 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				done.then(() => {
 					this.pendingFileUploads.delete(done);
 				});
+				const name = attachment.file.name === "" ? void 0 : attachment.file.name;
+				const onProgress = (progress) => {
+					if (this.fileUploadOperations.get(attachment.id)?.controller !== controller) return;
+					this.fileUploads.update((draft) => {
+						if (!(attachment.id in draft)) return;
+						draft[attachment.id] = {
+							status: "uploading",
+							loaded: progress.loaded,
+							...progress.total === void 0 ? {} : { total: progress.total }
+						};
+					});
+				};
 				const run = async () => {
 					try {
 						if (controller.signal.aborted || this.fileUploadOperations.get(attachment.id)?.controller !== controller) return;
-						const result = await this.ctx.fileUpload.upload(sessionId, attachment.file, attachment.file.name === "" ? void 0 : attachment.file.name, controller.signal, (progress) => {
-							if (this.fileUploadOperations.get(attachment.id)?.controller !== controller) return;
-							this.fileUploads.update((draft) => {
-								if (!(attachment.id in draft)) return;
-								draft[attachment.id] = {
-									status: "uploading",
-									loaded: progress.loaded,
-									...progress.total === void 0 ? {} : { total: progress.total }
-								};
-							});
-						});
+						const result = attachment.kind === "image" ? await this.ctx.fileUpload.uploadImage(sessionId, attachment.file, imageMediaType(attachment.file.type), name, controller.signal, onProgress) : await this.ctx.fileUpload.upload(sessionId, attachment.file, name, controller.signal, onProgress);
 						if (this.fileUploadOperations.get(attachment.id)?.controller !== controller) return;
 						this.fileUploads.update((draft) => {
 							if (!(attachment.id in draft)) return;
-							draft[attachment.id] = result.ok ? {
-								status: "ready",
-								receiptId: result.value.receiptId,
-								file: result.value.file
+							if (result.ok) {
+								draft[attachment.id] = "file" in result.value ? {
+									status: "ready",
+									receiptId: result.value.receiptId,
+									file: result.value.file
+								} : {
+									status: "ready",
+									receiptId: result.value.receiptId
+								};
+								return;
+							}
+							const { error } = result;
+							draft[attachment.id] = error.code === "session/attachment-invalid" || error.code === "subagent/attachment-invalid" ? {
+								status: "error",
+								message: error.message,
+								reason: error.details.reason
 							} : {
 								status: "error",
-								message: result.error.message
+								message: error.message
 							};
 						});
 					} catch (error) {
@@ -8422,8 +5068,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			/**
 			* Serialize ordered draft attachments to command-submit wire payloads without
-			* sending or releasing them. Images are encoded; generic files cite receipts
-			* from their completed background uploads and never reread browser bytes.
+			* sending or releasing them. Images are encoded even when an upload already
+			* stored them, because commands accept only file receipts; generic files cite
+			* receipts from their completed background uploads and never reread browser bytes.
 			* @param attachmentIds - ordered draft-local attachment ids.
 			* @returns wire payloads in id order.
 			*/
@@ -8451,15 +5098,22 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			releaseDraftAttachment(id) {
 				const attachment = this.draftAttachments.get(id);
 				if (attachment === void 0) return;
+				this.draftAttachments.delete(id);
+				if (attachment.kind === "image") revokePreview(attachment.previewUrl);
+				this.dropUpload(id);
+			}
+			/** Abort one draft's active upload and drop its upload state. */
+			dropUpload(id) {
 				const operation = this.fileUploadOperations.get(id);
 				this.fileUploadOperations.delete(id);
 				operation?.controller.abort();
-				this.draftAttachments.delete(id);
-				if (attachment.kind === "image") {
-					revokePreview(attachment.previewUrl);
-					return;
-				}
-				this.fileUploads.set(Object.fromEntries(Object.entries(this.fileUploads.getSnapshot()).filter(([key]) => key !== id)));
+				this.forgetUpload(id);
+			}
+			/** Drop one draft's upload state. */
+			forgetUpload(id) {
+				const uploads = this.fileUploads.getSnapshot();
+				if (!(id in uploads)) return;
+				this.fileUploads.set(Object.fromEntries(Object.entries(uploads).filter(([key]) => key !== id)));
 			}
 			/**
 			* Release a set of browser-owned draft attachments.
@@ -8504,15 +5158,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return sessions;
 			}
 			/**
-			* Settle one submission's draft attachments when its echo retires. Observed:
-			* each image leaves the registry, handing its preview URL to the durable
-			* image cache (seeded under the admitted reference so the transcript node
-			* renders immediately while the cache reads canonical bytes) or revoking it
-			* when the cache already holds that reference. Failed: nothing changes;
-			* the ids stay registered for the composer's rail restore.
+			* Settle one submission's draft attachments when its echo is observed: each
+			* file is released, and each image leaves the registry, handing its preview
+			* URL to the durable image cache (seeded under the admitted reference so the
+			* transcript node renders immediately while the cache reads canonical
+			* bytes) or revoking it when the cache already holds that reference.
 			*/
 			settleSubmittedAttachments(sessionId, attachments, retirement) {
-				if (retirement.reason !== "observed") return;
 				const uiConversation = this.ctx.get("uiConversation");
 				let observedIndex = 0;
 				for (const attachment of attachments) {
@@ -8524,6 +5176,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						continue;
 					}
 					this.draftAttachments.delete(attachment.id);
+					this.forgetUpload(attachment.id);
 					if (ref !== void 0 && "mediaType" in ref && uiConversation?.seedImageUrl(sessionId, ref, attachment.previewUrl) === true) continue;
 					revokePreview(attachment.previewUrl);
 				}
@@ -8595,6 +5248,89 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 		};
 		//#endregion
+		//#region lib/types/client/input/prompt.js
+		/** Serialize semantic draft spans without turning quoted references into gestures. */
+		const QUOTE_SEPARATOR = "\n\n";
+		function pushText(tokens, text) {
+			if (text === "") return;
+			const last = tokens.at(-1);
+			if (last?.kind === "text") last.text += text;
+			else tokens.push({
+				kind: "text",
+				text
+			});
+		}
+		function normalizeQuoteBoundaries(tokens) {
+			const normalized = [];
+			for (const token of tokens) {
+				if (token.kind === "text") {
+					pushText(normalized, token.text);
+					continue;
+				}
+				const previous = normalized.at(-1);
+				if (previous?.kind === "text") {
+					previous.text = previous.text.trimEnd();
+					if (previous.text !== "") previous.text += QUOTE_SEPARATOR;
+					else normalized.pop();
+				}
+				if (normalized.at(-1)?.kind === "quote") normalized.push({
+					kind: "text",
+					text: QUOTE_SEPARATOR
+				});
+				normalized.push(token);
+			}
+			for (let index = 0; index < normalized.length; index++) {
+				if (normalized[index]?.kind !== "quote") continue;
+				const next = normalized[index + 1];
+				if (next?.kind !== "text") continue;
+				if (next.text === QUOTE_SEPARATOR && normalized[index + 2]?.kind === "quote") continue;
+				next.text = next.text.trimStart();
+				if (next.text !== "") next.text = `${QUOTE_SEPARATOR}${next.text}`;
+			}
+			return normalized.filter((token) => token.kind === "quote" || token.text !== "");
+		}
+		/**
+		* Serialize the captured draft through reference codecs, formatting quotes as Markdown.
+		* @param draft - one semantic draft revision.
+		* @param serializeReference - owner-routed reference serializer.
+		* @returns synchronous content without references, otherwise the resolving promise.
+		*/
+		function serializeDraftPrompt(draft, serializeReference) {
+			const build = (references) => {
+				const spans = [...references, ...(draft.quotes ?? []).map((quote) => ({
+					offset: quote.offset,
+					length: quote.length,
+					token: {
+						kind: "quote",
+						text: quote.text
+					}
+				}))].sort((a, b) => a.offset - b.offset);
+				const tokens = [];
+				let cursor = 0;
+				for (const span of spans) {
+					pushText(tokens, draft.text.slice(cursor, span.offset));
+					if (span.token.kind === "text") pushText(tokens, span.token.text);
+					else tokens.push(span.token);
+					cursor = span.offset + span.length;
+				}
+				pushText(tokens, draft.text.slice(cursor));
+				const first = tokens[0];
+				if (first?.kind === "text") first.text = first.text.trimStart();
+				const last = tokens.at(-1);
+				if (last?.kind === "text") last.text = last.text.trimEnd();
+				return normalizeQuoteBoundaries(tokens).map((token) => token.kind === "quote" ? (0, _deepseek_ai_dsh_client_ui_primitives.formatQuoteText)(token.text) : token.text).join("");
+			};
+			if (draft.references.length === 0) return build([]);
+			return Promise.all(draft.references.map(async (reference) => ({
+				offset: reference.offset,
+				length: reference.length,
+				token: {
+					kind: "text",
+					text: await serializeReference(reference.source, reference.ref)
+				}
+			}))).then(build);
+		}
+		//#endregion
 		//#region lib/types/client/input/machine.js
 		/** Exhaustiveness backstop for the closed InputEvent union. */
 		function unreachable(value) {
@@ -8611,18 +5347,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			return "";
 		}
-		/** A claimed name may stand alone; arguments require the token's separator. */
-		function retainsClaim(draft, token) {
-			return draft.startsWith(token) || draft === token.trimEnd();
-		}
 		/** Pure phase, claim, and attempt owner for one Session input. */
 		var SubmitMachine = class {
 			phase = "plain";
 			claim;
 			seq = 0;
 			inflight;
-			/** Ordinary sends detached from the editor, retained for settlement validation and cancellation. */
-			detached = /* @__PURE__ */ new Map();
 			/** Read-only snapshot of the submit-plane state. */
 			get state() {
 				const c = this.claim;
@@ -8636,6 +5366,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					} } : {}
 				};
 			}
+			/** The attempt of the message being sent; undefined outside the sending phase. */
+			get sendingAttempt() {
+				return this.phase === "sending" ? this.inflight?.attempt : void 0;
+			}
 			/**
 			* Feed one event through the machine.
 			* @param ev - submit-plane event.
@@ -8643,78 +5377,66 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			*/
 			dispatch(ev) {
 				switch (ev.type) {
-					case "draft-changed": return this.onDraftChanged(ev.draft);
-					case "claim": return this.onClaim(ev.claim);
-					case "enter": return this.onEnter(ev.mode, ev.draft, ev.submission);
+					case "draft-changed": return this.followCommand(ev.command);
+					case "claim": return this.followCommand(ev.claim);
+					case "enter": return this.onEnter(ev);
 					case "adjudicated": return this.onAdjudicated(ev.attempt, ev.outcome);
 					case "adjudication-failed": return this.onAdjudicationFailed(ev.attempt, ev.message);
 					case "submit-settled": return this.onSubmitSettled(ev);
 					case "sink-settled": return this.onSinkSettled(ev);
-					case "send-committed": return this.onSendCommitted();
 					case "release": return this.onRelease();
 					default: return unreachable(ev);
 				}
 			}
-			/** The complete command name retains its claim with or without the argument separator. */
-			onDraftChanged(draft) {
-				if (this.phase === "claimed" && this.claim !== void 0 && !retainsClaim(draft, this.claim.token)) {
-					this.phase = "plain";
-					this.claim = void 0;
-				}
-				return [];
-			}
-			/** The editor applied a claim-token replacement; busy phases refuse another claim. */
-			onClaim(claim) {
+			/**
+			* Outside a transaction the claim follows the document's leading command
+			* chip: deleting or displacing the chip releases it, and a history restore
+			* of the chip re-enters claimed. The claim event applies the same rule to a
+			* chip the editor just inserted, before its update commits; busy phases
+			* refuse both.
+			*/
+			followCommand(command) {
 				if (this.phase !== "plain" && this.phase !== "claimed") return [];
-				this.claim = claim;
-				this.phase = "claimed";
+				this.claim = command;
+				this.phase = command === void 0 ? "plain" : "claimed";
 				return [];
 			}
-			/** Mint an attempt and controller without assigning its lifecycle owner. */
-			mintAttempt(mode, draft, submission) {
+			/** Occupy the frozen slot with the draft, references, quotes, and attachments the user sent. */
+			beginAttempt(mode, draft, occurrences, quotes, attachmentIds, submission) {
 				const controller = new AbortController();
 				this.seq += 1;
-				return {
-					attempt: {
-						seq: this.seq,
-						signal: controller.signal,
-						draftSnapshot: draft,
-						mode,
-						...submission === void 0 ? {} : { submission }
-					},
+				const attempt = {
+					seq: this.seq,
+					signal: controller.signal,
+					draftSnapshot: draft,
+					occurrences,
+					quotes,
+					attachmentIds,
+					mode,
+					...submission === void 0 ? {} : { submission }
+				};
+				this.inflight = {
+					attempt,
 					controller
 				};
+				return attempt;
 			}
-			/** Mint the frozen command/adjudication attempt. */
-			beginAttempt(mode, draft, submission) {
-				const flight = this.mintAttempt(mode, draft, submission);
-				this.inflight = flight;
-				return flight.attempt;
-			}
-			/** Mint an ordinary send that leaves the phase plain. */
-			beginDetached(mode, draft, submission) {
-				const flight = this.mintAttempt(mode, draft, submission);
-				this.detached.set(flight.attempt.seq, flight.controller);
+			/** Send the frozen message; the editor stays read-only until the Host accepts it. */
+			send(attempt) {
 				this.claim = void 0;
-				this.phase = "plain";
-				return flight.attempt;
-			}
-			/** Default-send effects capture the sink input before the editor commit. */
-			detachedEffects(attempt) {
+				this.phase = "sending";
 				return [{
 					type: "default-sink",
 					attempt,
 					draft: attempt.draftSnapshot,
 					mode: attempt.mode
-				}, {
-					type: "commit-draft",
-					retainSuffixOf: attempt.draftSnapshot
 				}];
 			}
-			onEnter(mode, draft, submission) {
-				if (this.phase === "adjudicating" || this.phase === "submitting") return [];
+			onEnter(ev) {
+				if (this.phase === "adjudicating" || this.phase === "submitting" || this.phase === "sending") return [];
+				const { mode, draft, occurrences, quotes, attachmentIds, submission } = ev;
 				if (this.phase === "claimed" && this.claim !== void 0) {
-					const attempt = this.beginAttempt(mode, draft, submission);
+					const attempt = this.beginAttempt(mode, draft, occurrences, quotes, attachmentIds, submission);
 					this.phase = "submitting";
 					return [{
 						type: "begin-submit",
@@ -8724,9 +5446,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					}];
 				}
 				const trimmed = draft.trim();
-				if (trimmed === "") return [];
+				if (trimmed === "" && attachmentIds.length === 0 && ev.allowEmpty !== true) return [];
+				const attempt = this.beginAttempt(mode, draft, occurrences, quotes, attachmentIds, submission);
 				if (trimmed.startsWith("/")) {
-					const attempt = this.beginAttempt(mode, draft, submission);
 					this.phase = "adjudicating";
 					return [{
 						type: "adjudicate",
@@ -8734,7 +5456,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						draft
 					}];
 				}
-				return this.detachedEffects(this.beginDetached(mode, draft, submission));
+				return this.send(attempt);
 			}
 			onAdjudicated(attempt, outcome) {
 				const flight = this.inflight;
@@ -8749,11 +5471,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						args: argsAfter(attempt.draftSnapshot, outcome.claim.token)
 					}];
 				}
+				if (outcome === void 0) return this.send(attempt);
 				this.inflight = void 0;
 				this.phase = "plain";
-				if (outcome !== void 0) return [];
-				this.detached.set(attempt.seq, flight.controller);
-				return this.detachedEffects(attempt);
+				return [];
 			}
 			onAdjudicationFailed(attempt, message) {
 				if (this.phase !== "adjudicating" || this.inflight?.attempt.seq !== attempt.seq) return [];
@@ -8765,7 +5486,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					text: message
 				}];
 			}
-			/** Claimed command settlement retains the frozen transaction semantics. */
+			/** Claimed command settlement; after a failure the claim follows the leading command chip again. */
 			onSubmitSettled(ev) {
 				const flight = this.inflight;
 				if (this.phase !== "submitting" || flight === void 0 || flight.attempt.seq !== ev.attempt.seq) return [];
@@ -8785,56 +5506,44 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					return effects;
 				}
 				const text = ev.message ?? ev.outcome?.text;
-				if (ev.draft === flight.attempt.draftSnapshot && this.claim !== void 0 && retainsClaim(ev.draft, this.claim.token)) {
-					this.phase = "claimed";
-					return text === void 0 ? [] : [{
-						type: "notice",
-						level: "error",
-						text
-					}];
-				}
-				this.phase = "plain";
-				this.claim = void 0;
+				this.claim = ev.command;
+				this.phase = ev.command === void 0 ? "plain" : "claimed";
 				return text === void 0 ? [] : [{
 					type: "notice",
 					level: "error",
 					text
 				}];
 			}
-			/** Settle one ordinary send independently of current phase and other detached sends. */
+			/** An accepted message clears the editor; a refused or failed one returns to editing unchanged. */
 			onSinkSettled(ev) {
-				if (!this.detached.delete(ev.attempt.seq)) return [];
+				const flight = this.inflight;
+				if (this.phase !== "sending" || flight === void 0 || flight.attempt.seq !== ev.attempt.seq) return [];
+				this.inflight = void 0;
+				this.phase = "plain";
+				const effects = ev.ok ? [{
+					type: "commit-draft",
+					retainSuffixOf: null
+				}] : [];
 				const text = ev.message ?? ev.outcome?.text;
-				if (text === void 0) return [];
-				return [{
+				if (text !== void 0) effects.push({
 					type: "notice",
 					level: ev.ok && ev.outcome?.kind !== "error" ? "info" : "error",
 					text
-				}];
-			}
-			/** Clear after an accepted attachment-only send; it has no text suffix to retain. */
-			onSendCommitted() {
-				if (this.phase !== "plain") return [];
-				this.claim = void 0;
-				return [{
-					type: "commit-draft",
-					retainSuffixOf: null
-				}];
+				});
+				return effects;
 			}
 			onRelease() {
 				if (this.inflight !== void 0) {
 					this.inflight.controller.abort();
 					this.inflight = void 0;
 				}
-				for (const controller of this.detached.values()) controller.abort();
-				this.detached.clear();
 				this.phase = "plain";
 				this.claim = void 0;
 				return [];
 			}
 		};
 		//#endregion
-		//#region ../../../node_modules/.pnpm/lexical@0.49.0_typescript@6.0.3/node_modules/lexical/dist/Lexical.prod.mjs
+		//#region ../../../node_modules/.pnpm/lexical@0.49.0_patch_hash=54c4413db208cf234cb68c6a837f2523d3b319aa17911f1da385af08362e1356_typescript@6.0.3/node_modules/lexical/dist/Lexical.prod.mjs
 		/**
 		* Copyright (c) Meta Platforms, Inc. and affiliates.
 		*
@@ -9540,14 +6249,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function fe$1(t, e) {
 			t.setProperty("text-align", e);
 		}
-		const de$1 = "40px";
+		const de$2 = "40px";
 		function he(t, e) {
 			const n = Wt$2.theme.indent;
 			if ("string" == typeof n) {
 				const o = t.classList.contains(n);
 				e > 0 && !o ? t.classList.add(n) : e < 1 && o && t.classList.remove(n);
 			}
-			t.style.setProperty("padding-inline-start", 0 === e ? "" : `calc(${e} * var(--lexical-indent-base-value, ${de$1}))`);
+			t.style.setProperty("padding-inline-start", 0 === e ? "" : `calc(${e} * var(--lexical-indent-base-value, ${de$2}))`);
 		}
 		function ge$1(t, e) {
 			const n = t.style;
@@ -11003,7 +7712,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return !1;
 			}
 			createParentElementNode() {
-				return es();
+				return es$1();
 			}
 			selectStart() {
 				return this.selectPrevious();
@@ -11633,11 +8342,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const r = t.getNode(), i = r.getChildAtIndex(t.offset), s = Go();
 			if (s.setFormat(n), s.setStyle(o), ns(i)) i.splice(0, 0, [s]);
 			else if (null !== i) {
-				const t = Bl(r) ? es().append(s) : s;
+				const t = Bl(r) ? es$1().append(s) : s;
 				i.insertBefore(t);
 			} else if (Bl(r)) {
 				const t = r.getLastChild();
-				Pi(t) && !t.isInline() && t.isEmpty() ? t.append(s) : r.append(es().append(s));
+				Pi(t) && !t.isInline() && t.isEmpty() ? t.append(s) : r.append(es$1().append(s));
 			} else r.append(s);
 			t.is(e) && e.set(s.__key, 0, "text"), t.set(s.__key, 0, "text");
 		}
@@ -11744,14 +8453,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function ar() {
 			const t = nl();
 			if (t.isEmpty()) {
-				const e = es();
+				const e = es$1();
 				t.append(e), e.select();
 			}
 		}
 		function ur(t) {
-			return t instanceof fr;
+			return t instanceof fr$1;
 		}
-		var fr = class fr {
+		var fr$1 = class fr$1 {
 			format;
 			style;
 			anchor;
@@ -11800,7 +8509,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						e.push(i);
 					}
 					return e;
-				}(du(ru(this), "next"));
+				}(du(ru$1(this), "next"));
 				return ui() || (this._cachedNodes = e), e;
 			}
 			setTextNodeRange(t, e, n, o) {
@@ -11836,7 +8545,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			clone() {
 				const t = this.anchor, e = this.focus;
-				return new fr(or(t.key, t.offset, t.type), or(e.key, e.offset, e.type), this.format, this.style);
+				return new fr$1(or(t.key, t.offset, t.type), or(e.key, e.offset, e.type), this.format, this.style);
 			}
 			toggleFormat(t) {
 				this.format = Ws(this.format, t, null), this.dirty = !0;
@@ -11910,7 +8619,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			removeText() {
 				const t = Kr() === this;
-				ou(this, cu(ru(this))), t && Kr() !== this && ol(this);
+				ou(this, cu(ru$1(this))), t && Kr() !== this && ol(this);
 			}
 			formatText(t, e = null) {
 				_r(this, t, e);
@@ -11920,9 +8629,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.isCollapsed() || this.removeText();
 				const n = this.anchor.getNode();
 				if ("element" === this.anchor.type && Pi(n) && null !== ta(n)) {
-					let o = n.isShadowRoot() ? n.getFirstChild() ?? n.append(es()).getFirstChild() : n.getFirstChild();
+					let o = n.isShadowRoot() ? n.getFirstChild() ?? n.append(es$1()).getFirstChild() : n.getFirstChild();
 					if (n.isShadowRoot() && null !== o && !Pi(o)) {
-						const t = es();
+						const t = es$1();
 						o.insertBefore(t), o = t;
 					}
 					if (null !== o) {
@@ -11994,7 +8703,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			insertParagraph() {
 				const e = this.anchor.getNode();
 				if ("element" === this.anchor.type && Bl(e)) {
-					const t = es();
+					const t = es$1();
 					return e.splice(this.anchor.offset, 0, [t]), t.select(), t;
 				}
 				const n = Xr(this), o = qc(this.anchor.getNode(), Sc);
@@ -12086,7 +8795,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					const e = this.anchor;
 					let n = e.getNode();
 					if (this.forwardDeletion(e, n, t)) return;
-					const o = ja(tu(e, t ? "previous" : "next"));
+					const o = ja$1(tu(e, t ? "previous" : "next"));
 					if (o.getTextSlices().every((t) => null === t || 0 === t.distance)) {
 						let t = { type: "initial" };
 						for (const e of o.iterNodeCarets("shadowRoot")) if (Aa(e)) if (e.origin.isInline());
@@ -12475,11 +9184,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			return Pi(t) && !t.isInline();
 		}
 		function Dr(t, e, n, o, r, i) {
-			const s = hi(), l = new fr(or(t, e, r), or(n, o, i), 0, "");
+			const s = hi(), l = new fr$1(or(t, e, r), or(n, o, i), 0, "");
 			return l.dirty = !0, s._selection = l, l;
 		}
 		function Fr() {
-			return new fr(or("root", 0, "element"), or("root", 0, "element"), 0, "");
+			return new fr$1(or("root", 0, "element"), or("root", 0, "element"), 0, "");
 		}
 		function Pr() {
 			return new cr(/* @__PURE__ */ new Set());
@@ -12507,7 +9216,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					Xo(t) ? (y = t.getFormat(), m = t.getStyle()) : Pi(t) && (y = t.getTextFormat(), m = t.getTextStyle());
 				}
 			}
-			const x = new fr(g, _, y, m);
+			const x = new fr$1(g, _, y, m);
 			return p && (x.dirty = !0), x;
 		}
 		function Kr() {
@@ -12635,7 +9344,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								if (e) {
 									const e = r.visualViewport;
 									if (e) {
-										const t = e.offsetTop;
+										const t = e.pageTop - r.scrollY;
 										c = t, a = t + e.height;
 									} else c = 0, a = Il(t).innerHeight;
 									const n = r.getComputedStyle(o.documentElement), i = parseFloat(n.scrollPaddingTop), s = parseFloat(n.scrollPaddingBottom);
@@ -12695,7 +9404,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function Qr(t, e) {
 			const n = t.getParent();
 			if (!n) {
-				const t = es();
+				const t = es$1();
 				return nl().append(t), t.select(), [nl(), 0];
 			}
 			if (Xo(t)) {
@@ -12707,7 +9416,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			if (!Pi(t) || 0 === e) return [n, t.getIndexWithinParent()];
 			const o = t.getChildAtIndex(e);
 			if (o) {
-				const n = new fr(or(t.__key, e, "element"), or(t.__key, e, "element"), 0, ""), r = t.insertNewAfter(n);
+				const n = new fr$1(or(t.__key, e, "element"), or(t.__key, e, "element"), 0, ""), r = t.insertNewAfter(n);
 				r && r.append(o, ...o.getNextSiblings());
 			}
 			return [n, t.getIndexWithinParent() + 1];
@@ -12716,7 +9425,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			return Yi(t) || Ll(t) || Xo(t) || t.isParentRequired();
 		}
 		function ti(t) {
-			const e = es();
+			const e = es$1();
 			let n = null;
 			for (let o = 0; o < t.length; o++) {
 				const r = t[o];
@@ -12744,7 +9453,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					const { origin: e } = t;
 					if (!Ki(e) || e.isIsolated() || (c = t, !s || !e.isInline())) break;
 				}
-				if (a) for (const t of ja(i).iterNodeCarets("extend" === e ? "shadowRoot" : "root")) {
+				if (a) for (const t of ja$1(i).iterNodeCarets("extend" === e ? "shadowRoot" : "root")) {
 					if (Aa(t)) t.origin.isInline() || (c = t);
 					else {
 						if (Pi(t.origin)) continue;
@@ -13739,7 +10448,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return t;
 			}
 			insertNewAfter(t, e) {
-				const n = es();
+				const n = es$1();
 				n.setTextFormat(t.format), n.setTextStyle(t.style);
 				const o = this.getDirection();
 				return n.setDirection(o), n.setFormat(this.getFormatType()), n.setStyle(this.getStyle()), this.insertAfter(n, e), n;
@@ -13754,14 +10463,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 		};
 		function ts(t) {
-			const e = es();
+			const e = es$1();
 			if (Lc(e, t), Pc(t, e), "" === e.getFormatType()) {
 				const n = t.getAttribute("align");
 				n && n && n in R$1 && e.setFormat(n);
 			}
 			return Ic(e, t), { node: e };
 		}
-		function es() {
+		function es$1() {
 			return Wl(new Zi());
 		}
 		function ns(t) {
@@ -15373,7 +12082,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return La(t.setTextContent(r.slice(0, n) + r.slice(o)), e, n);
 			}
 		};
-		function ja(t) {
+		function ja$1(t) {
 			return Va(t, Ia(nl(), t.direction));
 		}
 		function Ja(t) {
@@ -15470,7 +12179,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function ou(t, e) {
 			eu(t.anchor, e.anchor), eu(t.focus, e.focus);
 		}
-		function ru(t) {
+		function ru$1(t) {
 			const { anchor: e, focus: n } = t, o = tu(e, "next"), r = tu(n, "next"), i = Ya(o, r) <= 0 ? "next" : "previous";
 			return Va(fu(o, i), fu(r, i));
 		}
@@ -15653,7 +12362,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			let r = fu(n, "next");
 			wa(r) && (0 === r.offset ? r = Ia(r.origin, "previous").getFlipped() : r.offset === r.origin.getTextContentSize() && (r = Ia(r.origin, "next"))), r.origin.is(e) && (Ma(r) || t(342, e.getKey(), e.getType()), r = iu(r)), (e.is(r.getNodeAtCaret()) || e.is(r.getFlipped().getNodeAtCaret())) && e.remove(!0);
 			for (let t = r; t; t = yu(t, o)) r = t;
-			return wa(r) && t(283), r.insert(e.isInline() ? es().append(e) : e), fu(Ia(e.getLatest(), "next"), n.direction);
+			return wa(r) && t(283), r.insert(e.isInline() ? es$1().append(e) : e), fu(Ia(e.getLatest(), "next"), n.direction);
 		}
 		function xu(t) {
 			return t;
@@ -15735,7 +12444,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				const e = l.getNodeAtCaret();
 				if (Xo(e) && !er(e)) return !0;
 			}
-			for (const e of ja(l)) {
+			for (const e of ja$1(l)) {
 				if (Aa(e)) return !e.origin.isInline();
 				if (!Pi(e.origin)) {
 					if (Ki(e.origin)) return !0;
@@ -16182,7 +12891,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const Ze$1 = { tag: xo };
 		function He$1() {
 			const t = nl();
-			t.isEmpty() && t.append(es());
+			t.isEmpty() && t.append(es$1());
 		}
 		const Je$1 = /* @__PURE__ */ xu({
 			config: /* @__PURE__ */ vu({
@@ -16472,7 +13181,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				ot = s;
 			}
 		}
-		function pt$1(t, n = () => {}) {
+		function pt$2(t, n = () => {}) {
 			return (o, r = vc()) => (e) => {
 				const s = st(r), i = s && s[t], c = lt(o, i || n(r));
 				return c && c !== i ? dt(t, c, e, r) : e();
@@ -16501,7 +13210,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const n = Ot(t);
 			return n ? n.getSessionConfig() : Tc(t);
 		}
-		const Et = pt$1(xt$1, Dt);
+		const Et = pt$2(xt$1, Dt);
 		new Map([[zi, () => {
 			const t = Zl().createElement("div");
 			return t.role = "textbox", { element: t };
@@ -16585,9 +13294,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			kind: "comment",
 			predicate: (t) => 8 === t.nodeType,
 			tags: /* @__PURE__ */ new Set()
-		}, de = { [re]: ae }, pe = {
+		}, de$1 = { [re]: ae }, pe = {
 			any: () => se(/* @__PURE__ */ new Set(), []),
-			comment: () => de,
+			comment: () => de$1,
 			tag(...t) {
 				t.length > 0 || nt$1(363);
 				const e = /* @__PURE__ */ new Set();
@@ -16605,7 +13314,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return it($t, t) || Ne(t);
 			}(n), t);
 		}
-		const Ie = pt$1($t, Ne), Le = pe;
+		const Ie = pt$2($t, Ne), Le = pe;
 		new Set([
 			"center",
 			"end",
@@ -16838,7 +13547,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			for (const t of e) o.append("v", t);
 			throw n.search = o.toString(), Error(`Minified Lexical error #${t}; visit ${n.toString()} for the full message or use the non-minified dev environment for full errors and additional helpful warnings.`);
 		}
-		function pt(t, e = Kr()) {
+		function pt$1(t, e = Kr()) {
 			return e ?? nt(166), ur(e) && e.isCollapsed() || 0 === e.getNodes().length ? "" : On(t, e);
 		}
 		function mt(t, e) {
@@ -16883,7 +13592,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			if (c) {
 				if (!ur(u) || u.isCollapsed()) return !1;
 				if (function(t, e) {
-					const { anchor: n, focus: o } = du(ru(e), "next");
+					const { anchor: n, focus: o } = du(ru$1(e), "next");
 					return Ya(n, t) < 0 && Ya(t, o) < 0;
 				}(i, u)) return t.preventDefault(), !0;
 				u.removeText();
@@ -16923,7 +13632,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					const r = Mt(e, KeyboardEvent) ? null : e.clipboardData, o = Kr();
 					if (null !== o && !o.isCollapsed() && null != r) {
 						e.preventDefault();
-						const a = pt(t);
+						const a = pt$1(t);
 						null !== a && r.setData("text/html", a), r.setData("text/plain", o.getTextContent());
 					}
 				}
@@ -17120,6 +13829,107 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		Date.now;
 		//#endregion
+		//#region lib/types/client/input/editor/QuoteNode.js
+		const EMPTY_LABELS = { remove: "" };
+		/** Remove one quote occurrence by its Lexical identity. */
+		const REMOVE_QUOTE_COMMAND = Pe$2("REMOVE_QUOTE_COMMAND");
+		/** Pure React face of one quote node. */
+		function QuoteNodeView({ editor, nodeKey, text, labels }) {
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.QuotePreview, {
+				text,
+				removal: {
+					label: labels.remove,
+					onRemove: () => {
+						editor.dispatchCommand(REMOVE_QUOTE_COMMAND, nodeKey);
+					}
+				}
+			});
+		}
+		/** One selected transcript range represented as an atomic inline decorator. */
+		var QuoteNode = class QuoteNode extends Li {
+			__text;
+			__labels;
+			/** Lexical node registry type tag. */
+			static getType() {
+				return "quote";
+			}
+			/** @param node - node to clone. @returns a copy carrying the same NodeKey. */
+			static clone(node) {
+				return new QuoteNode(node.__text, node.__labels, node.__key);
+			}
+			/** @param json - serialized editor node. @returns a fresh node with default runtime labels. */
+			static importJSON(json) {
+				return new QuoteNode(json.text);
+			}
+			/**
+			* @param text - selected text.
+			* @param labels - runtime-only localized labels.
+			* @param key - Lexical clone-path key; absent for fresh nodes.
+			*/
+			constructor(text, labels = EMPTY_LABELS, key) {
+				super(key);
+				this.__text = text;
+				this.__labels = labels;
+			}
+			/** Serialize the quote data without its runtime presentation state. */
+			exportJSON() {
+				return {
+					...super.exportJSON(),
+					type: "quote",
+					version: 1,
+					text: this.__text
+				};
+			}
+			/** Mount one non-editable inline host. */
+			createDOM(_config) {
+				const element = document.createElement("span");
+				element.setAttribute("data-composer-quote", "");
+				element.setAttribute("contenteditable", "false");
+				return element;
+			}
+			/** Updates reuse the existing host element. */
+			updateDOM() {
+				return false;
+			}
+			/** Quotes flow with draft text and wrap at their own text boundary. */
+			isInline() {
+				return true;
+			}
+			/** Arrow movement crosses the quote without entering a NodeSelection. */
+			isKeyboardSelectable() {
+				return false;
+			}
+			/** Clipboard text is the exact model-visible Markdown blockquote. */
+			getTextContent() {
+				return (0, _deepseek_ai_dsh_client_ui_primitives.formatQuoteText)(this.__text);
+			}
+			/** Selected visible quote text. */
+			getQuoteText() {
+				return this.getLatest().__text;
+			}
+			/** Update the localized remove label without changing persisted quote data. */
+			setLabels(labels) {
+				if (this.getLatest().__labels.remove !== labels.remove) this.getWritable().__labels = labels;
+			}
+			/** Render the quote body and its independent close control. */
+			decorate(editor) {
+				return (0, react_jsx_runtime.jsx)(QuoteNodeView, {
+					editor,
+					nodeKey: this.__key,
+					text: this.__text,
+					labels: this.__labels
+				});
+			}
+		};
+		/** @param text - selected quote text. @param labels - runtime labels. @returns a fresh node. */
+		function $createQuoteNode(text, labels) {
+			return new QuoteNode(text, labels);
+		}
+		/** @param node - possible Lexical node. @returns whether it is a QuoteNode. */
+		function $isQuoteNode(node) {
+			return node instanceof QuoteNode;
+		}
+		//#endregion
 		//#region ../../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
 		function r(e) {
 			var t, f, n = "";
@@ -17154,7 +13964,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		};
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/input/editor/composer-editor.module.css.mjs
-		const css$7 = ".q44v1G_reference{border-radius:var(--dsw-radius-sm);line-height:inherit;vertical-align:baseline;color:var(--dsw-alias-state-business-primary);-webkit-box-decoration-break:clone;box-decoration-break:clone;background:0 0;padding:0 4px}.q44v1G_reference:hover{background:var(--dsw-alias-state-business-tertiary)}.q44v1G_openable{cursor:pointer}.q44v1G_textRef{max-width:100%;display:inline-block}";
+		const css$7 = ".q44v1G_reference{border-radius:var(--dsw-radius-sm);line-height:inherit;vertical-align:baseline;color:var(--dsw-alias-state-business-primary);-webkit-box-decoration-break:clone;box-decoration-break:clone;background:0 0;padding:0 4px}@media (hover:hover){.q44v1G_reference:hover{background:var(--dsw-alias-state-business-tertiary)}}.q44v1G_openable{cursor:pointer}[data-composer-command][data-selected]>.q44v1G_reference{background:var(--dsw-alias-state-business-tertiary)}.q44v1G_textRef{max-width:100%;display:inline-block}";
 		const tagId$7 = "@deepseek-ai/dsh-client-ui-conversation/composer-editor.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$7) + "]") === null) {
 			const tag = document.createElement("style");
@@ -17439,13 +14249,47 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* Plain-text reference scan (the plain-text-reference decision;
 		* see .agents/notes/archived/architecture/2026-07-25-web-input-machine-and-slash-pipeline.md):
 		* a `/name` or `@name` token whose name is on the trigger's lexicon, and
-		* syntax-recognizable `@dir/` folder tokens. Pure derivation — the editor's
+		* syntax-recognizable `@path` file and folder tokens. Pure derivation — the editor's
 		* text-ref entity transform consumes these ranges; editing the text out of
 		* match shape simply drops the range next scan.
 		*/
 		/** Token matcher: a trigger char at line start or after whitespace, then a word-ish name (never crosses \n). */
 		const TEXT_REF_RE = /(^|\s)([/@])([\w-]+)/g;
-		const FOLDER_REF_RE = /(^|\s)(@(?:"[^"\n]*\/|[^\s"]+\/))/g;
+		/** One `@` path token: a quoted path through its closing quote or line end, or an unquoted run. */
+		const PATH_TOKEN_RE = /(^|\s)(@(?:"[^"\n]*"?|[^\s"]\S*))/g;
+		/**
+		* Punctuation that ends prose rather than a path: the characters the
+		* sent-message file and folder rules in ui-reference strip from the end of an
+		* unquoted token.
+		*/
+		const TRAILING_PUNCTUATION = /* @__PURE__ */ new Set(".,;:!?，。；：！？");
+		/** An unquoted token names a path only with a separator or an extension; a bare `@name` stays plain until a lexicon claims it. */
+		const PATH_LIKE_RE = /^@.*[/\\.]/u;
+		/**
+		* End of the whole `@path` file or folder token at `start`, so a path is never
+		* cut at its directory prefix. A closed quote ends at its quote and an
+		* unquoted token with a separator or extension drops trailing punctuation,
+		* the spans the sent-message rules render. An open quote (a folder drill in
+		* progress) ends at its last slash when only trailing punctuation and
+		* whitespace or the draft end follow it.
+		* @param draft - draft text.
+		* @param start - offset of the token's `@`.
+		* @param token - the path token at `start`.
+		* @returns the token's end offset, or undefined when it names no path.
+		*/
+		function pathEnd(draft, start, token) {
+			if (!token.startsWith("@\"")) {
+				let length = token.length;
+				while (TRAILING_PUNCTUATION.has(token.charAt(length - 1))) length -= 1;
+				return PATH_LIKE_RE.test(token.slice(0, length)) ? start + length : void 0;
+			}
+			if (token.length > 3 && token.endsWith("\"")) return start + token.length;
+			const slash = token.lastIndexOf("/");
+			if (slash < 0) return void 0;
+			let next = start + slash + 1;
+			while (TRAILING_PUNCTUATION.has(draft.charAt(next))) next += 1;
+			return next === draft.length || /\s/u.test(draft.charAt(next)) ? start + slash + 1 : void 0;
+		}
 		/**
 		* What may follow a `/name` token: whitespace or the draft end, the boundary
 		* the host skill gesture (`dsh-tool-skill`) requires, so `/nfs-hg/xxx`,
@@ -17480,13 +14324,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					});
 				}
 			}
-			FOLDER_REF_RE.lastIndex = 0;
-			let folder;
-			while ((folder = FOLDER_REF_RE.exec(draft)) !== null) {
-				const token = folder[2] ?? "";
-				const start = folder.index + (folder[1]?.length ?? 0);
-				const end = start + token.length;
-				if (!out.some((range) => range.start < end && range.end > start)) out.push({
+			PATH_TOKEN_RE.lastIndex = 0;
+			let path;
+			while ((path = PATH_TOKEN_RE.exec(draft)) !== null) {
+				const start = path.index + (path[1]?.length ?? 0);
+				const end = pathEnd(draft, start, path[2] ?? "");
+				if (end !== void 0 && !out.some((range) => range.start < end && range.end > start)) out.push({
 					start,
 					end,
 					trigger: "@"
@@ -17549,27 +14392,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 		};
 		/**
-		* Register the plain-text reference entity transform. The claim decoration
-		* has precedence on the leading-token seat: while a command claim holds, the
-		* claimed token must stay a plain TextNode (transforms register per concrete
-		* node class, so a TextRefNode would never receive the TextNode claim
-		* transform and the warn color would be lost).
+		* Register the plain-text reference entity transform.
 		* @param editor - the shell-owned editor.
 		* @param lexiconOf - live per-trigger name-roll accessor (the controller's aggregated store).
-		* @param activeToken - live claim token accessor; null while unclaimed.
 		* @returns the unregister disposer.
 		*/
-		function registerTextRefDecoration(editor, lexiconOf, activeToken) {
+		function registerTextRefDecoration(editor, lexiconOf) {
 			const getMatch = (text) => {
-				const claim = activeToken();
-				for (const range of scanTextRefs(text, lexiconOf())) {
-					if (claim !== null && range.start === 0 && text.slice(range.start, range.end) === claim.trimEnd()) continue;
-					return {
-						start: range.start,
-						end: range.end
-					};
-				}
-				return null;
+				const range = scanTextRefs(text, lexiconOf())[0];
+				return range === void 0 ? null : {
+					start: range.start,
+					end: range.end
+				};
 			};
 			return Eu(...x(editor, getMatch, TextRefNode, (node) => new TextRefNode(node.getTextContent())));
 		}
@@ -17611,54 +14445,230 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}, 1);
 		}
 		//#endregion
-		//#region lib/types/client/input/editor/claim-decor.js
-		/** Inline style carried by the claim-token node. */
-		const TOKEN_STYLE = "color: var(--dsw-alias-state-business-primary)";
-		/** The document's first text leaf, or null (empty document / leading chip). */
-		function firstTextLeaf() {
-			const block = nl().getFirstChild();
-			if (!Pi(block)) return null;
-			const leaf = block.getFirstChild();
-			return Xo(leaf) ? leaf : null;
-		}
+		//#region lib/types/client/input/editor/CommandChip.js
 		/**
-		* Register the claim-token styling transform.
-		* @param editor - the shell-owned editor.
-		* @param activeToken - live claim token accessor; null while unclaimed.
-		* @returns the unregister disposer.
+		* Visual body of the claimed command chip: the CommandChipNode's React face.
+		* Pure display with the reference chip's treatment; the claim and its
+		* lifecycle live on the node and the shell.
 		*/
-		function registerClaimDecoration(editor, activeToken) {
-			return editor.registerNodeTransform(Wo, (node) => {
-				const first = firstTextLeaf();
-				if (first === null || node.getKey() !== first.getKey()) {
-					if (node.getStyle() === TOKEN_STYLE) node.setStyle("");
-					return;
-				}
-				const text = node.getTextContent();
-				const active = activeToken();
-				const token = text === active?.trimEnd() ? text : active;
-				if (token === null || !text.startsWith(token)) {
-					if (node.getStyle() === TOKEN_STYLE) node.setStyle("");
-					return;
-				}
-				if (text.length > token.length) {
-					const [tokenNode, overflow] = node.splitText(token.length);
-					if (tokenNode !== void 0 && tokenNode.getStyle() !== TOKEN_STYLE) tokenNode.setStyle(TOKEN_STYLE);
-					overflow?.setStyle("");
-					return;
-				}
-				if (node.getStyle() !== TOKEN_STYLE) node.setStyle(TOKEN_STYLE);
+		/**
+		* Render the claimed command chip.
+		* @param props - the token to display.
+		* @returns the chip body.
+		*/
+		function CommandChip({ token }) {
+			return (0, react_jsx_runtime.jsx)("span", {
+				className: clsx(composer_editor_module_css_default.reference, ReferenceChip_module_css_default.chip),
+				children: (0, react_jsx_runtime.jsx)("span", {
+					className: ReferenceChip_module_css_default.label,
+					children: token
+				})
 			});
 		}
+		//#endregion
+		//#region lib/types/client/input/editor/command-chip-node.js
+		/** One claimed command as an atomic decorator node. */
+		var CommandChipNode = class CommandChipNode extends Li {
+			/** The claim this chip anchors; its submit closure has no JSON form. */
+			__claim;
+			/** Lexical node registry type tag. */
+			static getType() {
+				return "command-chip";
+			}
+			/**
+			* Clone with identity (Lexical writable-copy contract).
+			* @param node - node to clone.
+			* @returns a copy carrying the same NodeKey and claim.
+			*/
+			static clone(node) {
+				return new CommandChipNode(node.__claim, node.__key);
+			}
+			/**
+			* Rebuild one chip from its JSON form. JSON cannot carry the claim's
+			* submit closure, so an imported command is its literal token text.
+			* @param json - serialized chip.
+			* @returns a plain text node holding the token.
+			*/
+			static importJSON(json) {
+				return Go(json.text);
+			}
+			/**
+			* @param claim - the command claim the chip anchors.
+			* @param key - Lexical clone-path key; absent for fresh nodes.
+			*/
+			constructor(claim, key) {
+				super(key);
+				this.__claim = claim;
+			}
+			/** Serialize to the JSON node form (the token text alone). */
+			exportJSON() {
+				return {
+					...super.exportJSON(),
+					type: "command-chip",
+					version: 1,
+					text: this.getTextContent()
+				};
+			}
+			/**
+			* Mount the chip's host element; the decorator portal renders into it.
+			* @returns an inline, non-editable span carrying the test/e2e anchor.
+			*/
+			createDOM() {
+				const el = document.createElement("span");
+				el.setAttribute("data-composer-command", this.__claim.name);
+				el.setAttribute("contenteditable", "false");
+				return el;
+			}
+			/** Host element never changes shape. */
+			updateDOM() {
+				return false;
+			}
+			/** The chip sits in the text line. */
+			isInline() {
+				return true;
+			}
+			/**
+			* Arrows step across the chip and the default character deletion removes
+			* it whole, for the reason documented on ReferenceChipNode.isKeyboardSelectable;
+			* registerCommandChipSelection inserts the selecting step before that deletion.
+			*/
+			isKeyboardSelectable() {
+				return false;
+			}
+			/** Clipboard / persistence projection: the token without its separator. */
+			getTextContent() {
+				return this.__claim.token.trimEnd();
+			}
+			/** The claim this chip anchors. */
+			getClaim() {
+				return this.getLatest().__claim;
+			}
+			/** React face rendered into the host element by the decorator portal. */
+			decorate() {
+				return (0, react_jsx_runtime.jsx)(CommandChip, { token: this.getTextContent() });
+			}
+		};
 		/**
-		* Nudge the token seat dirty so the transform restyles after a claim flip
-		* (claims change phase without a text edit; transforms only run on dirty
-		* nodes).
-		* @param editor - the shell-owned editor.
+		* Mint one chip node for a claim.
+		* @param claim - the command claim.
+		* @returns the fresh node.
 		*/
-		function refreshClaimDecoration(editor) {
-			editor.update(() => {
-				firstTextLeaf()?.markDirty();
+		function $createCommandChipNode(claim) {
+			return new CommandChipNode(claim);
+		}
+		/**
+		* Command chip type guard.
+		* @param node - any node or nullish.
+		* @returns whether the node is a CommandChipNode.
+		*/
+		function $isCommandChipNode(node) {
+			return node instanceof CommandChipNode;
+		}
+		/** Replace a displaced chip with its literal token. */
+		function $releaseChip(chip) {
+			chip.replace(Go(chip.getTextContent()));
+		}
+		/**
+		* Keep command chips on the leading seat. A chip anywhere but the first
+		* child of the first block (text, a line break, or a block inserted before
+		* it) becomes its literal token, which releases the claim. Inserting a
+		* sibling before the chip or moving it to another block marks the chip dirty;
+		* a block inserted before the chip's block marks only that block dirty.
+		* @param editor - the shell-owned editor.
+		* @returns the unregister disposer.
+		*/
+		function registerCommandChipSeat(editor) {
+			return Eu(editor.registerNodeTransform(CommandChipNode, (chip) => {
+				if (chip.getPreviousSibling() !== null || chip.getParentOrThrow().getPreviousSibling() !== null) $releaseChip(chip);
+			}), editor.registerNodeTransform(Zi, (block) => {
+				const first = block.getFirstChild();
+				if ($isCommandChipNode(first) && block.getPreviousSibling() !== null) $releaseChip(first);
+			}));
+		}
+		//#endregion
+		//#region lib/types/client/input/editor/command-chip-selection.js
+		/**
+		* Keys that never clear a selected chip by themselves: bare modifiers, and
+		* IME or virtual-keyboard keys whose deletion arrives later as an input event.
+		*/
+		const PASSIVE_KEYS = new Set([
+			"Shift",
+			"Control",
+			"Alt",
+			"Meta",
+			"Unidentified",
+			"Process"
+		]);
+		/** The chip a collapsed caret deletes next in one direction, or null. */
+		function $commandChipBesideCaret(isBackward) {
+			const selection = Kr();
+			if (!ur(selection) || !selection.isCollapsed()) return null;
+			const node = kl(selection.focus, isBackward);
+			return $isCommandChipNode(node) ? node : null;
+		}
+		/** Deletion direction of an input event type; null for other input. */
+		function deletionDirection(inputType) {
+			if (inputType === "deleteContentBackward") return true;
+			if (inputType === "deleteContentForward") return false;
+			return null;
+		}
+		/**
+		* Register two-step deletion for the command chip.
+		* @param editor - the shell-owned editor.
+		* @returns the unregister disposer, which also clears a selected chip.
+		*/
+		function registerCommandChipSelection(editor) {
+			let selected = null;
+			/** A keydown with a selected chip whose dispatch has produced no character deletion yet. */
+			let keyWithoutDeletion = false;
+			const paint = (next) => {
+				if (selected !== null && selected.key !== next?.key) editor.getElementByKey(selected.key)?.removeAttribute("data-selected");
+				selected = next;
+				if (next !== null) editor.getElementByKey(next.key)?.setAttribute("data-selected", "");
+				editor.getRootElement()?.toggleAttribute("data-composer-chip-selected", next !== null);
+			};
+			const clear = () => {
+				if (selected !== null) paint(null);
+				return false;
+			};
+			/**
+			* Decide one character deletion.
+			* @param isBackward - deletion direction.
+			* @param clearOnPass - whether letting the deletion run clears the selection here;
+			* an input event leaves it for the deletion that follows.
+			* @returns true when the deletion only selected the chip and must be consumed.
+			*/
+			const $decide = (isBackward, clearOnPass) => {
+				keyWithoutDeletion = false;
+				const chip = $commandChipBesideCaret(isBackward);
+				if (chip === null) return clear();
+				if (selected?.key === chip.getKey() && selected.isBackward === isBackward) return clearOnPass ? clear() : false;
+				paint({
+					key: chip.getKey(),
+					isBackward
+				});
+				return true;
+			};
+			return Eu(editor.registerCommand(ze$2, (event) => {
+				const isBackward = deletionDirection(event.inputType);
+				if (isBackward === null || !$decide(isBackward, false)) return false;
+				event.preventDefault();
+				return true;
+			}, 3), editor.registerCommand($e$2, (isBackward) => $decide(isBackward, true), 3), editor.registerCommand(tn$2, (event) => {
+				if (selected === null || PASSIVE_KEYS.has(event.key)) return false;
+				keyWithoutDeletion = true;
+				queueMicrotask(() => {
+					if (!keyWithoutDeletion) return;
+					keyWithoutDeletion = false;
+					clear();
+				});
+				return false;
+			}, 4), editor.registerCommand(Ke$2, clear, 4), editor.registerCommand(Mn$1, clear, 4), editor.registerUpdateListener(({ editorState }) => {
+				const current = selected;
+				if (current === null) return;
+				paint(editorState.read(() => $commandChipBesideCaret(current.isBackward)?.getKey() === current.key) ? current : null);
+			}), () => {
+				paint(null);
 			});
 		}
 		/**
@@ -17692,7 +14702,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				const start = detect.length;
 				const kids = element.getChildren();
 				children.set(element.getKey(), kids.map((kid) => kid.getKey()));
-				for (const kid of kids) if ($isReferenceChipNode(kid)) pushLeaf("chip", kid, "￼", kid.getTextContent());
+				for (const kid of kids) if ($isReferenceChipNode(kid) || $isCommandChipNode(kid) || $isQuoteNode(kid)) pushLeaf("chip", kid, "￼", kid.getTextContent());
 				else if (Xo(kid)) {
 					const text = kid.getTextContent();
 					pushLeaf("text", kid, text, text);
@@ -17793,8 +14803,18 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		function $projectComposer(idOf) {
 			const layout = $composerLayout();
 			const occurrences = [];
+			const quotes = [];
 			for (const segment of layout.segments) {
-				if (segment.kind !== "chip" || !$isReferenceChipNode(segment.node)) continue;
+				if (segment.kind !== "chip") continue;
+				if ($isQuoteNode(segment.node)) {
+					quotes.push({
+						offset: segment.clipboardStart,
+						length: segment.clipboardLength,
+						text: segment.node.getQuoteText()
+					});
+					continue;
+				}
+				if (!$isReferenceChipNode(segment.node)) continue;
 				const chip = segment.node;
 				occurrences.push({
 					occurrenceId: idOf(chip.getKey()),
@@ -17808,6 +14828,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					...chip.isInvalid() ? { invalid: true } : {}
 				});
 			}
+			const lead = layout.segments[0]?.node;
 			const selection = Kr();
 			let range = null;
 			if (ur(selection)) {
@@ -17822,8 +14843,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				detectText: layout.detectText,
 				clipboardText: layout.clipboardText,
 				occurrences,
+				quotes,
 				selection: range,
-				caret: range !== null && range.start === range.end ? range.start : null
+				caret: range !== null && range.start === range.end ? range.start : null,
+				command: $isCommandChipNode(lead) ? lead.getClaim() : void 0
 			};
 		}
 		//#endregion
@@ -17933,8 +14956,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* literal one in text would forge chip positions.
 		*/
 		const REFERENCE_PLACEHOLDER_RE = /[\uE100-\uE11D\uFFFC]/gu;
+		/**
+		* Append one paragraph per line of `text` to the editor root and move the caret
+		* to the end. Must run inside an editor update.
+		* @param text - sanitized plain text.
+		*/
+		function $appendParagraphs(text) {
+			const root = nl();
+			for (const line of text.split("\n")) {
+				const paragraph = es$1();
+				if (line !== "") paragraph.append(Go(line));
+				root.append(paragraph);
+			}
+			root.selectEnd();
+		}
 		/** Undo merge window for contiguous typing, in ms (the old machine's mergeWindowMs). */
 		const HISTORY_MERGE_DELAY_MS = 1e3;
+		/** Editor update that removes submitted content while retaining any newer draft suffix. */
+		const DRAFT_SUBMITTED_TAG = "dsh-draft-submitted";
 		/** One model-owned editor; registration and disposal remain with its model. */
 		var DraftEditorRuntime = class {
 			deps;
@@ -17944,8 +14983,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				detectText: "",
 				clipboardText: "",
 				occurrences: [],
+				quotes: [],
 				selection: null,
-				caret: null
+				caret: null,
+				command: void 0
 			};
 			/** Stable occurrence ids per chip NodeKey (undo restores keys, so ids survive it too). */
 			occurrenceIds = /* @__PURE__ */ new Map();
@@ -17958,7 +14999,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.deps = deps;
 				this.editor = ys({
 					namespace: "dsh-composer",
-					nodes: [ReferenceChipNode, TextRefNode],
+					nodes: [
+						ReferenceChipNode,
+						CommandChipNode,
+						TextRefNode,
+						QuoteNode
+					],
 					onError: (error) => {
 						throw error;
 					}
@@ -17974,12 +15020,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					if (root !== null && !root.contains(root.ownerDocument.activeElement)) Al(bo);
 					return false;
 				};
-				const unregister = Eu(O$1(this.editor), this.editor.registerCommand(Mn$1, () => {
+				const unregister = Eu(O$1(this.editor), this.editor.registerNodeTransform(QuoteNode, (node) => {
+					node.setLabels(this.deps.quoteLabels());
+				}), this.editor.registerCommand(REMOVE_QUOTE_COMMAND, (key) => this.removeQuote(key), 4), this.editor.registerCommand(un$2, (event) => this.deleteAdjacentQuote(event, true), -4), this.editor.registerCommand(dn$1, (event) => this.deleteAdjacentQuote(event, false), -4), this.editor.registerCommand(Mn$1, () => {
 					this.editor.update(preserveExternalSelection, { discrete: true });
 					return false;
 				}, 4), this.editor.registerCommand(Ie$2, preserveExternalSelection, 4), this.editor.registerNodeTransform(zi, preserveExternalSelection), registerReferenceActivation(this.editor, (source, reference) => this.deps.openReference(source, reference)), O(this.editor, z(), HISTORY_MERGE_DELAY_MS), this.editor.registerUpdateListener(() => {
 					this.deps.onUpdate();
-				}), registerClaimDecoration(this.editor, () => this.deps.activeClaimToken()), registerTextRefDecoration(this.editor, () => this.deps.lexicon(), () => this.deps.activeClaimToken()), () => {
+				}), registerCommandChipSeat(this.editor), registerCommandChipSelection(this.editor), registerTextRefDecoration(this.editor, () => this.deps.lexicon()), () => {
 					this.lexiconOff?.();
 					this.lexiconOff = void 0;
 					this.lexiconSource = void 0;
@@ -18051,16 +15099,31 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			*/
 			setDraft(text) {
 				const clean = text.replace(REFERENCE_PLACEHOLDER_RE, "");
-				if (clean === this.projection.clipboardText && this.projection.occurrences.length === 0) return;
+				if (clean === this.projection.clipboardText && this.projection.occurrences.length === 0 && this.projection.quotes.length === 0) return;
 				this.editor.update(() => {
-					const root = nl();
-					root.clear();
-					for (const line of clean.split("\n")) {
-						const paragraph = es();
-						if (line !== "") paragraph.append(Go(line));
-						root.append(paragraph);
-					}
-					root.selectEnd();
+					nl().clear();
+					$appendParagraphs(clean);
+				}, {
+					discrete: true,
+					tag: xo
+				});
+			}
+			/**
+			* Add plain text after the current draft as new paragraphs, keeping its text
+			* and references; an empty draft takes the text as its whole content.
+			* Placeholder-sanitized; the caret lands at the end; merged into history
+			* like {@link setDraft}.
+			* @param text - plain text to add.
+			*/
+			appendDraft(text) {
+				const clean = text.replace(REFERENCE_PLACEHOLDER_RE, "");
+				if (clean === "") return;
+				if (this.projection.clipboardText === "" && this.projection.occurrences.length === 0) {
+					this.setDraft(clean);
+					return;
+				}
+				this.editor.update(() => {
+					$appendParagraphs(clean);
 				}, {
 					discrete: true,
 					tag: xo
@@ -18083,7 +15146,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						return;
 					}
 					const root = nl();
-					if (root.getChildrenSize() === 0) root.append(es());
+					if (root.getChildrenSize() === 0) root.append(es$1());
 					root.selectEnd().insertText(clean);
 				}, Co);
 			}
@@ -18143,6 +15206,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return applied;
 			}
 			/**
+			* Replace a span with a command chip followed by the claim token's
+			* argument separator, unless the separator already follows.
+			* @param span - detect-coordinate range.
+			* @param claim - the command claim the chip anchors.
+			* @param tail - the character following the range before editing.
+			* @param mergeHistory - merge into the previous history entry (a restored
+			* draft's chip is part of its seed, not an undoable step).
+			* @returns whether the range mapped and the edit applied.
+			*/
+			insertCommand(span, claim, tail, mergeHistory = false) {
+				const separator = claim.token.slice(claim.token.trimEnd().length);
+				let applied = false;
+				this.applyEdit(() => {
+					applied = $replaceDetectSpanWithNodes(span, separator === "" || tail === separator.charAt(0) ? [$createCommandChipNode(claim)] : [$createCommandChipNode(claim), Go(separator)]);
+				}, mergeHistory ? xo : void 0);
+				return applied;
+			}
+			/**
 			* Insert an ordered file-reference batch after the live selection without deleting it.
 			* @param references - validated references in source order.
 			* @returns whether the live insertion position accepted the batch.
@@ -18163,9 +15244,57 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}, Co);
 				return applied;
 			}
-			/** Refresh claim-token decoration after the model's claim changes. */
-			refreshClaimDecoration() {
-				refreshClaimDecoration(this.editor);
+			/**
+			* Insert one quote after the retained draft selection as an independent undo edit.
+			* @param text - nonblank selected transcript text.
+			* @param labels - current localized editor controls.
+			* @returns whether the insertion position accepted the node.
+			*/
+			insertQuote(text, labels) {
+				let applied = false;
+				this.applyEdit(() => {
+					const projection = $projectComposer((key) => this.occurrenceIdOf(key));
+					const at = projection.selection?.end ?? projection.detectText.length;
+					applied = $replaceDetectSpanWithNodes({
+						start: at,
+						end: at
+					}, [$createQuoteNode(text, labels), Go(" ")]);
+				}, Co);
+				return applied;
+			}
+			/** Remove one quote node and leave the editor caret at its former position. */
+			removeQuote(key) {
+				const node = Ys(key);
+				if (!$isQuoteNode(node)) return false;
+				const parent = node.getParent();
+				const offset = node.getIndexWithinParent();
+				const separator = node.getNextSibling();
+				Al(mo);
+				if (Xo(separator) && separator.getTextContent().startsWith(" ")) {
+					const remaining = separator.getTextContent().slice(1);
+					if (remaining === "") separator.remove();
+					else separator.setTextContent(remaining);
+				}
+				node.remove();
+				const caret = Math.min(offset, parent?.getChildrenSize() ?? 0);
+				parent?.select(caret, caret);
+				queueMicrotask(() => {
+					this.editor.getRootElement()?.focus({ preventScroll: true });
+				});
+				return true;
+			}
+			/** Delete the QuoteNode immediately beside one collapsed caret. */
+			deleteAdjacentQuote(event, backward) {
+				const selection = Kr();
+				if (!ur(selection) || !selection.isCollapsed()) return false;
+				let adjacent = kl(selection.anchor, backward);
+				if (!$isQuoteNode(adjacent) && backward && selection.anchor.type === "text") {
+					const anchor = selection.anchor.getNode();
+					if (Xo(anchor) && selection.anchor.offset === 1 && anchor.getTextContent().startsWith(" ")) adjacent = anchor.getPreviousSibling();
+				}
+				if (!$isQuoteNode(adjacent)) return false;
+				event.preventDefault();
+				return this.removeQuote(adjacent.getKey());
 			}
 			/**
 			* Clear committed content using the model's suffix decision inside the editor update.
@@ -18187,19 +15316,21 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					root.selectEnd();
 				}, {
 					discrete: true,
-					tag: xo
+					tag: [xo, DRAFT_SUBMITTED_TAG]
 				});
 			}
 			/**
 			* Import semantic content or a model-selected failure snapshot with fresh reference nodes.
 			* @param draft - clipboard text.
 			* @param occurrences - reference occurrences in clipboard order.
+			* @param quotes - atomic quotes in clipboard order.
+			* @param labels - localized quote controls.
 			*/
-			restoreDraft(draft, occurrences) {
+			restoreDraft(draft, occurrences, quotes = [], labels = { remove: "" }) {
 				this.editor.update(() => {
 					const root = nl();
 					root.clear();
-					let paragraph = es();
+					let paragraph = es$1();
 					root.append(paragraph);
 					const appendText = (text) => {
 						const lines = text.replace(REFERENCE_PLACEHOLDER_RE, "").split("\n");
@@ -18207,21 +15338,35 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							const line = lines[i];
 							if (line !== "") paragraph.append(Go(line));
 							if (i < lines.length - 1) {
-								paragraph = es();
+								paragraph = es$1();
 								root.append(paragraph);
 							}
 						}
 					};
 					let cursor = 0;
-					for (const occurrence of occurrences) {
+					const spans = [...occurrences.map((reference) => ({
+						kind: "reference",
+						value: reference
+					})), ...quotes.map((quote) => ({
+						kind: "quote",
+						value: quote
+					}))].sort((a, b) => a.value.offset - b.value.offset);
+					for (const span of spans) {
+						const occurrence = span.value;
 						appendText(draft.slice(cursor, occurrence.offset));
+						if (span.kind === "quote") {
+							paragraph.append($createQuoteNode(span.value.text, labels));
+							cursor = occurrence.offset + occurrence.length;
+							continue;
+						}
+						const reference = span.value;
 						paragraph.append(new ReferenceChipNode({
-							source: occurrence.source,
-							ref: occurrence.ref,
-							label: occurrence.label,
-							...occurrence.appearance === void 0 ? {} : { appearance: occurrence.appearance },
-							clipboardText: occurrence.clipboardText
-						}, occurrence.invalid === true));
+							source: reference.source,
+							ref: reference.ref,
+							label: reference.label,
+							...reference.appearance === void 0 ? {} : { appearance: reference.appearance },
+							clipboardText: reference.clipboardText
+						}, reference.invalid === true));
 						cursor = occurrence.offset + occurrence.length;
 					}
 					appendText(draft.slice(cursor));
@@ -18246,14 +15391,27 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				default: return "frozen";
 			}
 		}
+		/** Whether an attempt owns the draft: the editor and attachments are read-only until it settles. */
+		function frozen(phase) {
+			return phase === "adjudicating" || phase === "submitting" || phase === "sending";
+		}
 		/** Whether two projections differ in content (selection and caret excluded). */
 		function projectionContentChanged(prev, next) {
 			if (prev.clipboardText !== next.clipboardText || prev.detectText !== next.detectText) return true;
+			if (prev.command !== next.command) return true;
+			if (prev.quotes.length !== next.quotes.length || prev.quotes.some((quote, i) => {
+				const old = next.quotes[i];
+				return old?.text !== quote.text || old.offset !== quote.offset;
+			})) return true;
 			if (prev.occurrences.length !== next.occurrences.length) return true;
 			return next.occurrences.some((occ, i) => {
 				const old = prev.occurrences[i];
 				return old === void 0 || old.occurrenceId !== occ.occurrenceId || old.invalid !== occ.invalid;
 			});
+		}
+		/** Message of a failure surfaced as a composer notice. */
+		function errorText(error) {
+			return error instanceof Error ? error.message : String(error);
 		}
 		const EMPTY_QUEUE$1 = [];
 		/** Unavailable catalogs contain no named text references. */
@@ -18275,12 +15433,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			/** The public provide-channel action face (one stable identity per session). */
 			actions = {
+				insertQuote: (text) => this.insertQuote(text),
 				captureInsertion: () => ({
 					...this.caretSpan(),
 					draftRev: this.rev
 				}),
 				insertText: (text, span) => {
-					if (this.snapshot.phase === "adjudicating" || this.snapshot.phase === "submitting" || this.disposed) return false;
+					if (frozen(this.snapshot.phase) || this.disposed) return false;
 					if (span.draftRev !== this.rev) return false;
 					return this.draftEditor.insertAsyncText(span, text);
 				},
@@ -18315,18 +15474,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			disposed = false;
 			/** Conversation store writer for the current semantic document. */
 			persistDraft;
+			/** A restored draft's command token waiting for the trigger pipeline, with the revision its restore produced. */
+			pendingCommand;
+			/** The in-flight claim resolution for a restored command chip. */
+			commandRestore;
 			/** The mounted composer's file-picker opener (scoped pick-files event target). */
 			filePicker;
-			/** Default sends retained until admission settles or scope disposal releases their attachments. */
-			detachedDrafts = /* @__PURE__ */ new Map();
-			/** Failed default sends waiting to be restored together in submission order. */
-			failedDetached = /* @__PURE__ */ new Map();
-			/** Revision of the last automatic failure restoration. */
-			failedRestoreRev;
-			restoringFailures = false;
-			attachmentFlightSeq = 0;
-			/** Attachment-only sends retained until admission settles or scope disposal releases their attachments. */
-			attachmentFlights = /* @__PURE__ */ new Map();
 			unsubscribeInbox;
 			constructor(deps) {
 				this.deps = deps;
@@ -18334,8 +15487,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					onUpdate: () => {
 						this.onEditorUpdate();
 					},
+					quoteLabels: () => ({ remove: this.deps.quoteRemoveLabel?.() ?? "" }),
 					openReference: (source, reference) => this.deps.inputTriggers?.()?.openReference(source, reference) ?? false,
-					activeClaimToken: () => this.activeClaimToken(),
 					lexicon: () => this.lexicon.getSnapshot(),
 					resolveLexicon: () => this.deps.inputTriggers?.()?.lexicon
 				});
@@ -18345,17 +15498,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					this.publish();
 				});
 			}
-			/** Re-project, run the claim watch, publish, and feed trigger tracking after every editor commit. */
+			/** Re-project, sync the claim with the leading command chip, publish, and feed trigger tracking after every editor commit. */
 			onEditorUpdate() {
 				if (projectionContentChanged(this.draftEditor.refreshProjection(), this.projection)) {
 					this.rev += 1;
-					if (!this.restoringFailures && this.failedRestoreRev !== void 0) {
-						this.failedDetached.clear();
-						this.failedRestoreRev = void 0;
-					}
 					this.dispatchRun({
 						type: "draft-changed",
-						draft: this.projection.clipboardText
+						command: this.projection.command
 					});
 				}
 				const caret = this.projection.caret;
@@ -18369,17 +15518,68 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			*/
 			setDraft(text) {
 				const draft = resolveDraftInput(text);
-				if (draft.references.length === 0) this.draftEditor.setDraft(draft.text);
-				else this.draftEditor.restoreDraft(draft.text, draft.references);
+				this.cancelCommandRestore();
+				if (draft.references.length === 0 && (draft.quotes?.length ?? 0) === 0) this.draftEditor.setDraft(draft.text);
+				else this.draftEditor.restoreDraft(draft.text, draft.references, draft.quotes, { remove: this.deps.quoteRemoveLabel?.() ?? "" });
+				if (draft.command === void 0) return;
+				this.pendingCommand = {
+					token: draft.command.token,
+					rev: this.rev
+				};
+				this.restoreCommand();
 			}
-			/** Reconnect optional catalog notifications without waiting for another edit. */
+			/** @param text - selected transcript text. @returns whether the editable draft accepted the quote. */
+			insertQuote(text) {
+				if (this.disposed || this.snapshot.phase !== "plain" || this.deps.quoteInsertionAllowed?.() === false || text.trim() === "") return false;
+				const inserted = this.draftEditor.insertQuote(text.replace(/\r\n?/gu, "\n"), { remove: this.deps.quoteRemoveLabel?.() ?? "" });
+				if (inserted) this.focus();
+				return inserted;
+			}
+			/**
+			* Reconnect optional catalog notifications and resume a pending command
+			* chip restore without waiting for another edit.
+			*/
 			refreshLexiconSubscription() {
-				if (!this.disposed) this.draftEditor.refreshLexiconSubscription();
+				if (this.disposed) return;
+				this.draftEditor.refreshLexiconSubscription();
+				this.restoreCommand();
+			}
+			/**
+			* Rebuild the command chip a restored draft carried once the trigger
+			* pipeline can resolve its claim. The rebuild applies only at the revision
+			* the restore produced: an edit made while the claim resolves keeps the
+			* literal token, which Enter still adjudicates as the command.
+			*/
+			restoreCommand() {
+				const pending = this.pendingCommand;
+				const inputTriggers = this.deps.inputTriggers?.();
+				if (pending === void 0 || inputTriggers === void 0 || this.disposed) return;
+				this.pendingCommand = void 0;
+				const restore = new AbortController();
+				this.commandRestore = restore;
+				const spelling = pending.token.trimEnd();
+				inputTriggers.resolveClaim(spelling, restore.signal).then((claim) => {
+					if (restore.signal.aborted) return;
+					this.commandRestore = void 0;
+					if (claim !== void 0) this.applyClaim(claim, {
+						start: 0,
+						end: spelling.length,
+						draftRev: pending.rev
+					}, true);
+				}, (_error) => {
+					if (this.commandRestore === restore) this.commandRestore = void 0;
+				});
+			}
+			/** Drop a pending or in-flight command chip restore. */
+			cancelCommandRestore() {
+				this.pendingCommand = void 0;
+				this.commandRestore?.abort();
+				this.commandRestore = void 0;
 			}
 			/** Current semantic document, stable until its content revision changes. */
 			get draftSnapshot() {
 				if (this.draftSnapshotCache?.revision === this.rev) return this.draftSnapshotCache.value;
-				const value = snapshotDraft(this.projection.clipboardText, this.projection.occurrences);
+				const value = snapshotDraft(this.projection.clipboardText, this.projection.occurrences, this.projection.command?.token, this.projection.quotes);
 				this.draftSnapshotCache = {
 					revision: this.rev,
 					value
@@ -18392,24 +15592,32 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			/**
 			* Apply one new-task request to this already-initialized input model.
-			* @param options - replacement content and explicit permission to clear existing text.
+			* @param options - content to adopt and the handling of an existing draft.
 			* @returns applied when the requested text is adopted, even if unchanged;
 			* preserved when the current draft is kept; blocked after disposal or during a pending submission.
 			*/
 			requestDraftInitialization(options) {
 				if (this.draftInitializationBlocked()) return "blocked";
-				if (options.prompt === void 0 && options.clearPreviousDraft !== true) return "preserved";
-				if (options.clearPreviousDraft !== true && (this.snapshot.draft !== "" || this.attachmentIds.length > 0)) return "preserved";
-				this.setDraft(options.prompt ?? "");
+				const whenDraftExists = options.whenDraftExists ?? (options.clearPreviousDraft === true ? "replace" : "keep");
+				if (whenDraftExists === "replace") {
+					this.setDraft(options.prompt ?? "");
+					return "applied";
+				}
+				if (options.prompt === void 0) return "preserved";
+				if (this.snapshot.draft === "" && this.attachmentIds.length === 0) {
+					this.setDraft(options.prompt);
+					return "applied";
+				}
+				if (whenDraftExists === "keep") return "preserved";
+				this.draftEditor.appendDraft(options.prompt);
 				return "applied";
 			}
 			draftInitializationBlocked() {
-				const { phase } = this.core.state;
-				return this.disposed || phase === "adjudicating" || phase === "submitting" || this.detachedDrafts.size > 0 || this.attachmentFlights.size > 0;
+				return this.disposed || frozen(this.core.state.phase);
 			}
 			/** Append ordered attachment ids unless an admission transaction is locked. */
 			addAttachments(ids) {
-				if (this.snapshot.phase === "adjudicating" || this.snapshot.phase === "submitting") return false;
+				if (frozen(this.snapshot.phase)) return false;
 				if (ids.length === 0) return true;
 				this.attachmentIds = [...this.attachmentIds, ...ids];
 				this.publish();
@@ -18422,7 +15630,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			* @returns false when admission is locked or the editor refuses the insertion.
 			*/
 			addFiles(references, ids) {
-				if (this.snapshot.phase === "adjudicating" || this.snapshot.phase === "submitting") return false;
+				if (frozen(this.snapshot.phase)) return false;
 				if (!this.draftEditor.insertFileReferences(references)) return false;
 				this.attachmentIds = [...this.attachmentIds, ...ids];
 				this.publish();
@@ -18430,11 +15638,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}
 			/**
 			* Remove one attachment id from this draft. Busy admission phases refuse, like
-			* {@link addAttachments}: a removal landing while a command submit serializes
-			* would otherwise vanish from the rail yet still ride the in-flight send.
+			* {@link addAttachments}: a removal landing while a send serializes would
+			* otherwise vanish from the rail yet still ride the in-flight send.
 			*/
 			removeAttachment(id) {
-				if (this.snapshot.phase === "adjudicating" || this.snapshot.phase === "submitting") return false;
+				if (frozen(this.snapshot.phase)) return false;
 				const next = this.attachmentIds.filter((candidate) => candidate !== id);
 				if (next.length === this.attachmentIds.length) return false;
 				this.attachmentIds = next;
@@ -18453,17 +15661,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.publish();
 			}
 			/**
-			* Clear the draft as a successful-send commit: the editor empties (no undo
-			* unit) and the undo history is cut, so Ctrl/Cmd-Z cannot resurrect sent
-			* content (the command path gets the same discipline from submit-settled).
-			* @param attachmentIds - admitted attachment ids to remove from this draft.
-			*/
-			commitSend(attachmentIds) {
-				const submitted = new Set(attachmentIds);
-				this.attachmentIds = this.attachmentIds.filter((id) => !submitted.has(id));
-				this.dispatchRun({ type: "send-committed" });
-			}
-			/**
 			* Insert pasted plain text over the current editor selection
 			* (placeholder-sanitized). The paste event's own default is suppressed by
 			* the caller; PASTE_TAG makes the paste its own history boundary, so one
@@ -18474,12 +15671,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.draftEditor.paste(text);
 			}
 			/**
-			* Enter adjudication + submit transaction + default sink. Effects fan out
-			* from the machine; this method only feeds the event. Lock entry
-			* (adjudicating/submitting) force-closes the transient layers: the popup
-			* dismisses and the menu tracks frozen.
+			* Enter adjudication + submit transaction + default sink with the draft, its
+			* reference chips, and its attachments as the user sent them. Effects fan
+			* out from the machine; this method only feeds the event. Lock entry
+			* (adjudicating/submitting/sending) force-closes the transient layers: the
+			* popup dismisses and the menu tracks frozen.
+			* @param allowEmpty - explicitly admit empty continuation input through the default sink.
 			*/
-			submit(mode = "queue", source) {
+			submit(mode = "queue", source, allowEmpty = false) {
 				if (this.disposed) return;
 				const timestamp = Date.now();
 				let state;
@@ -18492,31 +15691,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					...source === void 0 ? {} : { source },
 					...state === void 0 ? {} : { state }
 				});
-				if (this.snapshot.draft.trim() === "" && this.attachmentIds.length > 0) {
-					if (this.snapshot.phase === "plain") {
-						const attachmentIds = [...this.attachmentIds];
-						const controller = new AbortController();
-						this.attachmentFlightSeq += 1;
-						const flight = this.attachmentFlightSeq;
-						this.attachmentFlights.set(flight, {
-							controller,
-							attachmentIds
-						});
-						this.commitSend(attachmentIds);
-						this.notifySubmission(submission);
-						this.deps.defaultSink("", attachmentIds, mode, controller.signal).then((outcome) => {
-							if (this.disposed || !this.attachmentFlights.delete(flight)) return;
-							if (outcome.kind === "success") return;
-							this.restoreAttachments(attachmentIds);
-							if (outcome.text !== void 0) this.notify("error", outcome.text);
-						}, (error) => {
-							if (this.disposed || !this.attachmentFlights.delete(flight)) return;
-							this.restoreAttachments(attachmentIds);
-							this.notify("error", error instanceof Error ? error.message : String(error));
-						});
-					}
-					return;
-				}
 				const before = this.snapshot;
 				if (before.phase === "claimed" && this.attachmentIds.length > 0 && before.claim?.attachments !== true) {
 					this.notify("error", this.deps.commandAttachments.unsupportedNotice(before.claim?.token ?? before.draft));
@@ -18524,12 +15698,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}
 				this.dispatchRun({
 					type: "enter",
+					...allowEmpty ? { allowEmpty: true } : {},
 					mode,
 					draft: this.projection.clipboardText,
+					occurrences: [...this.projection.occurrences],
+					quotes: [...this.projection.quotes],
+					attachmentIds: [...this.attachmentIds],
 					submission
 				});
-				const phase = this.snapshot.phase;
-				if (phase === "adjudicating" || phase === "submitting") {
+				if (frozen(this.snapshot.phase)) {
 					this.deps.popup?.()?.dismiss();
 					this.deps.inputTriggers?.()?.track(this.projection.detectText, 0, { tier: "frozen" }, this.rev);
 				}
@@ -18586,21 +15763,30 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			};
 			/**
 			* Apply one command claim (scoped begin-command event listener body): the
-			* editor replaces [0, span.end) with the claim token, then the machine
-			* enters claimed.
+			* editor replaces [0, span.end) with the command chip and its separator,
+			* then the machine enters claimed.
 			* @param claim - the command claim from the pick path.
 			* @param span - pick-time span snapshot (detect coordinates).
 			* @returns whether the edit applied (phase, span CAS, and leading guard passed).
 			*/
 			beginCommand(claim, span) {
+				return this.applyClaim(claim, span, false);
+			}
+			/**
+			* Replace [0, span.end) with the command chip and enter claimed.
+			* @param mergeHistory - merge the edit into the previous history entry.
+			* @returns whether the edit applied.
+			*/
+			applyClaim(claim, span, mergeHistory) {
 				const phase = this.core.state.phase;
 				if (phase !== "plain" && phase !== "claimed") return false;
 				if (span.draftRev !== this.rev) return false;
 				if (this.projection.detectText.slice(0, span.start).trim() !== "") return false;
-				if (!this.draftEditor.replaceText({
+				const tail = this.projection.detectText.slice(span.end, span.end + 1);
+				if (!this.draftEditor.insertCommand({
 					start: 0,
 					end: span.end
-				}, claim.token)) return false;
+				}, claim, tail, mergeHistory)) return false;
 				this.dispatchRun({
 					type: "claim",
 					claim
@@ -18678,26 +15864,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.editor.focus();
 			}
 			/**
-			* Teardown the shell and return every browser-owned attachment still retained by
-			* the draft or an unsettled default send.
+			* Teardown the shell, abort the in-flight attempt, and return every
+			* browser-owned attachment the draft still holds, including those of a
+			* message the Host has not accepted yet.
 			* @returns attachment ids the scope disposer must release.
 			*/
 			dispose() {
 				if (this.disposed) return [];
-				const retained = new Set(this.attachmentIds);
-				for (const record of this.detachedDrafts.values()) for (const attachmentId of record.attachmentIds) retained.add(attachmentId);
-				for (const flight of this.attachmentFlights.values()) {
-					for (const attachmentId of flight.attachmentIds) retained.add(attachmentId);
-					flight.controller.abort();
-				}
+				const retained = [...this.attachmentIds];
 				this.disposed = true;
+				this.cancelCommandRestore();
 				this.dispatchRun({ type: "release" });
 				this.unsubscribeInbox?.();
 				this.unregister();
-				this.detachedDrafts.clear();
-				this.failedDetached.clear();
-				this.attachmentFlights.clear();
-				return [...retained];
+				return retained;
 			}
 			/** Read the live input state (guard derivation reads here). */
 			get snapshot() {
@@ -18741,17 +15921,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.filePicker.open();
 				return true;
 			}
-			/** The claim token the decoration transform styles; null while unclaimed. */
-			activeClaimToken() {
-				const core = this.core.state;
-				return (core.phase === "claimed" || core.phase === "submitting") && core.claim !== void 0 ? core.claim.token : null;
-			}
-			/** Dispatch + execute, refreshing the claim decoration when the styled token flips. */
+			/** Dispatch one machine event and execute its effects. */
 			dispatchRun(ev) {
-				const beforeToken = this.activeClaimToken();
-				const effects = this.core.dispatch(ev);
-				this.run(effects);
-				if (this.activeClaimToken() !== beforeToken) this.draftEditor.refreshClaimDecoration();
+				this.run(this.core.dispatch(ev));
 			}
 			run(effects) {
 				for (const fx of effects) this.execute(fx);
@@ -18794,52 +15966,37 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				this.draftEditor.clearHistory();
 			}
 			/**
-			* Prompt serialization before the sink: expand each chip occurrence to its
-			* owner's model form via the session controller's codec routing. Owner
-			* missing or serialization failure rejects the detached send and restores
-			* its editor snapshot. Chip-free drafts skip the async detour.
+			* Prompt serialization before the sink: expand each chip occurrence of the
+			* sent draft to its owner's model form via the session controller's codec
+			* routing and format each quote as Markdown, then send it with the
+			* attachments captured at Enter. Owner missing or serialization failure
+			* settles the send as failed, which keeps the draft. Chip-free drafts skip
+			* the async detour.
 			*/
 			sinkSerialized(attempt, draft, mode) {
 				this.notifySubmission(attempt.submission);
-				const attachmentIds = [...this.attachmentIds];
-				this.attachmentIds = [];
-				const occurrences = this.projection.occurrences;
-				const record = {
-					draft,
-					occurrences,
-					attachmentIds
+				const { occurrences, quotes, attachmentIds } = attempt;
+				const inputTriggers = this.deps.inputTriggers?.();
+				const prompt = serializeDraftPrompt(snapshotDraft(draft, occurrences, void 0, quotes), async (source, ref) => {
+					if (inputTriggers === void 0) throw new Error(`no serializer for reference source "${source}"`);
+					return inputTriggers.serializeReference(source, ref, attempt.signal);
+				});
+				const send = (text) => {
+					if (this.dead(attempt)) return;
+					if (text === "" && draft !== "" && attachmentIds.length === 0) {
+						this.settleSink(attempt, Promise.resolve({ kind: "success" }));
+						return;
+					}
+					this.settleSink(attempt, this.deps.defaultSink(text, attachmentIds, mode, attempt.signal, () => {
+						this.acceptSink(attempt);
+					}));
 				};
-				this.detachedDrafts.set(attempt.seq, record);
-				if (this.failedRestoreRev === this.rev) {
-					this.failedDetached.clear();
-					this.failedRestoreRev = void 0;
-				}
-				if (occurrences.length === 0) {
-					this.settleSink(attempt, this.deps.defaultSink(draft.trim(), attachmentIds, mode, attempt.signal));
+				if (!(prompt instanceof Promise)) {
+					send(prompt);
 					return;
 				}
-				const inputTriggers = this.deps.inputTriggers?.();
-				Promise.all(occurrences.map(async (o) => {
-					if (inputTriggers === void 0) throw new Error(`no serializer for reference source "${o.source}"`);
-					return {
-						offset: o.offset,
-						length: o.length,
-						text: await inputTriggers.serializeReference(o.source, o.ref, attempt.signal)
-					};
-				})).then((parts) => {
-					if (this.disposed) return;
-					let out = "";
-					let cursor = 0;
-					for (const part of parts) {
-						out += draft.slice(cursor, part.offset) + part.text;
-						cursor = part.offset + part.length;
-					}
-					out += draft.slice(cursor);
-					this.settleSink(attempt, this.deps.defaultSink(out.trim(), attachmentIds, mode, attempt.signal));
-				}, (error) => {
-					if (this.dead(attempt)) return;
-					const message = error instanceof Error ? error.message : String(error);
-					this.settleDetachedFailure(attempt, message);
+				prompt.then(send, (error) => {
+					this.failSink(attempt, error);
 				});
 			}
 			notifySubmission(submission) {
@@ -18848,74 +16005,46 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					this.deps.messageSubmitted?.(submission);
 				} catch (_error) {}
 			}
-			/** Settle one detached default send independently of other sends. */
+			/**
+			* Settle the message being sent. Once the Host accepts it, its attachments
+			* leave the draft before the editor clears; ConversationController releases
+			* them when the message's echo retires. Any other outcome keeps the draft
+			* and its attachments for correction.
+			*/
 			settleSink(attempt, pending) {
 				pending.then((outcome) => {
-					if (this.dead(attempt)) return;
-					if (outcome.kind !== "success") {
-						this.settleDetachedFailure(attempt, outcome.text);
-						return;
-					}
-					this.detachedDrafts.delete(attempt.seq);
-					this.dispatchRun({
-						type: "sink-settled",
-						attempt,
-						ok: true,
-						outcome
-					});
+					if (!this.dead(attempt)) this.applySinkOutcome(attempt, outcome);
 				}, (error) => {
-					if (this.dead(attempt)) return;
-					this.settleDetachedFailure(attempt, error instanceof Error ? error.message : String(error));
+					this.failSink(attempt, error);
 				});
 			}
-			/** Restore one failed detached send without overwriting text entered after a restoration. */
-			settleDetachedFailure(attempt, message) {
-				const record = this.detachedDrafts.get(attempt.seq);
-				if (record === void 0) return;
-				this.detachedDrafts.delete(attempt.seq);
-				this.restoreAttachments(record.attachmentIds);
-				this.failedDetached.set(attempt.seq, record);
-				if (this.projection.clipboardText === "" || this.failedRestoreRev === this.rev) this.restoreFailedDrafts();
+			/** Settle the message being sent as accepted when the sink learns the Host's acceptance before its outcome. */
+			acceptSink(attempt) {
+				if (this.dead(attempt) || this.core.sendingAttempt !== attempt) return;
+				this.applySinkOutcome(attempt, { kind: "success" });
+			}
+			applySinkOutcome(attempt, outcome) {
+				const accepted = outcome.kind === "success";
+				if (accepted && attempt.attachmentIds.length > 0) {
+					const sent = new Set(attempt.attachmentIds);
+					this.attachmentIds = this.attachmentIds.filter((id) => !sent.has(id));
+				}
+				this.dispatchRun({
+					type: "sink-settled",
+					attempt,
+					ok: accepted,
+					outcome
+				});
+			}
+			/** Settle a send that ended without a Host outcome; the draft stays for correction. */
+			failSink(attempt, error) {
+				if (this.dead(attempt)) return;
 				this.dispatchRun({
 					type: "sink-settled",
 					attempt,
 					ok: false,
-					...message === void 0 ? {} : { message }
+					message: errorText(error)
 				});
-			}
-			/** Rebuild all currently failed snapshots in submission order. */
-			restoreFailedDrafts() {
-				const records = [...this.failedDetached.entries()].sort(([a], [b]) => a - b).map(([, record]) => record);
-				if (records.length === 0) return;
-				const separator = "\n\n";
-				let draft = "";
-				const occurrences = [];
-				for (const record of records) {
-					const base = draft.length + (draft === "" ? 0 : 2);
-					if (draft !== "") draft += separator;
-					draft += record.draft;
-					for (const occurrence of record.occurrences) occurrences.push({
-						...occurrence,
-						offset: base + occurrence.offset
-					});
-				}
-				this.restoringFailures = true;
-				try {
-					this.draftEditor.restoreDraft(draft, occurrences);
-					this.draftEditor.clearHistory();
-					this.failedRestoreRev = this.rev;
-				} finally {
-					this.restoringFailures = false;
-				}
-			}
-			/** Return failed-send attachments to the head of the rail; release happens only after success. */
-			restoreAttachments(attachmentIds) {
-				if (attachmentIds.length === 0) return;
-				const current = new Set(this.attachmentIds);
-				const restored = attachmentIds.filter((id) => !current.has(id));
-				if (restored.length === 0) return;
-				this.attachmentIds = [...restored, ...this.attachmentIds];
-				this.publish();
 			}
 			/** Enter adjudication: poll the session controller; failure = notice + draft retained (never a silent downgrade). */
 			adjudicate(attempt, draft) {
@@ -18953,7 +16082,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			* for correction.
 			*/
 			beginSubmit(attempt, claim, args) {
-				const attachmentIds = claim.attachments === true ? [...this.attachmentIds] : [];
+				const attachmentIds = claim.attachments === true ? attempt.attachmentIds : [];
 				Promise.resolve().then(async () => {
 					const attachments = attachmentIds.length > 0 ? await this.deps.commandAttachments.serialize(attachmentIds) : [];
 					if (this.dead(attempt)) return void 0;
@@ -18969,7 +16098,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						type: "submit-settled",
 						attempt,
 						ok: outcome.kind === "success",
-						draft: this.projection.clipboardText,
+						command: this.projection.command,
 						outcome,
 						...outcome.kind === "error" && outcome.text === void 0 ? { message: "command failed" } : {}
 					});
@@ -18980,7 +16109,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						type: "submit-settled",
 						attempt,
 						ok: false,
-						draft: this.projection.clipboardText,
+						command: this.projection.command,
 						message
 					});
 				});
@@ -19014,6 +16143,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#endregion
 		//#region lib/types/client/input/submission-analytics.js
 		/**
+		* Map a preset id to its fixed analytics category; custom ids never leave the Client.
+		* @param id - Agent preset id the Session records.
+		* @returns the built-in category, or other.
+		*/
+		function analyticsPreset(id) {
+			switch (id) {
+				case "cordis": return "creator";
+				case "ptc": return "ptc";
+				case "minimal": return "minimal";
+				case "standard": return "standard";
+				default: return "other";
+			}
+		}
+		/**
 		* Report the original message occurrence without reading newer Session facts.
 		* @param ctx - client context.
 		* @param submission - original occurrence and Session snapshot.
@@ -19029,7 +16172,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					...model.effort === void 0 ? {} : { thinking_effort: model.effort }
 				},
 				run_mode: state.runMode,
-				msg_type: state.running ? mode : "default"
+				msg_type: state.running ? mode : "default",
+				is_new_session: state.newSession,
+				...state.agentPreset === void 0 ? {} : { agent_preset: analyticsPreset(state.agentPreset) }
 			}, timestamp);
 		}
 		//#endregion
@@ -19081,6 +16226,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						const model = session.projections.faceOf("modelSelection").getSnapshot();
 						const plan = session.projections.faceOf("plan").getSnapshot();
 						const goal = session.projections.faceOf("goal").getSnapshot();
+						const agentPreset = session.projections.faceOf("agentPreset").getSnapshot();
 						const selection = model?.next ?? model?.lastUsed;
 						return Object.freeze({
 							...state.blank ? {} : { sessionId: state.sessionId },
@@ -19090,7 +16236,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								...selection.reasoningEffort === void 0 ? {} : { effort: selection.reasoningEffort }
 							}) },
 							runMode: plan?.active ? "plan" : goal?.goal.phase === "active" ? "goal" : "default",
-							running: state.running
+							running: state.running,
+							newSession: state.blank,
+							...typeof agentPreset === "string" ? { agentPreset } : {}
 						});
 					},
 					messageSubmitted: (submission) => {
@@ -19099,7 +16247,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					inputTriggers: () => this.controller(actx),
 					popup: () => this.popup(actx),
 					inbox: session.projections.faceOf("inbox"),
-					defaultSink: (text, attachmentIds, mode, signal) => this.sink(session, text, attachmentIds, mode, signal),
+					defaultSink: (text, attachmentIds, mode, signal, accept) => this.sink(session, text, attachmentIds, mode, signal, accept),
+					quoteRemoveLabel: () => this.t("quote.remove"),
+					quoteInsertionAllowed: () => {
+						const state = session.getSnapshot();
+						return !state.removed && (state.subagent === null || state.subagent.address.mode === "continuable") && this.conversation().blocks.storeFor(session.sessionId).getSnapshot() === void 0;
+					},
 					steerQueue: () => {
 						this.steerQueue(session, shell);
 					},
@@ -19163,6 +16316,22 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return this.shell(id);
 			}
 			/**
+			* Submit empty input to retry a failed generation through the ordinary composer. Stale
+			* failures, active work, and drafts keep their current input unchanged.
+			* @param id - retained ordinary Session identity.
+			* @param failureSeq - failed turn/end sequence the displayed button addresses.
+			*/
+			retry(id, failureSeq) {
+				const binding = this.sessions().binding(id);
+				if (binding === void 0 || binding.session.projections.faceOf("conversationContinuation").getSnapshot() !== failureSeq) return;
+				const session = binding.session.getSnapshot();
+				const shell = this.shellFor(binding);
+				const input = shell.snapshot;
+				const inbox = binding.session.projections.faceOf("inbox").getSnapshot();
+				if (session.running || session.removed || session.openState !== "open" || session.subagent !== null || session.pendingSubmissions.length > 0 || input.phase !== "plain" || input.draft.trim() !== "" || input.attachmentIds.length > 0 || (inbox?.["next-turn"].length ?? 0) > 0 || inbox?.["next-step"].some((message) => message.source.kind === "user") || this.conversation().blocks.storeFor(id).getSnapshot() !== void 0) return;
+				shell.submit("queue", "click", true);
+			}
+			/**
 			* Query file intake without creating a Session input.
 			* @param id - target Session.
 			* @returns whether its mounted composer currently accepts files.
@@ -19190,14 +16359,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return binding === void 0 ? void 0 : this.controller(binding.ctx);
 			}
 			/**
-			* Default sink: optimistic clear + prompt. The session is always a real
-			* host entity (materialized when its workspace was picked), so there is
-			* exactly one path; a failed first prompt is an ordinary prompt failure
-			* (banner via promptError, draft restored only while untouched).
+			* Default sink: prompt while the composer holds the sent draft. The session
+			* is always a real host entity (materialized when its workspace was picked),
+			* so there is exactly one path; a refused or failed prompt is an ordinary
+			* prompt failure (banner via promptError, draft kept in the composer).
 			*/
-			sink(session, text, attachmentIds, mode, signal) {
-				if (text === "" && attachmentIds.length === 0) return Promise.resolve({ kind: "success" });
-				return this.conversation().sendSession(session, text, attachmentIds, mode, signal);
+			sink(session, text, attachmentIds, mode, signal, accept) {
+				if (text === "" && attachmentIds.length === 0) return session.prompt([], mode, signal).then((result) => result.ok ? { kind: "success" } : { kind: "error" });
+				return this.conversation().sendSession(session, text, attachmentIds, mode, signal, accept);
 			}
 			/**
 			* Submit every still-pending queued message through QueueDock Steer, in FIFO
@@ -19334,6 +16503,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		const PLAN_NEXT_ACTION_EN = "describe your task to generate plan";
 		/** Simplified Chinese dictionary (the key-set source of truth). */
 		const zh = {
+			"quote.remove": "移除引用",
 			"shortcut.newline": "换行",
 			"shortcut.complementary": "使用互补的 Queue／Steer 方式",
 			"shortcut.slash": "打开命令菜单",
@@ -19344,7 +16514,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"placeholder.plan": PLAN_NEXT_ACTION_ZH,
 			"placeholder.default": "发消息或创建任务, / 调用指令, @ 文件或对话",
 			"placeholder.unavailable": "会话不可用",
-			"placeholder.parentOffline": "父会话已离线，无法继续发送；仍可停止当前运行",
 			"placeholder.hero": "描述你想要构建的内容, / 调用指令, @ 文件或对话",
 			"placeholder.workspace": "选择一个工作区开始",
 			"placeholder.steerQueue": "Cmd/Ctrl+Enter 插话发送全部排队消息",
@@ -19352,6 +16521,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"input.file": "文件",
 			"input.stop": "停止生成",
 			"input.send": "发送消息",
+			"input.continue": "继续生成",
+			"input.sending": "正在发送消息",
 			"input.send.queue": "排队发送",
 			"input.send.steer": "插话发送",
 			"attachment.pending": "待发送附件",
@@ -19402,7 +16573,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"hero.headline": "探索未至之境",
 			"hero.preview": "预览版",
 			"hero.chooseWorkspace": "选择工作区",
+			"header.more": "更多操作",
 			"session.hierarchy": "会话层级",
+			"session.moreViews": "更多会话视图",
 			"todo.title": "任务",
 			"todo.progress.done": "{done} 已完成",
 			"todo.progress.active": "{active} 进行中",
@@ -19415,10 +16588,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"tool.title.getGoal": "查看目标",
 			"tool.title.updateGoal": "更新目标",
 			"tool.preparing.content": "{kilobytes}KB",
-			"tool.title.createSchedule": "创建定时任务",
-			"tool.title.listSchedules": "查看定时任务",
-			"tool.title.deleteSchedule": "删除定时任务",
-			"tool.title.updateSchedule": "修改定时任务",
+			"tool.title.createSchedule": "创建自动化任务",
+			"tool.title.listSchedules": "查看自动化任务",
+			"tool.title.viewSchedule": "查看自动化任务详情",
+			"tool.title.editSchedule": "编辑自动化任务",
+			"tool.title.deleteSchedule": "删除自动化任务",
+			"tool.title.updateSchedule": "修改自动化任务",
 			"detail.state": "状态",
 			"detail.todo.completed": "已完成",
 			"detail.todo.in_progress": "进行中",
@@ -19454,12 +16629,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.schedule.frequency": "重复",
 			"detail.schedule.scheduled": "等待触发",
 			"detail.schedule.overdue": "已到期，等待会话恢复",
-			"detail.schedule.empty": "没有定时任务",
+			"detail.schedule.active": "已开启",
+			"detail.schedule.paused": "已暂停",
+			"detail.schedule.ended": "已结束",
+			"detail.schedule.empty": "没有自动化任务",
 			"detail.schedule.deleted": "已删除",
-			"detail.schedule.count": "{count} 个定时任务",
+			"detail.schedule.count": "{count} 个自动化任务",
 			"detail.schedule.daily": "每天 {time}（{zone}）",
 			"detail.schedule.weekly": "每周 {days} {time}（{zone}）",
 			"detail.schedule.cron": "Cron {expression}（{zone}）",
+			"detail.schedule.custom": "自定义",
 			"detail.weekday.1": "周一",
 			"detail.weekday.2": "周二",
 			"detail.weekday.3": "周三",
@@ -19480,6 +16659,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"tool.title.traceSession": "追踪会话",
 			"tool.title.listModels": "查看可用模型",
 			"tool.title.subagent": "创建子智能体",
+			"tool.title.subagentFork": "派生子智能体",
 			"tool.title.listAgents": "查看子智能体",
 			"tool.title.sendMessage": "发送消息",
 			"tool.title.interruptAgent": "中断智能体",
@@ -19501,7 +16681,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"tool.title.getTeamTask": "读取团队任务",
 			"tool.title.updateTeamTask": "更新团队任务",
 			"tool.title.listTeamTasks": "查看团队任务",
-			"tool.title.waitAgent": "等待子智能体",
+			"tool.title.waitAgent": "等待消息…",
 			"detail.recordedResult": "调用结果",
 			"detail.empty": "暂无结果",
 			"detail.none": "无",
@@ -19514,6 +16694,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.status.inactive": "未运行",
 			"detail.status.provisioning": "准备中",
 			"detail.status.failed": "失败",
+			"detail.status.corrupt": "已损坏",
+			"detail.status.unsupported": "不支持",
+			"detail.status.unavailable": "不可用",
 			"detail.status.completed": "已完成",
 			"detail.status.deleted": "已删除",
 			"detail.status.killed": "已取消",
@@ -19558,11 +16741,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.field.agents": "启动智能体数",
 			"detail.field.result": "结果",
 			"detail.field.parent": "父级",
-			"detail.field.depth": "层级",
 			"detail.field.exitCode": "退出码",
 			"detail.field.signal": "信号",
 			"detail.field.previousStatus": "中断前状态",
 			"detail.field.agent": "智能体 ID",
+			"detail.field.agentName": "智能体名称",
+			"detail.field.agentDescription": "智能体任务描述",
 			"detail.field.job": "任务 ID",
 			"detail.field.task": "任务内容",
 			"detail.field.processGroup": "进程组",
@@ -19586,9 +16770,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.receipt.closed": "已关闭",
 			"detail.receipt.closing": "关闭中",
 			"detail.wait.noProgress": "没有正在运行的子智能体",
-			"detail.wait.title": "子智能体状态",
-			"detail.wait.timeout": "等待超时",
-			"detail.wait.changed": "检测到变化",
+			"detail.wait.title": "等待结果",
+			"detail.wait.timeout": "等待已超时",
+			"detail.wait.ended": "等待已结束",
 			"detail.agent.reply": "智能体回复",
 			"detail.models.title": "可用模型",
 			"detail.output.lines": "第 {begin}–{end} 行，共 {total} 行",
@@ -19637,11 +16821,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"row.input": "输入",
 			"row.output": "输出",
 			"row.inspect": "查看",
+			"row.imageSize": "{width}x{height}px，{bytes} 字节",
+			"row.imageSizeDownscaled": "{width}x{height}px（由 {originalWidth}x{originalHeight}px 缩小），{bytes} 字节",
 			"tool.title.search": "搜索",
 			"tool.title.read": "读取",
 			"tool.title.bash": "运行命令",
 			"tool.title.write": "写入",
 			"tool.title.edit": "编辑",
+			"tool.title.applyPatch": "编辑",
 			"tool.title.code": "代码",
 			"tool.title.generic": "工具调用",
 			"tool.title.inspect": "查询 Cordis 环境",
@@ -19708,6 +16895,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		};
 		/** English dictionary, checked complete against the zh key set. */
 		const en = {
+			"quote.remove": "Remove quote",
 			"shortcut.newline": "New line",
 			"shortcut.complementary": "Use the complementary Queue / Steer action",
 			"shortcut.slash": "Open command menu",
@@ -19718,7 +16906,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"placeholder.plan": PLAN_NEXT_ACTION_EN,
 			"placeholder.default": "Message or run a task, / commands, @ files or sessions",
 			"placeholder.unavailable": "Session unavailable",
-			"placeholder.parentOffline": "Parent session offline; sending is unavailable but you can still stop the run",
 			"placeholder.hero": "Describe what you want to build, / commands, @ files or sessions",
 			"placeholder.workspace": "Choose a workspace to start",
 			"placeholder.steerQueue": "Cmd/Ctrl+Enter steers all queued messages",
@@ -19726,6 +16913,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"input.file": "File",
 			"input.stop": "Stop generating",
 			"input.send": "Send message",
+			"input.continue": "Continue generating",
+			"input.sending": "Sending message",
 			"input.send.queue": "Queue message",
 			"input.send.steer": "Steer message",
 			"attachment.pending": "Pending attachments",
@@ -19776,7 +16965,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"hero.headline": "Into the Unknown",
 			"hero.preview": "Preview",
 			"hero.chooseWorkspace": "Choose workspace",
+			"header.more": "More actions",
 			"session.hierarchy": "Session hierarchy",
+			"session.moreViews": "More conversation views",
 			"todo.title": "To-dos",
 			"todo.progress.done": "{done} completed",
 			"todo.progress.active": "{active} in progress",
@@ -19789,10 +16980,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"tool.title.getGoal": "View goal",
 			"tool.title.updateGoal": "Update goal",
 			"tool.preparing.content": "{kilobytes}KB",
-			"tool.title.createSchedule": "Create reminder",
-			"tool.title.listSchedules": "List reminders",
-			"tool.title.deleteSchedule": "Delete reminder",
-			"tool.title.updateSchedule": "Update reminder",
+			"tool.title.createSchedule": "Create automation task",
+			"tool.title.listSchedules": "List automation tasks",
+			"tool.title.viewSchedule": "View automation task",
+			"tool.title.editSchedule": "Edit automation task",
+			"tool.title.deleteSchedule": "Delete automation task",
+			"tool.title.updateSchedule": "Update automation task",
 			"detail.state": "Status",
 			"detail.todo.completed": "Completed",
 			"detail.todo.in_progress": "In progress",
@@ -19828,12 +17021,16 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.schedule.frequency": "Repeat",
 			"detail.schedule.scheduled": "Scheduled",
 			"detail.schedule.overdue": "Overdue, awaiting session resume",
-			"detail.schedule.empty": "No reminders",
+			"detail.schedule.active": "Enabled",
+			"detail.schedule.paused": "Paused",
+			"detail.schedule.ended": "Ended",
+			"detail.schedule.empty": "No automation tasks",
 			"detail.schedule.deleted": "Deleted",
-			"detail.schedule.count": "{count} reminders",
+			"detail.schedule.count": "{count} automation tasks",
 			"detail.schedule.daily": "Every day at {time} ({zone})",
 			"detail.schedule.weekly": "Weekly on {days} at {time} ({zone})",
 			"detail.schedule.cron": "Cron {expression} ({zone})",
+			"detail.schedule.custom": "Custom",
 			"detail.weekday.1": "Mon",
 			"detail.weekday.2": "Tue",
 			"detail.weekday.3": "Wed",
@@ -19854,6 +17051,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"tool.title.traceSession": "Trace session",
 			"tool.title.listModels": "List models",
 			"tool.title.subagent": "Create subagent",
+			"tool.title.subagentFork": "Fork subagent",
 			"tool.title.listAgents": "List subagents",
 			"tool.title.sendMessage": "Send message",
 			"tool.title.interruptAgent": "Interrupt agent",
@@ -19875,7 +17073,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"tool.title.getTeamTask": "Read team task",
 			"tool.title.updateTeamTask": "Update team task",
 			"tool.title.listTeamTasks": "List team tasks",
-			"tool.title.waitAgent": "Wait for subagent",
+			"tool.title.waitAgent": "Waiting for messages…",
 			"detail.recordedResult": "Recorded result",
 			"detail.empty": "No results",
 			"detail.none": "None",
@@ -19888,6 +17086,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.status.inactive": "Inactive",
 			"detail.status.provisioning": "Provisioning",
 			"detail.status.failed": "Failed",
+			"detail.status.corrupt": "Corrupt",
+			"detail.status.unsupported": "Unsupported",
+			"detail.status.unavailable": "Unavailable",
 			"detail.status.completed": "Completed",
 			"detail.status.deleted": "Deleted",
 			"detail.status.killed": "Cancelled",
@@ -19932,11 +17133,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.field.agents": "Agents started",
 			"detail.field.result": "Result",
 			"detail.field.parent": "Parent",
-			"detail.field.depth": "Depth",
 			"detail.field.exitCode": "Exit code",
 			"detail.field.signal": "Signal",
 			"detail.field.previousStatus": "Previous status",
 			"detail.field.agent": "Agent ID",
+			"detail.field.agentName": "Agent name",
+			"detail.field.agentDescription": "Agent task description",
 			"detail.field.job": "Job ID",
 			"detail.field.task": "Task",
 			"detail.field.processGroup": "Process group",
@@ -19960,9 +17162,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"detail.receipt.closed": "Closed",
 			"detail.receipt.closing": "Closing",
 			"detail.wait.noProgress": "No active subagents",
-			"detail.wait.title": "Subagent activity",
+			"detail.wait.title": "Wait result",
 			"detail.wait.timeout": "Wait timed out",
-			"detail.wait.changed": "Change detected",
+			"detail.wait.ended": "Wait ended",
 			"detail.agent.reply": "Agent response",
 			"detail.models.title": "Available models",
 			"detail.output.lines": "Lines {begin}–{end} of {total}",
@@ -20011,11 +17213,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"row.input": "IN",
 			"row.output": "OUT",
 			"row.inspect": "Inspect",
+			"row.imageSize": "{width}x{height}px, {bytes} bytes",
+			"row.imageSizeDownscaled": "{width}x{height}px (downscaled from {originalWidth}x{originalHeight}px), {bytes} bytes",
 			"tool.title.search": "Search",
 			"tool.title.read": "Read",
 			"tool.title.bash": "Bash",
 			"tool.title.write": "Write",
 			"tool.title.edit": "Edit",
+			"tool.title.applyPatch": "Edit",
 			"tool.title.code": "Code",
 			"tool.title.generic": "Tool call",
 			"tool.title.inspect": "Query Cordis environment",
@@ -20080,9 +17285,2361 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"terminal.sendInput": "(send input)",
 			"terminal.session": "Terminal {sessionId}"
 		};
+		/** Japanese copy, checked against the English keys. */
+		const ja = {
+			"quote.remove": "引用を削除",
+			"shortcut.newline": "改行",
+			"shortcut.complementary": "補助のキュー / 実行中の指示変更を使用",
+			"shortcut.slash": "コマンドメニューを開く",
+			"shortcut.mention": "参照メニューを開く",
+			"hint.plan": "計画を生成するにはタスクを説明してください",
+			"hint.goal": "長時間実行するタスクの目標を説明してください",
+			"hint.goal.active": "目標アクティブ — 編集 / 一時停止 / 再開 / クリア",
+			"placeholder.plan": "計画を生成するにはタスクを説明してください",
+			"placeholder.default": "メッセージを送信するかタスクを実行、/ コマンド、@ ファイルやセッション",
+			"placeholder.unavailable": "セッションを利用できません",
+			"placeholder.hero": "作りたいものを説明してください。/ コマンド、@ ファイルやセッション",
+			"placeholder.workspace": "開始するワークスペースを選択",
+			"placeholder.steerQueue": "Cmd/Ctrl+Enterでキュー内のすべてのメッセージを実行中の指示に追加",
+			"input.commands": "ファイルを追加またはコマンドを実行",
+			"input.file": "ファイル",
+			"input.stop": "生成を停止",
+			"input.send": "メッセージを送信",
+			"input.continue": "生成を続ける",
+			"input.sending": "メッセージを送信中",
+			"input.send.queue": "メッセージをキューに追加",
+			"input.send.steer": "実行中の指示にメッセージを追加",
+			"attachment.pending": "保留中の添付ファイル",
+			"attachment.scrollLeft": "添付ファイルを左にスクロール",
+			"attachment.scrollRight": "添付ファイルを右にスクロール",
+			"attachment.dropTitle": "ファイルや画像をここにドラッグして追加",
+			"attachment.dropDesc": "画像の上限: 最大{count}枚、各{size}",
+			"attachment.dropBlocked": "現在ファイルや画像を追加できません",
+			"attachment.directoryDesktopOnly": "フォルダはデスクトップアプリでのみ追加できます。ブラウザでは個別のファイルを追加してください",
+			"attachment.pathUnavailable": "フォルダのパスを取得できませんでした。もう一度ドラッグしてください",
+			"attachment.pathUnsupported": "パスに参照できない文字が含まれています。名前を変更して再試行してください",
+			"image.pending": "保留中の画像",
+			"image.openOriginal": "元の画像を表示",
+			"image.openOriginalLabel": "{label}、クリックで元の画像を表示",
+			"image.remove": "画像{name}を削除",
+			"image.original": "元の画像",
+			"image.label": "画像",
+			"image.loadFailed": "画像を読み込めませんでした。クリックで再試行",
+			"image.loading": "画像を読み込み中…",
+			"image.preview": "元の画像のプレビュー",
+			"image.closePreview": "元の画像のプレビューを閉じる",
+			"image.unsupportedType": "対応している画像形式はPNG、JPG、WebP、GIFのみです",
+			"image.tooMany": "1つのメッセージに最大{count}枚の画像を含められます",
+			"image.fileTooLarge": "各画像は{size}未満である必要があります",
+			"image.totalTooLarge": "画像の合計が{size}を超えています。一部を削除して再試行してください",
+			"image.tooManyPixels": "画像の解像度が高すぎます。圧縮して再試行してください",
+			"image.dimensionTooLarge": "画像の各辺は最大{size}pxです。縮小して再試行してください",
+			"image.modelUnsupported": "現在のモデルは画像に対応していません。対応モデルに切り替えてください",
+			"image.sendFailed": "画像の送信に失敗しました（{reason}）。再度追加して再試行してください",
+			"file.pending": "保留中のファイル",
+			"file.remove": "ファイル{name}を削除",
+			"file.uploading": "アップロード中…",
+			"file.uploadFailed": "アップロードに失敗しました。クリックで再試行",
+			"file.retry": "{name}のアップロードを再試行",
+			"file.stillUploading": "ファイルをアップロード中です。完了後に送信してください",
+			"file.sessionUnavailable": "セッションを利用できないため、ファイルをアップロードできません",
+			"file.notStaged": "ファイルのアップロードが完了していません。再度追加して再試行してください",
+			"file.label": "ファイル",
+			"context.aria": "コンテキストの{percent}を使用中",
+			"context.used": "コンテキスト使用量",
+			"context.system": "システムプロンプト",
+			"context.tools": "ツール定義",
+			"context.messages": "メッセージ",
+			"settings.enter.title": "実行中の送信動作",
+			"settings.enter.description": "エージェントの実行中にEnterキーと送信ボタンが行う動作。Cmd/Ctrl+Enterではもう一方の動作になります",
+			"settings.enter.queue": "キュー",
+			"settings.enter.steer": "指示を変更",
+			"hero.headline": "未知への挑戦",
+			"hero.preview": "プレビュー",
+			"hero.chooseWorkspace": "ワークスペースを選択",
+			"header.more": "その他の操作",
+			"session.hierarchy": "セッション階層",
+			"session.moreViews": "その他の会話ビュー",
+			"todo.title": "ToDo",
+			"todo.progress.done": "{done}件完了",
+			"todo.progress.active": "{active}件進行中",
+			"todo.progress.pending": "{pending}件保留中",
+			"todo.status.completed": "完了",
+			"todo.status.inProgress": "進行中",
+			"todo.status.pending": "保留中",
+			"todo.rowTitle": "ToDoリストを更新",
+			"tool.title.createGoal": "目標を作成",
+			"tool.title.getGoal": "目標を表示",
+			"tool.title.updateGoal": "目標を更新",
+			"tool.preparing.content": "{kilobytes}KB",
+			"tool.title.createSchedule": "自動化タスクを作成",
+			"tool.title.viewSchedule": "自動化タスクを表示",
+			"tool.title.editSchedule": "自動化タスクを編集",
+			"tool.title.listSchedules": "自動化タスクを一覧表示",
+			"tool.title.deleteSchedule": "自動化タスクを削除",
+			"tool.title.updateSchedule": "自動化タスクを更新",
+			"detail.state": "ステータス",
+			"detail.todo.completed": "完了",
+			"detail.todo.in_progress": "進行中",
+			"detail.todo.pending": "保留中",
+			"detail.todo.empty": "ToDoリストは空です",
+			"todo.diff.initial": "初期リスト",
+			"todo.diff.compare": "前回のリストからの変更",
+			"todo.diff.unavailable": "前回のリストは利用できません",
+			"todo.diff.noChanges": "リストに変更はありません",
+			"todo.diff.added": "{count}件追加",
+			"todo.diff.updated": "{count}件更新",
+			"todo.diff.removed": "{count}件削除",
+			"todo.diff.unchanged": "{count}件変更なし",
+			"todo.diff.addedItem": "追加",
+			"todo.diff.updatedItem": "ステータス変更",
+			"todo.diff.movedItem": "順序変更",
+			"todo.diff.removedItem": "削除",
+			"detail.goal.empty": "目標なし",
+			"detail.goal.active": "アクティブ",
+			"detail.goal.disarmed": "継続待ち",
+			"detail.goal.paused": "一時停止",
+			"detail.goal.blocked": "ブロック中",
+			"detail.goal.complete": "完了",
+			"detail.goal.rounds": "ラウンド",
+			"detail.goal.reason": "ブロッカー",
+			"detail.days": "{count} 日",
+			"detail.hours": "{count} 時間",
+			"detail.minutes": "{count} 分",
+			"detail.seconds": "{count} 秒",
+			"detail.schedule.once": "1回のみ",
+			"detail.schedule.every": "{interval} ごと",
+			"detail.schedule.when": "スケジュール設定",
+			"detail.schedule.frequency": "繰り返し",
+			"detail.schedule.active": "有効",
+			"detail.schedule.paused": "一時停止中",
+			"detail.schedule.ended": "終了",
+			"detail.schedule.scheduled": "スケジュール済み",
+			"detail.schedule.overdue": "期限超過、セッション再開待ち",
+			"detail.schedule.empty": "自動化タスクなし",
+			"detail.schedule.deleted": "削除済み",
+			"detail.schedule.count": "{count}件の自動化タスク",
+			"detail.schedule.daily": "毎日 {time} ({zone})",
+			"detail.schedule.weekly": "毎週 {days} の {time} ({zone})",
+			"detail.schedule.cron": "Cron {expression} ({zone})",
+			"detail.schedule.custom": "カスタム",
+			"detail.weekday.1": "月",
+			"detail.weekday.2": "火",
+			"detail.weekday.3": "水",
+			"detail.weekday.4": "木",
+			"detail.weekday.5": "金",
+			"detail.weekday.6": "土",
+			"detail.weekday.7": "日",
+			"detail.weekday.join": ", ",
+			"tool.title.inspectProviders": "プロバイダーを検査",
+			"tool.title.queryRuntime": "ランタイムを照会",
+			"tool.title.inspectPlugins": "プラグインを検査",
+			"tool.title.workflow": "ワークフローを実行",
+			"tool.title.ralph": "ralph ループを実行",
+			"tool.title.readEvent": "イベントを読み取り",
+			"tool.title.searchEvents": "イベントを検索",
+			"tool.title.traceEvent": "イベントをトレース",
+			"tool.title.searchSessions": "セッションを検索",
+			"tool.title.traceSession": "セッションをトレース",
+			"tool.title.listModels": "モデルを一覧表示",
+			"tool.title.subagent": "サブエージェントを作成",
+			"tool.title.subagentFork": "サブエージェントを作成（コンテキストを継承）",
+			"tool.title.listAgents": "サブエージェントを一覧表示",
+			"tool.title.sendMessage": "メッセージを送信",
+			"tool.title.interruptAgent": "エージェントを中断",
+			"tool.title.listJobs": "バックグラウンドジョブを一覧表示",
+			"tool.title.readJob": "ジョブ出力を読み取り",
+			"tool.title.killJob": "バックグラウンドジョブをキャンセル",
+			"tool.title.openTerminal": "ターミナルを開く",
+			"tool.title.readTerminal": "ターミナルを読み取り",
+			"tool.title.listTerminals": "ターミナルを一覧表示",
+			"tool.title.signalTerminal": "ターミナルにシグナル送信",
+			"tool.title.closeTerminal": "ターミナルを閉じる",
+			"tool.title.lsp": "コードシンボルを照会",
+			"tool.title.findDefinition": "定義を検索",
+			"tool.title.findReferences": "参照を検索",
+			"tool.title.findImplementation": "実装を検索",
+			"tool.title.hoverSymbol": "シンボルを検査",
+			"tool.title.spawnTeammate": "チームメイトを作成",
+			"tool.title.createTeamTask": "チームタスクを作成",
+			"tool.title.getTeamTask": "チームタスクを読み取り",
+			"tool.title.updateTeamTask": "チームタスクを更新",
+			"tool.title.listTeamTasks": "チームタスクを一覧表示",
+			"tool.title.waitAgent": "メッセージを待機中…",
+			"detail.recordedResult": "記録された結果",
+			"detail.empty": "結果なし",
+			"detail.none": "なし",
+			"detail.yes": "はい",
+			"detail.no": "いいえ",
+			"detail.moreInInspect": "Inspect で残り {count}件を表示できます",
+			"detail.status.running": "実行中",
+			"detail.status.idle": "待機中",
+			"detail.status.ready": "準備完了",
+			"detail.status.inactive": "非アクティブ",
+			"detail.status.provisioning": "プロビジョニング中",
+			"detail.status.failed": "失敗",
+			"detail.status.corrupt": "破損",
+			"detail.status.unsupported": "未対応",
+			"detail.status.unavailable": "利用不可",
+			"detail.status.completed": "完了",
+			"detail.status.deleted": "削除済み",
+			"detail.status.killed": "キャンセル済み",
+			"detail.status.accepted": "承認済み",
+			"detail.status.queued": "キュー待ち",
+			"detail.status.exited": "終了",
+			"detail.field.id": "ID",
+			"detail.field.revision": "リビジョン",
+			"detail.field.platform": "プラットフォーム",
+			"detail.field.provider": "プロバイダー",
+			"detail.field.model": "モデル",
+			"detail.field.role": "ロール",
+			"detail.field.context": "コンテキスト",
+			"detail.field.owner": "オーナー",
+			"detail.field.ready": "準備完了",
+			"detail.field.dependencies": "依存関係",
+			"detail.field.writeScopes": "書き込みスコープ",
+			"detail.field.warnings": "警告",
+			"detail.field.diagnostics": "診断",
+			"detail.field.methods": "メソッド",
+			"detail.field.inputSchema": "入力スキーマ",
+			"detail.field.outputSchema": "出力スキーマ",
+			"detail.field.currentPackage": "現在のパッケージ",
+			"detail.field.nextPackage": "次のパッケージ",
+			"detail.field.latestRun": "最新の実行",
+			"detail.field.packages": "パッケージ",
+			"detail.field.registrations": "登録",
+			"detail.field.props": "Props",
+			"detail.field.data": "データ",
+			"detail.field.source": "ソース",
+			"detail.field.content": "内容",
+			"detail.field.message": "メッセージ",
+			"detail.field.messageId": "メッセージ ID",
+			"detail.field.root": "ルート",
+			"detail.field.pid": "プロセス ID",
+			"detail.field.type": "種類",
+			"detail.field.time": "時刻",
+			"detail.field.seq": "イベントシーケンス",
+			"detail.field.turn": "ターン",
+			"detail.field.step": "ステップ",
+			"detail.field.callId": "呼び出し ID",
+			"detail.field.agents": "起動したエージェント",
+			"detail.field.result": "結果",
+			"detail.field.parent": "親",
+			"detail.field.exitCode": "終了コード",
+			"detail.field.signal": "シグナル",
+			"detail.field.previousStatus": "以前のステータス",
+			"detail.field.agent": "エージェント ID",
+			"detail.field.agentName": "エージェント名",
+			"detail.field.agentDescription": "エージェントのタスク説明",
+			"detail.field.job": "ジョブ ID",
+			"detail.field.task": "タスク",
+			"detail.field.processGroup": "プロセスグループ",
+			"detail.field.availability": "可用性",
+			"detail.field.bestMatch": "最適な一致",
+			"detail.field.target": "対象イベント",
+			"detail.field.surface": "レコードステータス",
+			"detail.agents.count": "{count} エージェント",
+			"detail.jobs.count": "{count} バックグラウンドジョブ",
+			"detail.terminals.count": "{count} ターミナル",
+			"detail.tasks.count": "{count} チームタスク",
+			"detail.tasks.nextPage": "さらにタスクがあります。次のカーソルは {cursor} です",
+			"detail.locations.count": "{count}件の場所",
+			"detail.location": "{line} 行目、{column} 列目",
+			"detail.receipt.delivered": "メッセージを配信しました",
+			"detail.receipt.interrupt": "中断を要求しました",
+			"detail.receipt.started": "開始済み",
+			"detail.receipt.cancel": "キャンセルを要求しました",
+			"detail.receipt.alreadyFinished": "既に完了",
+			"detail.receipt.signal": "シグナル送信済み",
+			"detail.receipt.closed": "クローズ済み",
+			"detail.receipt.closing": "クローズ中",
+			"detail.wait.noProgress": "アクティブなサブエージェントなし",
+			"detail.wait.title": "サブエージェントのアクティビティ",
+			"detail.wait.timeout": "待機がタイムアウトしました",
+			"detail.wait.ended": "待機が終了しました",
+			"detail.agent.reply": "エージェントの応答",
+			"detail.models.title": "利用可能なモデル",
+			"detail.output.lines": "{total} 行中 {begin}–{end} 行",
+			"detail.output.truncated": "出力は切り詰められています",
+			"detail.providers.count": "{count}件の inspect プロバイダー",
+			"detail.plugins.count": "{count}件の動的プラグイン",
+			"detail.workflow.script": "ワークフロースクリプト",
+			"detail.ralph.reportedComplete": "ワーカーが完了を報告",
+			"detail.ralph.reportedBlocker": "ワーカーがブロッカーを報告",
+			"detail.ralph.limit": "ラウンド上限に達しました",
+			"detail.report.nextSteps": "残りの作業",
+			"detail.trace.replacedBy": "置き換え元",
+			"detail.trace.replacementChain": "置き換えチェーン",
+			"detail.trace.replaces": "置き換えられたイベント",
+			"detail.trace.sources": "ソースイベント",
+			"detail.trace.derived": "派生イベント",
+			"detail.trace.ancestors": "祖先セッション",
+			"detail.trace.descendants": "子孫セッション",
+			"detail.matches.count": "{count}件の一致",
+			"detail.matches.capped": "結果の上限に達しました。さらに絞り込んでください",
+			"detail.event.neighbors": "周辺のイベント",
+			"todo.completed": "{done}/{total} 完了",
+			"command.attachmentsUnsupported": "/{command} は添付ファイルを受け付けません。先に削除してください",
+			"ask.rowTitle": "質問する",
+			"ask.waiting": "待機中",
+			"ask.pending": "継続中。引き続き回答できます",
+			"ask.pendingDetail": "これらの保留中の質問は、コンポーザーから引き続き回答できます。",
+			"ask.reopen": "回答",
+			"ask.review": "回答を表示",
+			"ask.closed": "クローズ済み",
+			"ask.closedDetail": "この質問はクローズされました。結果は下の会話にあります。",
+			"ask.cancelled": "キャンセル済み",
+			"ask.cancelledDetail": "この質問セットは回答が送信される前にキャンセルされました。",
+			"ask.interrupted": "中断済み",
+			"ask.interruptedDetail": "この質問セットは回答が送信される前に中断されました。",
+			"ask.answered": "{answered}/{total} 回答済み",
+			"ask.skipped": "未回答",
+			"bash.running": "実行中",
+			"bash.failed": "失敗",
+			"bash.stopped": "停止",
+			"row.running": "実行中",
+			"row.preparing": "ツール呼び出しを準備中",
+			"row.failed": "失敗",
+			"row.stopped": "停止",
+			"row.commandArguments": "コマンド引数",
+			"row.input": "IN",
+			"row.output": "OUT",
+			"row.inspect": "検査",
+			"row.imageSize": "{width}x{height}px、{bytes} バイト",
+			"row.imageSizeDownscaled": "{width}x{height}px（{originalWidth}x{originalHeight}px から縮小）、{bytes} バイト",
+			"tool.title.search": "検索",
+			"tool.title.read": "読み取り",
+			"tool.title.bash": "Bash",
+			"tool.title.write": "書き込み",
+			"tool.title.edit": "編集",
+			"tool.title.applyPatch": "編集",
+			"tool.title.code": "コード",
+			"tool.title.generic": "ツール呼び出し",
+			"tool.title.inspect": "Cordis 環境を照会",
+			"tool.title.runCordis": "Cordis プラグインを実行",
+			"tool.title.stopCordis": "Cordis プラグインを停止",
+			"tool.title.removeCordis": "Cordis プラグインを削除",
+			"tool.title.pwsh": "Pwsh",
+			"tool.title.readImage": "画像を読み取り",
+			"tool.title.grep": "Grep",
+			"tool.title.glob": "Glob",
+			"tool.title.webSearch": "検索",
+			"tool.title.webFetch": "取得",
+			"tool.autoReviewRejected": "自動認可レビューにより拒否されました",
+			"tool.autoReviewNotExecuted": "ツールは実行されませんでした。理由: {reason}",
+			"tool.autoReviewReasonFallback": "自動認可レビューがこの操作を承認しませんでした",
+			"diff.collapseAria": "差分を折りたたむ",
+			"diff.expandAria": "差分の残り{count}行を表示",
+			"diff.expandRest": "… 残り{count}行",
+			"read.window": "{total}行中{shown}行を表示",
+			"read.collapseAria": "内容を折りたたむ",
+			"read.expandAria": "残り{count}行を表示",
+			"read.expandRest": "… 残り{count}行",
+			"search.paths": "{shown}件のパス",
+			"search.paths.truncated": "{total}件中{shown}件のパスを表示",
+			"search.matches": "{shown}件の一致 · {files}ファイル",
+			"search.matches.truncated": "{total}件中{shown}件の一致を表示 · {files}ファイル",
+			"search.noResults": "結果なし",
+			"search.collapseAria": "結果を折りたたむ",
+			"search.expandAria": "残り{count}行の結果を表示",
+			"search.expandRest": "… 残り{count}行",
+			"web.noResults": "結果が見つかりません",
+			"web.sourcesTruncated": "ソース一覧を切り詰めました",
+			"web.http": "HTTP",
+			"web.contentTruncated": "内容を切り詰めました",
+			"details.running": "実行中…",
+			"queue.count": "{n}件のキュー済みメッセージ",
+			"queue.sending": "送信中…",
+			"queue.image": "キュー済みメッセージの画像",
+			"queue.file": "キュー済みファイル {name}",
+			"queue.edit": "キュー済みメッセージを編集",
+			"queue.edit.unsupported": "テキスト以外の内容を含むため、まだ編集できません",
+			"queue.save": "キュー済みメッセージを保存",
+			"queue.cancelEdit": "編集をキャンセル",
+			"queue.remove": "キュー済みメッセージを削除",
+			"queue.steer": "キュー内のメッセージを実行中の指示に追加",
+			"queue.steer.unavailable": "指示の変更はエージェントの実行中のみ利用できます",
+			"error.sessionInUse": "このセッションはすでに使用中です。別の実行中のDSHインスタンス（dsh webやデスクトップアプリなど）が使用している可能性があります。他のDSHインスタンスを終了して再試行してください。",
+			"queue.editFailed": "編集に失敗しました。このメッセージはすでに送信が開始されている可能性があります。",
+			"queue.removeFailed": "削除に失敗しました。このメッセージはすでに送信が開始されている可能性があります。",
+			"queue.steerFailed": "指示の変更に失敗しました。再試行してください。",
+			"terminal.signal": "シグナル {signal}",
+			"terminal.exitCode": "終了コード {code}",
+			"terminal.noExitCode": "終了コードなし",
+			"terminal.commandLine": "コマンドライン {n}",
+			"terminal.running": "実行中",
+			"terminal.failed": "失敗",
+			"terminal.done": "完了",
+			"terminal.noOutput": "出力なし",
+			"terminal.collapseAria": "出力を折りたたむ",
+			"terminal.expandAria": "残り{n}行の出力を表示",
+			"terminal.expandRest": "… 残り{n}行",
+			"terminal.sendInput": "(入力を送信)",
+			"terminal.session": "ターミナル {sessionId}"
+		};
+		/** Spanish dictionary, checked against the English keys. */
+		const es = {
+			"quote.remove": "Eliminar cotización",
+			"shortcut.newline": "Nueva linea",
+			"shortcut.complementary": "Usar la acción alternativa de poner en cola o redirigir",
+			"shortcut.slash": "Abrir menú de comandos",
+			"shortcut.mention": "Abrir menú de referencia",
+			"hint.plan": PLAN_NEXT_ACTION_EN,
+			"hint.goal": "describir el objetivo de una tarea de larga duración",
+			"hint.goal.active": "Objetivo activo: editar/pausar/reanudar/borrar",
+			"placeholder.plan": PLAN_NEXT_ACTION_EN,
+			"placeholder.default": "Envía mensajes o ejecuta una tarea, / comandos, @ archivos o sesiones",
+			"placeholder.unavailable": "Sesión no disponible",
+			"placeholder.hero": "Describe lo que quieres construir, / comandos, @ archivos o sesiones",
+			"placeholder.workspace": "Elija un espacio de trabajo para comenzar",
+			"placeholder.steerQueue": "Cmd/Ctrl+Enter dirige todos los mensajes en cola",
+			"input.commands": "Agregar archivos o ejecutar comandos",
+			"input.file": "Archivo",
+			"input.stop": "Detener generación",
+			"input.send": "Enviar mensaje",
+			"input.continue": "Continuar generando",
+			"input.sending": "Enviando mensaje",
+			"input.send.queue": "mensaje de cola",
+			"input.send.steer": "Redirigir mensaje",
+			"attachment.pending": "Anexos pendientes",
+			"attachment.scrollLeft": "Desplazar archivos adjuntos hacia la izquierda",
+			"attachment.scrollRight": "Desplazar archivos adjuntos hacia la derecha",
+			"attachment.dropTitle": "Arrastre archivos o imágenes aquí para agregarlos",
+			"attachment.dropDesc": "Límite de imágenes: hasta imágenes {count}, {size} cada una",
+			"attachment.dropBlocked": "No se pueden agregar archivos e imágenes en este momento",
+			"attachment.directoryDesktopOnly": "Las carpetas sólo se pueden agregar en la aplicación de escritorio; agregar archivos individuales en el navegador",
+			"attachment.pathUnavailable": "No se pudo obtener la ruta de la carpeta; arrástralo de nuevo",
+			"attachment.pathUnsupported": "La ruta contiene caracteres que una referencia no puede contener; cámbiale el nombre y vuelve a intentarlo.",
+			"image.pending": "Imágenes pendientes",
+			"image.openOriginal": "Ver original",
+			"image.openOriginalLabel": "{label}, haga clic para ver el original",
+			"image.remove": "Eliminar imagen {name}",
+			"image.original": "imagen original",
+			"image.label": "Imagen",
+			"image.loadFailed": "La imagen no se pudo cargar; haga clic para volver a intentar",
+			"image.loading": "Cargando imagen…",
+			"image.preview": "Vista previa de la imagen original",
+			"image.closePreview": "Cerrar vista previa de la imagen original",
+			"image.unsupportedType": "Solo se admiten imágenes PNG, JPG, WebP y GIF",
+			"image.tooMany": "Un mensaje puede incluir hasta imágenes {count}.",
+			"image.fileTooLarge": "Cada imagen debe ser más pequeña que {size}.",
+			"image.totalTooLarge": "Las imágenes superan {size} en total; elimina algunos y vuelve a intentarlo",
+			"image.tooManyPixels": "La resolución de la imagen es demasiado alta; comprímelo y vuelve a intentarlo.",
+			"image.dimensionTooLarge": "Los lados de la imagen deben ser como máximo {size}px; reduce la escala y vuelve a intentarlo",
+			"image.modelUnsupported": "El modelo actual no admite imágenes; cambiar a un modelo que lo haga",
+			"image.sendFailed": "Error al enviar imágenes ({reason}); Vuelve a agregarlos y vuelve a intentarlo.",
+			"file.pending": "Archivos pendientes",
+			"file.remove": "Eliminar archivo {name}",
+			"file.uploading": "Subiendo…",
+			"file.uploadFailed": "La carga falló; haga clic para volver a intentar",
+			"file.retry": "Reintente cargar {name}",
+			"file.stillUploading": "Los archivos todavía se están cargando; enviar después de que terminen",
+			"file.sessionUnavailable": "Sesión no disponible; los archivos no se pueden cargar",
+			"file.notStaged": "El archivo no ha terminado de cargarse; vuelve a agregarlo y vuelve a intentarlo",
+			"file.label": "Archivo",
+			"context.aria": "{percent} de contexto utilizado",
+			"context.used": "de contexto utilizado",
+			"context.system": "Aviso del sistema",
+			"context.tools": "Definiciones de herramientas",
+			"context.messages": "Mensajes",
+			"settings.enter.title": "Enviar comportamiento mientras está ocupado",
+			"settings.enter.description": "Qué hacen los botones Intro y Enviar mientras el agente se está ejecutando; Cmd/Ctrl+Enter usa el otro comportamiento",
+			"settings.enter.queue": "cola",
+			"settings.enter.steer": "Redirigir",
+			"hero.headline": "Hacia lo desconocido",
+			"hero.preview": "Vista previa",
+			"hero.chooseWorkspace": "Elige espacio de trabajo",
+			"header.more": "Más acciones",
+			"session.hierarchy": "Jerarquía de sesiones",
+			"session.moreViews": "Más vistas de conversación",
+			"todo.title": "Tareas pendientes",
+			"todo.progress.done": "{done} completado",
+			"todo.progress.active": "{active} en progreso",
+			"todo.progress.pending": "{pending} pendiente",
+			"todo.status.completed": "Completado",
+			"todo.status.inProgress": "En progreso",
+			"todo.status.pending": "Pendiente",
+			"todo.rowTitle": "Actualizar lista de tareas pendientes",
+			"tool.title.createGoal": "Crear objetivo",
+			"tool.title.getGoal": "Ver objetivo",
+			"tool.title.updateGoal": "Actualizar objetivo",
+			"tool.preparing.content": "{kilobytes}KB",
+			"tool.title.createSchedule": "Crear tarea de automatización",
+			"tool.title.listSchedules": "Listar tareas de automatización",
+			"tool.title.deleteSchedule": "Eliminar tarea de automatización",
+			"tool.title.updateSchedule": "Actualizar tarea de automatización",
+			"detail.state": "Estado",
+			"detail.todo.completed": "Completado",
+			"detail.todo.in_progress": "En progreso",
+			"detail.todo.pending": "Pendiente",
+			"detail.todo.empty": "La lista de tareas pendientes está vacía",
+			"todo.diff.initial": "lista inicial",
+			"todo.diff.compare": "Cambios desde la lista anterior",
+			"todo.diff.unavailable": "Lista anterior no disponible",
+			"todo.diff.noChanges": "No hay cambios en la lista.",
+			"todo.diff.added": "{count} añadido",
+			"todo.diff.updated": "{count} actualizado",
+			"todo.diff.removed": "{count} eliminado",
+			"todo.diff.unchanged": "{count} sin cambios",
+			"todo.diff.addedItem": "Añadido",
+			"todo.diff.updatedItem": "Estado cambiado",
+			"todo.diff.movedItem": "Reordenado",
+			"todo.diff.removedItem": "Eliminado",
+			"detail.goal.empty": "Sin gol",
+			"detail.goal.active": "Activo",
+			"detail.goal.disarmed": "En espera de continuación",
+			"detail.goal.paused": "En pausa",
+			"detail.goal.blocked": "Bloqueado",
+			"detail.goal.complete": "Completado",
+			"detail.goal.rounds": "Rondas",
+			"detail.goal.reason": "bloqueador",
+			"detail.days": "{count} d",
+			"detail.hours": "{count} h",
+			"detail.minutes": "{count} mín.",
+			"detail.seconds": "{count}",
+			"detail.schedule.once": "una vez",
+			"detail.schedule.every": "Cada {interval}",
+			"detail.schedule.when": "Programado para",
+			"detail.schedule.frequency": "repetir",
+			"detail.schedule.scheduled": "Programado",
+			"detail.schedule.overdue": "Atrasado, a la espera de reanudar la sesión.",
+			"detail.schedule.empty": "Sin tareas de automatización",
+			"detail.schedule.deleted": "Eliminado",
+			"detail.schedule.count": "{count} tareas de automatización",
+			"detail.schedule.daily": "Todos los días en {time} ({zone})",
+			"detail.schedule.weekly": "Semanalmente en {days} en {time} ({zone})",
+			"detail.schedule.cron": "Cron {expression} ({zone})",
+			"detail.schedule.custom": "Personalizado",
+			"detail.weekday.1": "lun",
+			"detail.weekday.2": "mar",
+			"detail.weekday.3": "mié",
+			"detail.weekday.4": "jueves",
+			"detail.weekday.5": "viernes",
+			"detail.weekday.6": "sábado",
+			"detail.weekday.7": "sol",
+			"detail.weekday.join": ", ",
+			"tool.title.inspectProviders": "Inspeccionar proveedores",
+			"tool.title.queryRuntime": "Tiempo de ejecución de consultas",
+			"tool.title.inspectPlugins": "Inspeccionar complementos",
+			"tool.title.workflow": "Ejecutar flujo de trabajo",
+			"tool.title.ralph": "Ejecutar bucle ralph",
+			"tool.title.readEvent": "Leer evento",
+			"tool.title.searchEvents": "Buscar eventos",
+			"tool.title.traceEvent": "Evento de seguimiento",
+			"tool.title.searchSessions": "Buscar sesiones",
+			"tool.title.traceSession": "Sesión de seguimiento",
+			"tool.title.listModels": "Listar modelos",
+			"tool.title.subagent": "Crear subagente",
+			"tool.title.subagentFork": "Crear subagente (heredar contexto)",
+			"tool.title.listAgents": "Listar subagentes",
+			"tool.title.sendMessage": "Enviar mensaje",
+			"tool.title.interruptAgent": "agente de interrupción",
+			"tool.title.listJobs": "Listar trabajos en segundo plano",
+			"tool.title.readJob": "Leer la salida del trabajo",
+			"tool.title.killJob": "Cancelar trabajo en segundo plano",
+			"tool.title.openTerminal": "terminal abierta",
+			"tool.title.readTerminal": "Leer terminal",
+			"tool.title.listTerminals": "Lista de terminales",
+			"tool.title.signalTerminal": "terminal de señal",
+			"tool.title.closeTerminal": "Cerrar terminal",
+			"tool.title.lsp": "Símbolos de código de consulta",
+			"tool.title.findDefinition": "encontrar definición",
+			"tool.title.findReferences": "encontrar referencias",
+			"tool.title.findImplementation": "Encontrar implementación",
+			"tool.title.hoverSymbol": "Símbolo de inspección",
+			"tool.title.spawnTeammate": "Crear compañero de equipo",
+			"tool.title.createTeamTask": "Crear tarea de equipo",
+			"tool.title.getTeamTask": "Leer tarea de equipo",
+			"tool.title.updateTeamTask": "Actualizar tarea de equipo",
+			"tool.title.listTeamTasks": "Listar tareas del equipo",
+			"tool.title.waitAgent": "Esperando mensajes…",
+			"detail.recordedResult": "Resultado registrado",
+			"detail.empty": "Sin resultados",
+			"detail.none": "Ninguno",
+			"detail.yes": "si",
+			"detail.no": "No",
+			"detail.moreInInspect": "{count} más artículos disponibles en Inspeccionar",
+			"detail.status.running": "corriendo",
+			"detail.status.idle": "inactivo",
+			"detail.status.ready": "Listo",
+			"detail.status.inactive": "Inactivo",
+			"detail.status.provisioning": "Aprovisionamiento",
+			"detail.status.failed": "Fallido",
+			"detail.status.corrupt": "Dañado",
+			"detail.status.unsupported": "No compatible",
+			"detail.status.unavailable": "No disponible",
+			"detail.status.completed": "Completado",
+			"detail.status.deleted": "Eliminado",
+			"detail.status.killed": "Cancelado",
+			"detail.status.accepted": "Aceptado",
+			"detail.status.queued": "En cola",
+			"detail.status.exited": "Salido",
+			"detail.field.id": "ID",
+			"detail.field.revision": "Revisión",
+			"detail.field.platform": "Plataforma",
+			"detail.field.provider": "Proveedor",
+			"detail.field.model": "modelo",
+			"detail.field.role": "Rol",
+			"detail.field.context": "Contexto",
+			"detail.field.owner": "propietario",
+			"detail.field.ready": "Listo",
+			"detail.field.dependencies": "Dependencias",
+			"detail.field.writeScopes": "Escribir alcances",
+			"detail.field.warnings": "Advertencias",
+			"detail.field.diagnostics": "Diagnóstico",
+			"detail.field.methods": "Métodos",
+			"detail.field.inputSchema": "Esquema de entrada",
+			"detail.field.outputSchema": "Esquema de salida",
+			"detail.field.currentPackage": "Paquete actual",
+			"detail.field.nextPackage": "Siguiente paquete",
+			"detail.field.latestRun": "Última ejecución",
+			"detail.field.packages": "Paquetes",
+			"detail.field.registrations": "Inscripciones",
+			"detail.field.props": "Accesorios",
+			"detail.field.data": "Datos",
+			"detail.field.source": "Fuente",
+			"detail.field.content": "Contenido",
+			"detail.field.message": "Mensaje",
+			"detail.field.messageId": "ID de mensaje",
+			"detail.field.root": "raíz",
+			"detail.field.pid": "ID de proceso",
+			"detail.field.type": "Tipo",
+			"detail.field.time": "tiempo",
+			"detail.field.seq": "Secuencia de eventos",
+			"detail.field.turn": "Turno",
+			"detail.field.step": "paso",
+			"detail.field.callId": "ID de llamada",
+			"detail.field.agents": "Los agentes comenzaron",
+			"detail.field.result": "Resultado",
+			"detail.field.parent": "Padre",
+			"detail.field.exitCode": "código de salida",
+			"detail.field.signal": "señal",
+			"detail.field.previousStatus": "Estado anterior",
+			"detail.field.agent": "ID del agente",
+			"detail.field.agentName": "Nombre del agente",
+			"detail.field.agentDescription": "Descripción de la tarea del agente",
+			"detail.field.job": "ID de trabajo",
+			"detail.field.task": "Tarea",
+			"detail.field.processGroup": "grupo de procesos",
+			"detail.field.availability": "Disponibilidad",
+			"detail.field.bestMatch": "mejor partido",
+			"detail.field.target": "Evento objetivo",
+			"detail.field.surface": "Estado de registro",
+			"detail.agents.count": "Agentes {count}",
+			"detail.jobs.count": "Trabajos en segundo plano {count}",
+			"detail.terminals.count": "Terminales {count}",
+			"detail.tasks.count": "Tareas del equipo {count}",
+			"detail.tasks.nextPage": "Más tareas disponibles; el siguiente cursor es {cursor}",
+			"detail.locations.count": "Ubicaciones de {count}",
+			"detail.location": "Línea {line}, columna {column}",
+			"detail.receipt.delivered": "Mensaje entregado",
+			"detail.receipt.interrupt": "Interrupción solicitada",
+			"detail.receipt.started": "iniciado",
+			"detail.receipt.cancel": "Cancelación solicitada",
+			"detail.receipt.alreadyFinished": "ya terminé",
+			"detail.receipt.signal": "Señal entregada",
+			"detail.receipt.closed": "Cerrado",
+			"detail.receipt.closing": "Cierre",
+			"detail.wait.noProgress": "No hay subagentes activos",
+			"detail.wait.title": "Actividad del subagente",
+			"detail.wait.timeout": "Se agotó el tiempo de espera",
+			"detail.wait.ended": "Espera finalizada",
+			"detail.agent.reply": "Respuesta del agente",
+			"detail.models.title": "Modelos disponibles",
+			"detail.output.lines": "Líneas {begin}–{end} de {total}",
+			"detail.output.truncated": "Salida truncada",
+			"detail.providers.count": "{count} inspeccionar proveedores",
+			"detail.plugins.count": "Complementos dinámicos {count}",
+			"detail.workflow.script": "Guión de flujo de trabajo",
+			"detail.ralph.reportedComplete": "finalización reportada por el trabajador",
+			"detail.ralph.reportedBlocker": "Trabajador reportó un bloqueador",
+			"detail.ralph.limit": "Límite de ronda alcanzado",
+			"detail.report.nextSteps": "Trabajo restante",
+			"detail.trace.replacedBy": "Reemplazado por",
+			"detail.trace.replacementChain": "Cadena de repuesto",
+			"detail.trace.replaces": "Eventos reemplazados",
+			"detail.trace.sources": "Eventos de origen",
+			"detail.trace.derived": "Eventos derivados",
+			"detail.trace.ancestors": "Sesiones de antepasados",
+			"detail.trace.descendants": "Sesiones de descendientes",
+			"detail.matches.count": "Partidos {count}",
+			"detail.matches.capped": "Límite de resultados alcanzado; acotar la búsqueda para más",
+			"detail.event.neighbors": "Eventos circundantes",
+			"todo.completed": "{done}/{total} completado",
+			"command.attachmentsUnsupported": "/{command} no acepta archivos adjuntos; eliminarlos primero",
+			"ask.rowTitle": "hacer pregunta",
+			"ask.waiting": "esperando",
+			"ask.pending": "continuó; respuesta aún disponible",
+			"ask.pendingDetail": "Estas cuestiones pendientes siguen siendo responsabilidad del compositor.",
+			"ask.reopen": "respuesta",
+			"ask.review": "Ver respuestas",
+			"ask.closed": "cerrado",
+			"ask.closedDetail": "Esta pregunta está cerrada; su resultado está en la conversación a continuación.",
+			"ask.cancelled": "cancelado",
+			"ask.cancelledDetail": "Este conjunto de preguntas se canceló antes de enviar las respuestas.",
+			"ask.interrupted": "interrumpido",
+			"ask.interruptedDetail": "Este conjunto de preguntas se interrumpió antes de que se enviaran las respuestas.",
+			"ask.answered": "{answered}/{total} respondió",
+			"ask.skipped": "No respondido",
+			"bash.running": "corriendo",
+			"bash.failed": "Fallido",
+			"bash.stopped": "Detenido",
+			"row.running": "corriendo",
+			"row.preparing": "Preparando la llamada a la herramienta",
+			"row.failed": "Fallido",
+			"row.stopped": "Detenido",
+			"row.commandArguments": "Argumentos de comando",
+			"row.input": "IN",
+			"row.output": "OUT",
+			"row.inspect": "inspeccionar",
+			"row.imageSize": "{width}x{height}px, {bytes} bytes",
+			"row.imageSizeDownscaled": "{width}x{height}px (reducido de {originalWidth}x{originalHeight}px), {bytes} bytes",
+			"tool.title.search": "Buscar",
+			"tool.title.read": "leer",
+			"tool.title.bash": "golpe",
+			"tool.title.write": "escribir",
+			"tool.title.edit": "Editar",
+			"tool.title.applyPatch": "Editar",
+			"tool.title.code": "Código",
+			"tool.title.generic": "llamada de herramienta",
+			"tool.title.inspect": "Consulta entorno Cordis",
+			"tool.title.runCordis": "Ejecute el complemento Cordis",
+			"tool.title.stopCordis": "Detener el complemento Cordis",
+			"tool.title.removeCordis": "Eliminar el complemento Cordis",
+			"tool.title.pwsh": "Pwsh",
+			"tool.title.readImage": "Leer imagen",
+			"tool.title.grep": "grep",
+			"tool.title.glob": "globo",
+			"tool.title.webSearch": "Buscar",
+			"tool.title.webFetch": "buscar",
+			"tool.autoReviewRejected": "Rechazado por Auto review",
+			"tool.autoReviewNotExecuted": "La herramienta no fue ejecutada. Razón: {reason}",
+			"tool.autoReviewReasonFallback": "Auto review no autorizó esta acción",
+			"diff.collapseAria": "Contraer diferencia",
+			"diff.expandAria": "Expanda {count} más líneas diferenciales",
+			"diff.expandRest": "… {count} más líneas",
+			"read.window": "Mostrando {shown} de líneas {total}",
+			"read.collapseAria": "Contraer contenido",
+			"read.expandAria": "Ampliar {count} más líneas",
+			"read.expandRest": "… {count} más líneas",
+			"search.paths": "Rutas {shown}",
+			"search.paths.truncated": "Mostrando {shown} de las rutas {total}",
+			"search.matches": "Coincidencias {shown} · Archivos {files}",
+			"search.matches.truncated": "Mostrando {shown} de coincidencias {total} · Archivos {files}",
+			"search.noResults": "Sin resultados",
+			"search.collapseAria": "Contraer resultados",
+			"search.expandAria": "Expandir {count} más líneas de resultados",
+			"search.expandRest": "… {count} más líneas",
+			"web.noResults": "No se encontraron resultados",
+			"web.sourcesTruncated": "Lista de fuentes truncada",
+			"web.http": "HTTP",
+			"web.contentTruncated": "Contenido truncado",
+			"details.running": "Corriendo…",
+			"queue.count": "Mensajes en cola {n}",
+			"queue.sending": "Enviando…",
+			"queue.image": "Imagen de mensaje en cola",
+			"queue.file": "Archivo en cola {name}",
+			"queue.edit": "Editar mensaje en cola",
+			"queue.edit.unsupported": "Contiene contenido que no es texto; la edición aún no es compatible",
+			"queue.save": "Guardar mensaje en cola",
+			"queue.cancelEdit": "Cancelar edición",
+			"queue.remove": "Eliminar mensaje en cola",
+			"queue.steer": "Redirigir mensaje en cola",
+			"queue.steer.unavailable": "La dirección solo está disponible mientras el agente está en ejecución",
+			"error.sessionInUse": "Esta sesión ya está en uso, posiblemente por otra instancia de DSH en ejecución (como la web dsh o la aplicación de escritorio). Salga de otras instancias de DSH en ejecución y vuelva a intentarlo.",
+			"queue.editFailed": "Error de edición: es posible que este mensaje ya haya comenzado a enviarse.",
+			"queue.removeFailed": "Error al eliminar: es posible que este mensaje ya haya comenzado a enviarse.",
+			"queue.steerFailed": "La dirección falló. Intentar otra vez.",
+			"terminal.signal": "señal {signal}",
+			"terminal.exitCode": "código de salida {code}",
+			"terminal.noExitCode": "sin código de salida",
+			"terminal.commandLine": "Línea de comando {n}",
+			"terminal.running": "corriendo",
+			"terminal.failed": "Fallido",
+			"terminal.done": "hecho",
+			"terminal.noOutput": "Sin salida",
+			"terminal.collapseAria": "Contraer salida",
+			"terminal.expandAria": "Expanda las líneas de salida {n} restantes",
+			"terminal.expandRest": "… {n} más líneas",
+			"terminal.sendInput": "(enviar entrada)",
+			"terminal.session": "Terminal {sessionId}",
+			"tool.title.viewSchedule": "Ver tarea de automatización",
+			"tool.title.editSchedule": "Editar tarea de automatización",
+			"detail.schedule.active": "Habilitado",
+			"detail.schedule.paused": "Pausada",
+			"detail.schedule.ended": "Finalizada"
+		};
+		/** French dictionary, checked against the English keys. */
+		const fr = {
+			"quote.remove": "Supprimer le devis",
+			"shortcut.newline": "Nouvelle ligne",
+			"shortcut.complementary": "Utiliser l’action alternative de mise en attente ou de guidage",
+			"shortcut.slash": "Ouvrir le menu des commandes",
+			"shortcut.mention": "Ouvrir le menu de référence",
+			"hint.plan": PLAN_NEXT_ACTION_EN,
+			"hint.goal": "décrire l'objectif d'une tâche de longue durée",
+			"hint.goal.active": "objectif actif — modifier/mettre en pause/reprendre/effacer",
+			"placeholder.plan": PLAN_NEXT_ACTION_EN,
+			"placeholder.default": "Envoyez un message ou exécutez une tâche, des commandes /, des fichiers @ ou des sessions",
+			"placeholder.unavailable": "Séance indisponible",
+			"placeholder.hero": "Décrivez ce que vous souhaitez construire, / commandes, @ fichiers ou sessions",
+			"placeholder.workspace": "Choisissez un espace de travail pour commencer",
+			"placeholder.steerQueue": "Cmd/Ctrl+Entrée dirige tous les messages en file d'attente",
+			"input.commands": "Ajouter des fichiers ou exécuter des commandes",
+			"input.file": "Fichier",
+			"input.stop": "Arrêter la génération",
+			"input.send": "Envoyer le message",
+			"input.continue": "Continuer la génération",
+			"input.sending": "Envoi du message",
+			"input.send.queue": "Message de file d'attente",
+			"input.send.steer": "Guider avec ce message",
+			"attachment.pending": "Pièces jointes en attente",
+			"attachment.scrollLeft": "Faire défiler les pièces jointes vers la gauche",
+			"attachment.scrollRight": "Faire défiler les pièces jointes vers la droite",
+			"attachment.dropTitle": "Faites glisser des fichiers ou des images ici pour les ajouter",
+			"attachment.dropDesc": "Limite d'images\xA0: jusqu'à des images {count}, {size} chacune",
+			"attachment.dropBlocked": "Les fichiers et les images ne peuvent pas être ajoutés pour le moment",
+			"attachment.directoryDesktopOnly": "Les dossiers ne peuvent être ajoutés que dans l'application de bureau\xA0; ajouter des fichiers individuels dans le navigateur",
+			"attachment.pathUnavailable": "Impossible d'obtenir le chemin du dossier\xA0; fais-le glisser à nouveau",
+			"attachment.pathUnsupported": "Le chemin contient des caractères qu'une référence ne peut pas transporter\xA0; renommez-le et réessayez",
+			"image.pending": "Images en attente",
+			"image.openOriginal": "Voir l'original",
+			"image.openOriginalLabel": "{label}, cliquez pour voir l'original",
+			"image.remove": "Supprimer l'image {name}",
+			"image.original": "Image originale",
+			"image.label": "Images",
+			"image.loadFailed": "L'image n'a pas pu être chargée\xA0; cliquez pour réessayer",
+			"image.loading": "Chargement de l'image…",
+			"image.preview": "Aperçu de l'image originale",
+			"image.closePreview": "Fermer l'aperçu de l'image d'origine",
+			"image.unsupportedType": "Seules les images PNG, JPG, WebP et GIF sont prises en charge",
+			"image.tooMany": "Un message peut inclure jusqu'à des images {count}",
+			"image.fileTooLarge": "Chaque image doit être plus petite que {size}",
+			"image.totalTooLarge": "Les images dépassent {size} au total\xA0; enlève-en un peu et réessaye",
+			"image.tooManyPixels": "La résolution de l'image est trop élevée\xA0; compressez-le et réessayez",
+			"image.dimensionTooLarge": "Les côtés de l'image doivent être au maximum {size}px\xA0; réduisez-le et réessayez",
+			"image.modelUnsupported": "Le modèle actuel ne prend pas en charge les images\xA0; passer à un modèle qui le fait",
+			"image.sendFailed": "L'envoi des images a échoué ({reason})\xA0; rajoutez-les et réessayez",
+			"file.pending": "Fichiers en attente",
+			"file.remove": "Supprimer le fichier {name}",
+			"file.uploading": "Téléchargement…",
+			"file.uploadFailed": "Échec du téléchargement\xA0; cliquez pour réessayer",
+			"file.retry": "Réessayez de télécharger {name}",
+			"file.stillUploading": "Les fichiers sont toujours en cours de téléchargement\xA0; envoyer après avoir fini",
+			"file.sessionUnavailable": "Séance indisponible\xA0; les fichiers ne peuvent pas être téléchargés",
+			"file.notStaged": "Le téléchargement du fichier n'est pas terminé\xA0; rajoutez-le et réessayez",
+			"file.label": "Fichier",
+			"context.aria": "{percent} de contexte utilisé",
+			"context.used": "du contexte utilisé",
+			"context.system": "Invite système",
+			"context.tools": "Définitions d'outils",
+			"context.messages": "Messages",
+			"settings.enter.title": "Comportement d'envoi lorsque vous êtes occupé",
+			"settings.enter.description": "Ce que font Entrée et le bouton Envoyer pendant l'exécution de l'agent\xA0; Cmd/Ctrl+Entrée utilise l'autre comportement",
+			"settings.enter.queue": "File d'attente",
+			"settings.enter.steer": "Guider",
+			"hero.headline": "Dans l'inconnu",
+			"hero.preview": "Aperçu",
+			"hero.chooseWorkspace": "Choisir un espace de travail",
+			"header.more": "Autres actions",
+			"session.hierarchy": "Hiérarchie des sessions",
+			"session.moreViews": "Plus de vues de conversations",
+			"todo.title": "À faire",
+			"todo.progress.done": "{done} terminé",
+			"todo.progress.active": "{active} en cours",
+			"todo.progress.pending": "{pending} en attente",
+			"todo.status.completed": "Terminé",
+			"todo.status.inProgress": "En cours",
+			"todo.status.pending": "En attente",
+			"todo.rowTitle": "Mettre à jour la liste de tâches",
+			"tool.title.createGoal": "Créer un objectif",
+			"tool.title.getGoal": "Afficher l'objectif",
+			"tool.title.updateGoal": "Objectif de mise à jour",
+			"tool.preparing.content": "{kilobytes}KB",
+			"tool.title.createSchedule": "Créer une tâche d'automatisation",
+			"tool.title.listSchedules": "Lister les tâches d'automatisation",
+			"tool.title.deleteSchedule": "Supprimer la tâche d'automatisation",
+			"tool.title.updateSchedule": "Mettre à jour la tâche d'automatisation",
+			"detail.state": "Statut",
+			"detail.todo.completed": "Terminé",
+			"detail.todo.in_progress": "En cours",
+			"detail.todo.pending": "En attente",
+			"detail.todo.empty": "La liste de tâches est vide",
+			"todo.diff.initial": "Liste initiale",
+			"todo.diff.compare": "Changements depuis la liste précédente",
+			"todo.diff.unavailable": "Liste précédente indisponible",
+			"todo.diff.noChanges": "Aucun changement dans la liste",
+			"todo.diff.added": "{count} ajouté",
+			"todo.diff.updated": "{count} mis à jour",
+			"todo.diff.removed": "{count} supprimé",
+			"todo.diff.unchanged": "{count} inchangé",
+			"todo.diff.addedItem": "Ajouté",
+			"todo.diff.updatedItem": "Statut modifié",
+			"todo.diff.movedItem": "Réorganisé",
+			"todo.diff.removedItem": "Supprimé",
+			"detail.goal.empty": "Aucun but",
+			"detail.goal.active": "Actif",
+			"detail.goal.disarmed": "En attente de suite",
+			"detail.goal.paused": "En pause",
+			"detail.goal.blocked": "Bloqué",
+			"detail.goal.complete": "Terminé",
+			"detail.goal.rounds": "Tours",
+			"detail.goal.reason": "Bloqueur",
+			"detail.days": "{count}d",
+			"detail.hours": "{count} h",
+			"detail.minutes": "{count} min.",
+			"detail.seconds": "{count}s",
+			"detail.schedule.once": "Une fois",
+			"detail.schedule.every": "Chaque {interval}",
+			"detail.schedule.when": "Prévu pour",
+			"detail.schedule.frequency": "Répéter",
+			"detail.schedule.scheduled": "Programmé",
+			"detail.schedule.overdue": "En retard, en attente de reprise de la session",
+			"detail.schedule.empty": "Aucune tâche d'automatisation",
+			"detail.schedule.deleted": "Supprimé",
+			"detail.schedule.count": "{count} tâches d'automatisation",
+			"detail.schedule.daily": "Tous les jours à {time} ({zone})",
+			"detail.schedule.weekly": "Hebdomadaire sur {days} à {time} ({zone})",
+			"detail.schedule.cron": "Cron {expression} ({zone})",
+			"detail.schedule.custom": "Personnalisé",
+			"detail.weekday.1": "lundi",
+			"detail.weekday.2": "mar.",
+			"detail.weekday.3": "mer",
+			"detail.weekday.4": "jeu.",
+			"detail.weekday.5": "vendredi",
+			"detail.weekday.6": "Samedi",
+			"detail.weekday.7": "Soleil",
+			"detail.weekday.join": ", ",
+			"tool.title.inspectProviders": "Inspecter les fournisseurs",
+			"tool.title.queryRuntime": "Exécution de la requête",
+			"tool.title.inspectPlugins": "Inspecter les plugins",
+			"tool.title.workflow": "Exécuter le flux de travail",
+			"tool.title.ralph": "Exécuter la boucle Ralph",
+			"tool.title.readEvent": "Lire l'événement",
+			"tool.title.searchEvents": "Rechercher des événements",
+			"tool.title.traceEvent": "Événement de trace",
+			"tool.title.searchSessions": "Rechercher des sessions",
+			"tool.title.traceSession": "Session de traçage",
+			"tool.title.listModels": "Liste des modèles",
+			"tool.title.subagent": "Créer un sous-agent",
+			"tool.title.subagentFork": "Créer un sous-agent (hériter du contexte)",
+			"tool.title.listAgents": "Liste des sous-agents",
+			"tool.title.sendMessage": "Envoyer le message",
+			"tool.title.interruptAgent": "Agent d'interruption",
+			"tool.title.listJobs": "Répertorier les tâches en arrière-plan",
+			"tool.title.readJob": "Lire le résultat de la tâche",
+			"tool.title.killJob": "Annuler le travail en arrière-plan",
+			"tool.title.openTerminal": "Terminal ouvert",
+			"tool.title.readTerminal": "Lire le terminal",
+			"tool.title.listTerminals": "Liste des terminaux",
+			"tool.title.signalTerminal": "Borne de signal",
+			"tool.title.closeTerminal": "Fermer le terminal",
+			"tool.title.lsp": "Symboles du code de requête",
+			"tool.title.findDefinition": "Trouver une définition",
+			"tool.title.findReferences": "Trouver des références",
+			"tool.title.findImplementation": "Trouver la mise en œuvre",
+			"tool.title.hoverSymbol": "Inspecter le symbole",
+			"tool.title.spawnTeammate": "Créer un coéquipier",
+			"tool.title.createTeamTask": "Créer une tâche d'équipe",
+			"tool.title.getTeamTask": "Lire la tâche d'équipe",
+			"tool.title.updateTeamTask": "Mettre à jour la tâche de l'équipe",
+			"tool.title.listTeamTasks": "Répertorier les tâches de l'équipe",
+			"tool.title.waitAgent": "En attente de messages…",
+			"detail.recordedResult": "Résultat enregistré",
+			"detail.empty": "Aucun résultat",
+			"detail.none": "Aucun",
+			"detail.yes": "Oui",
+			"detail.no": "Non",
+			"detail.moreInInspect": "{count} plus d'articles disponibles dans Inspecter",
+			"detail.status.running": "Courir",
+			"detail.status.idle": "Inactif",
+			"detail.status.ready": "Prêt",
+			"detail.status.inactive": "Inactif",
+			"detail.status.provisioning": "Approvisionnement",
+			"detail.status.failed": "Échec",
+			"detail.status.corrupt": "Corrompu",
+			"detail.status.unsupported": "Non pris en charge",
+			"detail.status.unavailable": "Indisponible",
+			"detail.status.completed": "Terminé",
+			"detail.status.deleted": "Supprimé",
+			"detail.status.killed": "Annulé",
+			"detail.status.accepted": "Accepté",
+			"detail.status.queued": "En file d'attente",
+			"detail.status.exited": "Quitté",
+			"detail.field.id": "ID",
+			"detail.field.revision": "Révision",
+			"detail.field.platform": "Plateforme",
+			"detail.field.provider": "Fournisseur",
+			"detail.field.model": "Modèle",
+			"detail.field.role": "Rôle",
+			"detail.field.context": "Contexte",
+			"detail.field.owner": "Propriétaire",
+			"detail.field.ready": "Prêt",
+			"detail.field.dependencies": "Dépendances",
+			"detail.field.writeScopes": "Écrire des étendues",
+			"detail.field.warnings": "Avertissements",
+			"detail.field.diagnostics": "Diagnostic",
+			"detail.field.methods": "Méthodes",
+			"detail.field.inputSchema": "Schéma d'entrée",
+			"detail.field.outputSchema": "Schéma de sortie",
+			"detail.field.currentPackage": "Forfait actuel",
+			"detail.field.nextPackage": "Forfait suivant",
+			"detail.field.latestRun": "Dernière course",
+			"detail.field.packages": "Forfaits",
+			"detail.field.registrations": "Inscriptions",
+			"detail.field.props": "Accessoires",
+			"detail.field.data": "Données",
+			"detail.field.source": "Source",
+			"detail.field.content": "Contenu",
+			"detail.field.message": "Message",
+			"detail.field.messageId": "Identifiant du message",
+			"detail.field.root": "Racine",
+			"detail.field.pid": "ID de processus",
+			"detail.field.type": "Tapez",
+			"detail.field.time": "Temps",
+			"detail.field.seq": "Séquence d'événements",
+			"detail.field.turn": "Tour",
+			"detail.field.step": "Étape",
+			"detail.field.callId": "Identifiant d'appel",
+			"detail.field.agents": "Les agents ont commencé",
+			"detail.field.result": "Résultat",
+			"detail.field.parent": "Parent",
+			"detail.field.exitCode": "Code de sortie",
+			"detail.field.signal": "Signal",
+			"detail.field.previousStatus": "Statut précédent",
+			"detail.field.agent": "ID d'agent",
+			"detail.field.agentName": "Nom de l’agent",
+			"detail.field.agentDescription": "Description de la tâche de l’agent",
+			"detail.field.job": "ID de travail",
+			"detail.field.task": "Tâche",
+			"detail.field.processGroup": "Groupe de processus",
+			"detail.field.availability": "Disponibilité",
+			"detail.field.bestMatch": "Meilleure correspondance",
+			"detail.field.target": "Événement cible",
+			"detail.field.surface": "Statut d'enregistrement",
+			"detail.agents.count": "Agents {count}",
+			"detail.jobs.count": "Travaux d'arrière-plan {count}",
+			"detail.terminals.count": "Bornes {count}",
+			"detail.tasks.count": "Tâches de l'équipe {count}",
+			"detail.tasks.nextPage": "Plus de tâches disponibles\xA0; le curseur suivant est {cursor}",
+			"detail.locations.count": "Localisations {count}",
+			"detail.location": "Ligne {line}, colonne {column}",
+			"detail.receipt.delivered": "Message délivré",
+			"detail.receipt.interrupt": "Interruption demandée",
+			"detail.receipt.started": "Commencé",
+			"detail.receipt.cancel": "Annulation demandée",
+			"detail.receipt.alreadyFinished": "Déjà fini",
+			"detail.receipt.signal": "Signal délivré",
+			"detail.receipt.closed": "Fermé",
+			"detail.receipt.closing": "Clôture",
+			"detail.wait.noProgress": "Aucun sous-agent actif",
+			"detail.wait.title": "Activité du sous-agent",
+			"detail.wait.timeout": "Le délai d'attente a expiré",
+			"detail.wait.ended": "Attente terminée",
+			"detail.agent.reply": "Réponse de l'agent",
+			"detail.models.title": "Modèles disponibles",
+			"detail.output.lines": "Lignes {begin}–{end} de {total}",
+			"detail.output.truncated": "Sortie tronquée",
+			"detail.providers.count": "{count} inspecte les fournisseurs",
+			"detail.plugins.count": "Plugins dynamiques {count}",
+			"detail.workflow.script": "Script de flux de travail",
+			"detail.ralph.reportedComplete": "Le travailleur a signalé l'achèvement",
+			"detail.ralph.reportedBlocker": "Le travailleur a signalé un bloqueur",
+			"detail.ralph.limit": "Limite de tours atteinte",
+			"detail.report.nextSteps": "Travail restant",
+			"detail.trace.replacedBy": "Remplacé par",
+			"detail.trace.replacementChain": "Chaîne de remplacement",
+			"detail.trace.replaces": "Événements remplacés",
+			"detail.trace.sources": "Événements sources",
+			"detail.trace.derived": "Événements dérivés",
+			"detail.trace.ancestors": "Séances d'ancêtres",
+			"detail.trace.descendants": "Séances descendantes",
+			"detail.matches.count": "Correspondances {count}",
+			"detail.matches.capped": "Limite de résultat atteinte\xA0; affiner la recherche pour en savoir plus",
+			"detail.event.neighbors": "Événements environnants",
+			"todo.completed": "{done}/{total} terminé",
+			"command.attachmentsUnsupported": "/{command} n'accepte pas les pièces jointes\xA0; retirez-les d'abord",
+			"ask.rowTitle": "Poser une question",
+			"ask.waiting": "en attendant",
+			"ask.pending": "suite\xA0; réponse toujours disponible",
+			"ask.pendingDetail": "Ces questions en suspens restent à la charge du compositeur.",
+			"ask.reopen": "Réponse",
+			"ask.review": "Afficher les réponses",
+			"ask.closed": "fermé",
+			"ask.closedDetail": "Cette question est fermée ; son résultat est dans la conversation ci-dessous.",
+			"ask.cancelled": "annulé",
+			"ask.cancelledDetail": "Cet ensemble de questions a été annulé avant que les réponses ne soient soumises.",
+			"ask.interrupted": "interrompu",
+			"ask.interruptedDetail": "Cette série de questions a été interrompue avant que les réponses ne soient soumises.",
+			"ask.answered": "{answered}/{total} répondu",
+			"ask.skipped": "Pas de réponse",
+			"bash.running": "Courir",
+			"bash.failed": "Échec",
+			"bash.stopped": "Arrêté",
+			"row.running": "Courir",
+			"row.preparing": "Préparation de l'appel à l'outil",
+			"row.failed": "Échec",
+			"row.stopped": "Arrêté",
+			"row.commandArguments": "Arguments de commande",
+			"row.input": "IN",
+			"row.output": "OUT",
+			"row.inspect": "Inspecter",
+			"row.imageSize": "{width}x{height}px, {bytes} octets",
+			"row.imageSizeDownscaled": "{width}x{height}px (réduction de {originalWidth}x{originalHeight}px), {bytes} octets",
+			"tool.title.search": "Rechercher",
+			"tool.title.read": "Lire",
+			"tool.title.bash": "Frapper",
+			"tool.title.write": "Écrire",
+			"tool.title.edit": "Modifier",
+			"tool.title.applyPatch": "Modifier",
+			"tool.title.code": "Coder",
+			"tool.title.generic": "Appel d'outil",
+			"tool.title.inspect": "Interroger l'environnement Cordis",
+			"tool.title.runCordis": "Exécuter le plugin Cordis",
+			"tool.title.stopCordis": "Arrêter le plug-in Cordis",
+			"tool.title.removeCordis": "Supprimer le plug-in Cordis",
+			"tool.title.pwsh": "Pwsh",
+			"tool.title.readImage": "Lire l'image",
+			"tool.title.grep": "Grep",
+			"tool.title.glob": "Glob",
+			"tool.title.webSearch": "Rechercher",
+			"tool.title.webFetch": "Récupérer",
+			"tool.autoReviewRejected": "Rejeté par Auto review",
+			"tool.autoReviewNotExecuted": "L'outil n'a pas été exécuté. Raison\xA0: {reason}",
+			"tool.autoReviewReasonFallback": "Auto review n'a pas autorisé cette action",
+			"diff.collapseAria": "Réduire la différence",
+			"diff.expandAria": "Développez {count} plus de lignes de différence",
+			"diff.expandRest": "… {count} plus de lignes",
+			"read.window": "Affichage des lignes {shown} des lignes {total}",
+			"read.collapseAria": "Réduire le contenu",
+			"read.expandAria": "Développez {count} plus de lignes",
+			"read.expandRest": "… {count} plus de lignes",
+			"search.paths": "Chemins {shown}",
+			"search.paths.truncated": "Affichage des chemins {shown} sur {total}",
+			"search.matches": "Correspondances {shown} · Fichiers {files}",
+			"search.matches.truncated": "Affichage des correspondances {shown} des correspondances {total} · Fichiers {files}",
+			"search.noResults": "Aucun résultat",
+			"search.collapseAria": "Réduire les résultats",
+			"search.expandAria": "Développez {count} plus de lignes de résultats",
+			"search.expandRest": "… {count} plus de lignes",
+			"web.noResults": "Aucun résultat trouvé",
+			"web.sourcesTruncated": "Liste source tronquée",
+			"web.http": "HTTP",
+			"web.contentTruncated": "Contenu tronqué",
+			"details.running": "Courir…",
+			"queue.count": "Messages en file d'attente {n}",
+			"queue.sending": "Envoi…",
+			"queue.image": "Image du message en file d'attente",
+			"queue.file": "Fichier en file d'attente {name}",
+			"queue.edit": "Modifier le message en file d'attente",
+			"queue.edit.unsupported": "Contient du contenu non textuel\xA0; l'édition n'est pas encore prise en charge",
+			"queue.save": "Enregistrer le message en file d'attente",
+			"queue.cancelEdit": "Annuler la modification",
+			"queue.remove": "Supprimer le message en file d'attente",
+			"queue.steer": "Guider avec le message en attente",
+			"queue.steer.unavailable": "Le pilotage est disponible uniquement lorsque l'agent est en cours d'exécution",
+			"error.sessionInUse": "Cette session est déjà utilisée, éventuellement par une autre instance DSH en cours d'exécution (telle que le Web dsh ou l'application de bureau). Quittez les autres instances DSH en cours d'exécution et réessayez.",
+			"queue.editFailed": "Échec de la modification\xA0: l'envoi de ce message a peut-être déjà commencé.",
+			"queue.removeFailed": "Échec de la suppression\xA0: l'envoi de ce message a peut-être déjà commencé.",
+			"queue.steerFailed": "La direction a échoué. Essayer à nouveau.",
+			"terminal.signal": "signal {signal}",
+			"terminal.exitCode": "code de sortie {code}",
+			"terminal.noExitCode": "pas de code de sortie",
+			"terminal.commandLine": "Ligne de commande {n}",
+			"terminal.running": "Courir",
+			"terminal.failed": "Échec",
+			"terminal.done": "Terminé",
+			"terminal.noOutput": "Aucune sortie",
+			"terminal.collapseAria": "Réduire la sortie",
+			"terminal.expandAria": "Développez les lignes de sortie {n} restantes",
+			"terminal.expandRest": "… {n} plus de lignes",
+			"terminal.sendInput": "(envoyer une entrée)",
+			"terminal.session": "Borne {sessionId}",
+			"tool.title.viewSchedule": "Voir la tâche d'automatisation",
+			"tool.title.editSchedule": "Modifier la tâche d'automatisation",
+			"detail.schedule.active": "Activé",
+			"detail.schedule.paused": "Suspendue",
+			"detail.schedule.ended": "Terminée"
+		};
+		/** German dictionary, checked against the English keys. */
+		const de = {
+			"quote.remove": "Zitat entfernen",
+			"shortcut.newline": "Neue Zeile",
+			"shortcut.complementary": "Die alternative Aktion zum Vormerken oder Lenken verwenden",
+			"shortcut.slash": "Befehlsmenü öffnen",
+			"shortcut.mention": "Referenzmenü öffnen",
+			"hint.plan": PLAN_NEXT_ACTION_EN,
+			"hint.goal": "Beschreiben Sie das Ziel einer lang andauernden Aufgabe",
+			"hint.goal.active": "Ziel aktiv – Bearbeiten / Anhalten / Fortsetzen / Löschen",
+			"placeholder.plan": PLAN_NEXT_ACTION_EN,
+			"placeholder.default": "Senden Sie eine Nachricht oder führen Sie eine Aufgabe, /-Befehle, @-Dateien oder Sitzungen aus",
+			"placeholder.unavailable": "Sitzung nicht verfügbar",
+			"placeholder.hero": "Beschreiben Sie, was Sie erstellen möchten: /-Befehle, @-Dateien oder Sitzungen",
+			"placeholder.workspace": "Wählen Sie einen Arbeitsbereich zum Starten aus",
+			"placeholder.steerQueue": "Cmd/Strg+Enter steuert alle Nachrichten in der Warteschlange",
+			"input.commands": "Fügen Sie Dateien hinzu oder führen Sie Befehle aus",
+			"input.file": "Datei",
+			"input.stop": "Generierung stoppen",
+			"input.send": "Nachricht senden",
+			"input.continue": "Generierung fortsetzen",
+			"input.sending": "Nachricht wird gesendet",
+			"input.send.queue": "Warteschlangennachricht",
+			"input.send.steer": "Mit Nachricht lenken",
+			"attachment.pending": "Ausstehende Anhänge",
+			"attachment.scrollLeft": "Anhänge nach links scrollen",
+			"attachment.scrollRight": "Anhänge nach rechts scrollen",
+			"attachment.dropTitle": "Ziehen Sie Dateien oder Bilder hierher, um sie hinzuzufügen",
+			"attachment.dropDesc": "Bildbeschränkung: bis zu {count} Bilder, jeweils {size}",
+			"attachment.dropBlocked": "Dateien und Bilder können derzeit nicht hinzugefügt werden",
+			"attachment.directoryDesktopOnly": "Ordner können nur in der Desktop-App hinzugefügt werden; einzelne Dateien im Browser hinzufügen",
+			"attachment.pathUnavailable": "Der Ordnerpfad konnte nicht abgerufen werden; Ziehen Sie es erneut hinein",
+			"attachment.pathUnsupported": "Der Pfad enthält Zeichen, die eine Referenz nicht enthalten kann; Benennen Sie es um und versuchen Sie es erneut",
+			"image.pending": "Ausstehende Bilder",
+			"image.openOriginal": "Original ansehen",
+			"image.openOriginalLabel": "{label}, klicken Sie, um das Original anzuzeigen",
+			"image.remove": "Bild {name} entfernen",
+			"image.original": "Originalbild",
+			"image.label": "Bild",
+			"image.loadFailed": "Bild konnte nicht geladen werden; Klicken Sie, um es noch einmal zu versuchen",
+			"image.loading": "Bild wird geladen…",
+			"image.preview": "Originalbildvorschau",
+			"image.closePreview": "Originalbildvorschau schließen",
+			"image.unsupportedType": "Es werden nur PNG-, JPG-, WebP- und GIF-Bilder unterstützt",
+			"image.tooMany": "Eine Nachricht kann bis zu {count} Bilder enthalten",
+			"image.fileTooLarge": "Jedes Bild muss kleiner als {size} sein",
+			"image.totalTooLarge": "Die Anzahl der Bilder übersteigt insgesamt {size}; Entfernen Sie einige davon und versuchen Sie es erneut",
+			"image.tooManyPixels": "Die Bildauflösung ist zu hoch; Komprimieren Sie es und versuchen Sie es erneut",
+			"image.dimensionTooLarge": "Bildseiten dürfen höchstens {size}px sein; Skalieren Sie es herunter und versuchen Sie es erneut",
+			"image.modelUnsupported": "Das aktuelle Modell unterstützt keine Bilder; Wechseln Sie zu einem Modell, das dies tut",
+			"image.sendFailed": "Das Senden von Bildern ist fehlgeschlagen ({reason}); Fügen Sie sie erneut hinzu und versuchen Sie es erneut",
+			"file.pending": "Ausstehende Dateien",
+			"file.remove": "Datei {name} entfernen",
+			"file.uploading": "Hochladen…",
+			"file.uploadFailed": "Hochladen fehlgeschlagen; Klicken Sie, um es noch einmal zu versuchen",
+			"file.retry": "Versuchen Sie erneut, {name} hochzuladen",
+			"file.stillUploading": "Dateien werden noch hochgeladen; senden, nachdem sie fertig sind",
+			"file.sessionUnavailable": "Sitzung nicht verfügbar; Dateien können nicht hochgeladen werden",
+			"file.notStaged": "Der Upload der Datei wurde noch nicht abgeschlossen. Fügen Sie es erneut hinzu und versuchen Sie es erneut",
+			"file.label": "Datei",
+			"context.aria": "{percent} des verwendeten Kontexts",
+			"context.used": "des verwendeten Kontexts",
+			"context.system": "Systemaufforderung",
+			"context.tools": "Werkzeugdefinitionen",
+			"context.messages": "Nachrichten",
+			"settings.enter.title": "Sendeverhalten, während beschäftigt ist",
+			"settings.enter.description": "Was die Eingabetaste und die Schaltfläche „Senden“ bewirken, während der Agent ausgeführt wird; Cmd/Strg+Enter verwendet das andere Verhalten",
+			"settings.enter.queue": "Warteschlange",
+			"settings.enter.steer": "Lenken",
+			"hero.headline": "Ins Unbekannte",
+			"hero.preview": "Vorschau",
+			"hero.chooseWorkspace": "Wählen Sie einen Arbeitsbereich",
+			"header.more": "Weitere Aktionen",
+			"session.hierarchy": "Sitzungshierarchie",
+			"session.moreViews": "Weitere Konversationsansichten",
+			"todo.title": "Aufgaben",
+			"todo.progress.done": "{done} abgeschlossen",
+			"todo.progress.active": "{active} in Bearbeitung",
+			"todo.progress.pending": "{pending} ausstehend",
+			"todo.status.completed": "Abgeschlossen",
+			"todo.status.inProgress": "In Bearbeitung",
+			"todo.status.pending": "Ausstehend",
+			"todo.rowTitle": "To-Do-Liste aktualisieren",
+			"tool.title.createGoal": "Ziel erstellen",
+			"tool.title.getGoal": "Ziel ansehen",
+			"tool.title.updateGoal": "Ziel aktualisieren",
+			"tool.preparing.content": "{kilobytes}KB",
+			"tool.title.createSchedule": "Automatisierungsaufgabe erstellen",
+			"tool.title.listSchedules": "Automatisierungsaufgaben auflisten",
+			"tool.title.deleteSchedule": "Automatisierungsaufgabe löschen",
+			"tool.title.updateSchedule": "Automatisierungsaufgabe aktualisieren",
+			"detail.state": "Status",
+			"detail.todo.completed": "Abgeschlossen",
+			"detail.todo.in_progress": "In Bearbeitung",
+			"detail.todo.pending": "Ausstehend",
+			"detail.todo.empty": "Die To-Do-Liste ist leer",
+			"todo.diff.initial": "Erste Liste",
+			"todo.diff.compare": "Änderungen gegenüber der vorherigen Liste",
+			"todo.diff.unavailable": "Vorherige Liste nicht verfügbar",
+			"todo.diff.noChanges": "Keine Änderungen an der Liste",
+			"todo.diff.added": "{count} hinzugefügt",
+			"todo.diff.updated": "{count} aktualisiert",
+			"todo.diff.removed": "{count} entfernt",
+			"todo.diff.unchanged": "{count} unverändert",
+			"todo.diff.addedItem": "Hinzugefügt",
+			"todo.diff.updatedItem": "Status geändert",
+			"todo.diff.movedItem": "Nachbestellt",
+			"todo.diff.removedItem": "Entfernt",
+			"detail.goal.empty": "Kein Ziel",
+			"detail.goal.active": "Aktiv",
+			"detail.goal.disarmed": "Warten auf Fortsetzung",
+			"detail.goal.paused": "Angehalten",
+			"detail.goal.blocked": "Blockiert",
+			"detail.goal.complete": "Abgeschlossen",
+			"detail.goal.rounds": "Runden",
+			"detail.goal.reason": "Blocker",
+			"detail.days": "{count} d",
+			"detail.hours": "{count} h",
+			"detail.minutes": "{count} min",
+			"detail.seconds": "{count} s",
+			"detail.schedule.once": "Einmal",
+			"detail.schedule.every": "Jeder {interval}",
+			"detail.schedule.when": "Geplant für",
+			"detail.schedule.frequency": "Wiederholen",
+			"detail.schedule.scheduled": "Geplant",
+			"detail.schedule.overdue": "Überfällig, ich warte auf die Fortsetzung der Sitzung",
+			"detail.schedule.empty": "Keine Automatisierungsaufgaben",
+			"detail.schedule.deleted": "Gelöscht",
+			"detail.schedule.count": "{count} Automatisierungsaufgaben",
+			"detail.schedule.daily": "Täglich um {time} ({zone})",
+			"detail.schedule.weekly": "Wöchentlich auf {days} um {time} ({zone})",
+			"detail.schedule.cron": "Cron {expression} ({zone})",
+			"detail.schedule.custom": "Benutzerdefiniert",
+			"detail.weekday.1": "Mo",
+			"detail.weekday.2": "Di",
+			"detail.weekday.3": "Mi",
+			"detail.weekday.4": "Do",
+			"detail.weekday.5": "Fr",
+			"detail.weekday.6": "Sa",
+			"detail.weekday.7": "Sonne",
+			"detail.weekday.join": ", ",
+			"tool.title.inspectProviders": "Anbieter prüfen",
+			"tool.title.queryRuntime": "Abfragelaufzeit",
+			"tool.title.inspectPlugins": "Plugins prüfen",
+			"tool.title.workflow": "Workflow ausführen",
+			"tool.title.ralph": "Führen Sie die Ralph-Schleife aus",
+			"tool.title.readEvent": "Veranstaltung lesen",
+			"tool.title.searchEvents": "Suchen Sie nach Ereignissen",
+			"tool.title.traceEvent": "Trace-Ereignis",
+			"tool.title.searchSessions": "Sitzungen suchen",
+			"tool.title.traceSession": "Trace-Sitzung",
+			"tool.title.listModels": "Modelle auflisten",
+			"tool.title.subagent": "Subagent erstellen",
+			"tool.title.subagentFork": "Subagent erstellen (Kontext übernehmen)",
+			"tool.title.listAgents": "Subagenten auflisten",
+			"tool.title.sendMessage": "Nachricht senden",
+			"tool.title.interruptAgent": "Interrupt-Agent",
+			"tool.title.listJobs": "Hintergrundjobs auflisten",
+			"tool.title.readJob": "Jobausgabe lesen",
+			"tool.title.killJob": "Hintergrundjob abbrechen",
+			"tool.title.openTerminal": "Terminal öffnen",
+			"tool.title.readTerminal": "Terminal lesen",
+			"tool.title.listTerminals": "Terminals auflisten",
+			"tool.title.signalTerminal": "Signalklemme",
+			"tool.title.closeTerminal": "Terminal schließen",
+			"tool.title.lsp": "Codesymbole abfragen",
+			"tool.title.findDefinition": "Definition finden",
+			"tool.title.findReferences": "Finden Sie Referenzen",
+			"tool.title.findImplementation": "Umsetzung finden",
+			"tool.title.hoverSymbol": "Symbol prüfen",
+			"tool.title.spawnTeammate": "Teamkollege erstellen",
+			"tool.title.createTeamTask": "Teamaufgabe erstellen",
+			"tool.title.getTeamTask": "Teamaufgabe lesen",
+			"tool.title.updateTeamTask": "Teamaufgabe aktualisieren",
+			"tool.title.listTeamTasks": "Teamaufgaben auflisten",
+			"tool.title.waitAgent": "Warten auf Nachrichten…",
+			"detail.recordedResult": "Aufgezeichnetes Ergebnis",
+			"detail.empty": "Keine Ergebnisse",
+			"detail.none": "Keine",
+			"detail.yes": "Ja",
+			"detail.no": "Nein",
+			"detail.moreInInspect": "{count} weitere Artikel in Inspect verfügbar",
+			"detail.status.running": "Laufen",
+			"detail.status.idle": "Leerlauf",
+			"detail.status.ready": "Bereit",
+			"detail.status.inactive": "Inaktiv",
+			"detail.status.provisioning": "Bereitstellung",
+			"detail.status.failed": "Fehlgeschlagen",
+			"detail.status.corrupt": "Beschädigt",
+			"detail.status.unsupported": "Nicht unterstützt",
+			"detail.status.unavailable": "Nicht verfügbar",
+			"detail.status.completed": "Abgeschlossen",
+			"detail.status.deleted": "Gelöscht",
+			"detail.status.killed": "Abgesagt",
+			"detail.status.accepted": "Akzeptiert",
+			"detail.status.queued": "In der Warteschlange",
+			"detail.status.exited": "Ausgegangen",
+			"detail.field.id": "ID",
+			"detail.field.revision": "Überarbeitung",
+			"detail.field.platform": "Plattform",
+			"detail.field.provider": "Anbieter",
+			"detail.field.model": "Modell",
+			"detail.field.role": "Rolle",
+			"detail.field.context": "Kontext",
+			"detail.field.owner": "Besitzer",
+			"detail.field.ready": "Bereit",
+			"detail.field.dependencies": "Abhängigkeiten",
+			"detail.field.writeScopes": "Bereiche schreiben",
+			"detail.field.warnings": "Warnungen",
+			"detail.field.diagnostics": "Diagnose",
+			"detail.field.methods": "Methoden",
+			"detail.field.inputSchema": "Eingabeschema",
+			"detail.field.outputSchema": "Ausgabeschema",
+			"detail.field.currentPackage": "Aktuelles Paket",
+			"detail.field.nextPackage": "Nächstes Paket",
+			"detail.field.latestRun": "Letzter Lauf",
+			"detail.field.packages": "Pakete",
+			"detail.field.registrations": "Anmeldungen",
+			"detail.field.props": "Requisiten",
+			"detail.field.data": "Daten",
+			"detail.field.source": "Quelle",
+			"detail.field.content": "Inhalt",
+			"detail.field.message": "Nachricht",
+			"detail.field.messageId": "Nachrichten-ID",
+			"detail.field.root": "Wurzel",
+			"detail.field.pid": "Prozess-ID",
+			"detail.field.type": "Typ",
+			"detail.field.time": "Zeit",
+			"detail.field.seq": "Ereignissequenz",
+			"detail.field.turn": "Runde",
+			"detail.field.step": "Schritt",
+			"detail.field.callId": "Aufruf-ID",
+			"detail.field.agents": "Agenten begannen",
+			"detail.field.result": "Ergebnis",
+			"detail.field.parent": "Eltern",
+			"detail.field.exitCode": "Exit-Code",
+			"detail.field.signal": "Signal",
+			"detail.field.previousStatus": "Vorheriger Stand",
+			"detail.field.agent": "Agenten-ID",
+			"detail.field.agentName": "Agentenname",
+			"detail.field.agentDescription": "Aufgabenbeschreibung des Agenten",
+			"detail.field.job": "Job-ID",
+			"detail.field.task": "Aufgabe",
+			"detail.field.processGroup": "Prozessgruppe",
+			"detail.field.availability": "Verfügbarkeit",
+			"detail.field.bestMatch": "Beste Übereinstimmung",
+			"detail.field.target": "Zielereignis",
+			"detail.field.surface": "Aufnahmestatus",
+			"detail.agents.count": "{count}-Agenten",
+			"detail.jobs.count": "{count} Hintergrundjobs",
+			"detail.terminals.count": "{count}-Klemmen",
+			"detail.tasks.count": "{count} Teamaufgaben",
+			"detail.tasks.nextPage": "Weitere Aufgaben verfügbar; Der nächste Cursor ist {cursor}",
+			"detail.locations.count": "{count}-Standorte",
+			"detail.location": "Zeile {line}, Spalte {column}",
+			"detail.receipt.delivered": "Nachricht zugestellt",
+			"detail.receipt.interrupt": "Unterbrechung angefordert",
+			"detail.receipt.started": "Begonnen",
+			"detail.receipt.cancel": "Stornierung beantragt",
+			"detail.receipt.alreadyFinished": "Schon fertig",
+			"detail.receipt.signal": "Signal geliefert",
+			"detail.receipt.closed": "Geschlossen",
+			"detail.receipt.closing": "Schließung",
+			"detail.wait.noProgress": "Keine aktiven Subagenten",
+			"detail.wait.title": "Aktivität des Subagenten",
+			"detail.wait.timeout": "Wartezeit abgelaufen",
+			"detail.wait.ended": "Warten beendet",
+			"detail.agent.reply": "Antwort des Agenten",
+			"detail.models.title": "Verfügbare Modelle",
+			"detail.output.lines": "Linien {begin}–{end} von {total}",
+			"detail.output.truncated": "Ausgabe abgeschnitten",
+			"detail.providers.count": "{count} prüft Anbieter",
+			"detail.plugins.count": "Dynamische {count}-Plugins",
+			"detail.workflow.script": "Workflow-Skript",
+			"detail.ralph.reportedComplete": "Der Arbeiter hat die Fertigstellung gemeldet",
+			"detail.ralph.reportedBlocker": "Der Arbeiter hat einen Blocker gemeldet",
+			"detail.ralph.limit": "Rundenlimit erreicht",
+			"detail.report.nextSteps": "Verbleibende Arbeit",
+			"detail.trace.replacedBy": "Ersetzt durch",
+			"detail.trace.replacementChain": "Ersatzkette",
+			"detail.trace.replaces": "Ereignisse ersetzt",
+			"detail.trace.sources": "Quellereignisse",
+			"detail.trace.derived": "Abgeleitete Ereignisse",
+			"detail.trace.ancestors": "Ahnensitzungen",
+			"detail.trace.descendants": "Nachkommende Sitzungen",
+			"detail.matches.count": "{count} Übereinstimmungen",
+			"detail.matches.capped": "Ergebnisgrenze erreicht; Grenzen Sie die Suche auf mehr ein",
+			"detail.event.neighbors": "Umliegende Veranstaltungen",
+			"todo.completed": "{done}/{total} abgeschlossen",
+			"command.attachmentsUnsupported": "/{command} akzeptiert keine Anhänge; Entfernen Sie sie zuerst",
+			"ask.rowTitle": "Frage stellen",
+			"ask.waiting": "warten",
+			"ask.pending": "Fortsetzung; Antwort noch verfügbar",
+			"ask.pendingDetail": "Diese offenen Fragen bleiben vom Komponisten zu beantworten.",
+			"ask.reopen": "Antwort",
+			"ask.review": "Antworten anzeigen",
+			"ask.closed": "geschlossen",
+			"ask.closedDetail": "Diese Frage ist geschlossen; Das Ergebnis finden Sie im folgenden Gespräch.",
+			"ask.cancelled": "abgesagt",
+			"ask.cancelledDetail": "Dieser Fragensatz wurde gelöscht, bevor die Antworten übermittelt wurden.",
+			"ask.interrupted": "unterbrochen",
+			"ask.interruptedDetail": "Dieser Fragensatz wurde unterbrochen, bevor Antworten übermittelt wurden.",
+			"ask.answered": "{answered}/{total} antwortete",
+			"ask.skipped": "Nicht beantwortet",
+			"bash.running": "Laufen",
+			"bash.failed": "Fehlgeschlagen",
+			"bash.stopped": "Angehalten",
+			"row.running": "Laufen",
+			"row.preparing": "Werkzeugaufruf wird vorbereitet",
+			"row.failed": "Fehlgeschlagen",
+			"row.stopped": "Angehalten",
+			"row.commandArguments": "Befehlsargumente",
+			"row.input": "IN",
+			"row.output": "OUT",
+			"row.inspect": "Inspizieren",
+			"row.imageSize": "{width}x{height}px, {bytes} Bytes",
+			"row.imageSizeDownscaled": "{width}x{height}px (herunterskaliert von {originalWidth}x{originalHeight}px), {bytes} Bytes",
+			"tool.title.search": "Suchen",
+			"tool.title.read": "Lesen",
+			"tool.title.bash": "Bash",
+			"tool.title.write": "Schreiben",
+			"tool.title.edit": "Bearbeiten",
+			"tool.title.applyPatch": "Bearbeiten",
+			"tool.title.code": "Code",
+			"tool.title.generic": "Werkzeugaufruf",
+			"tool.title.inspect": "Fragen Sie die Cordis-Umgebung ab",
+			"tool.title.runCordis": "Führen Sie das Cordis-Plugin aus",
+			"tool.title.stopCordis": "Stoppen Sie das Cordis-Plugin",
+			"tool.title.removeCordis": "Entfernen Sie das Cordis-Plugin",
+			"tool.title.pwsh": "Pwsh",
+			"tool.title.readImage": "Bild lesen",
+			"tool.title.grep": "Grep",
+			"tool.title.glob": "Globus",
+			"tool.title.webSearch": "Suchen",
+			"tool.title.webFetch": "Holen",
+			"tool.autoReviewRejected": "Abgelehnt von Auto review",
+			"tool.autoReviewNotExecuted": "Werkzeug wurde nicht ausgeführt. Grund: {reason}",
+			"tool.autoReviewReasonFallback": "Auto review hat diese Aktion nicht autorisiert",
+			"diff.collapseAria": "Differenz ausblenden",
+			"diff.expandAria": "Erweitern Sie {count} um weitere Diff-Linien",
+			"diff.expandRest": "… {count} weitere Zeilen",
+			"read.window": "Zeigt {shown} der {total}-Linien",
+			"read.collapseAria": "Inhalt reduzieren",
+			"read.expandAria": "Erweitern Sie {count} um weitere Zeilen",
+			"read.expandRest": "… {count} weitere Zeilen",
+			"search.paths": "{shown}-Pfade",
+			"search.paths.truncated": "Zeigt {shown} von {total}-Pfaden",
+			"search.matches": "{shown} entspricht · {files}-Dateien",
+			"search.matches.truncated": "Zeigt {shown} von {total}-Übereinstimmungen · {files}-Dateien",
+			"search.noResults": "Keine Ergebnisse",
+			"search.collapseAria": "Ergebnisse reduzieren",
+			"search.expandAria": "Erweitern Sie {count} um weitere Ergebniszeilen",
+			"search.expandRest": "… {count} weitere Zeilen",
+			"web.noResults": "Keine Ergebnisse gefunden",
+			"web.sourcesTruncated": "Quellenliste gekürzt",
+			"web.http": "HTTP",
+			"web.contentTruncated": "Inhalt abgeschnitten",
+			"details.running": "Laufen…",
+			"queue.count": "{n} Nachrichten in der Warteschlange",
+			"queue.sending": "Senden…",
+			"queue.image": "Nachrichtenbild in der Warteschlange",
+			"queue.file": "Datei in der Warteschlange {name}",
+			"queue.edit": "Bearbeiten Sie die Nachricht in der Warteschlange",
+			"queue.edit.unsupported": "Enthält Nicht-Textinhalte; Bearbeitung wird noch nicht unterstützt",
+			"queue.save": "Speichern Sie die Nachricht in der Warteschlange",
+			"queue.cancelEdit": "Bearbeitung abbrechen",
+			"queue.remove": "Entfernen Sie die Nachricht in der Warteschlange",
+			"queue.steer": "Mit vorgemerkter Nachricht lenken",
+			"queue.steer.unavailable": "Die Steuerung ist nur verfügbar, während der Agent ausgeführt wird",
+			"error.sessionInUse": "Diese Sitzung wird bereits verwendet, möglicherweise von einer anderen laufenden DSH-Instanz (z. B. dsh Web oder der Desktop-App). Beenden Sie andere laufende DSH-Instanzen und versuchen Sie es erneut.",
+			"queue.editFailed": "Bearbeitung fehlgeschlagen: Der Versand dieser Nachricht wurde möglicherweise bereits gestartet.",
+			"queue.removeFailed": "Fehler beim Entfernen: Der Versand dieser Nachricht wurde möglicherweise bereits gestartet.",
+			"queue.steerFailed": "Lenkung versagt. Versuchen Sie es erneut.",
+			"terminal.signal": "Signal {signal}",
+			"terminal.exitCode": "Exit-Code {code}",
+			"terminal.noExitCode": "kein Exit-Code",
+			"terminal.commandLine": "Befehlszeile {n}",
+			"terminal.running": "Laufen",
+			"terminal.failed": "Fehlgeschlagen",
+			"terminal.done": "Fertig",
+			"terminal.noOutput": "Keine Ausgabe",
+			"terminal.collapseAria": "Ausgabe reduzieren",
+			"terminal.expandAria": "Erweitern Sie die verbleibenden {n}-Ausgabezeilen",
+			"terminal.expandRest": "… {n} weitere Zeilen",
+			"terminal.sendInput": "(Eingabe senden)",
+			"terminal.session": "Terminal {sessionId}",
+			"tool.title.viewSchedule": "Automatisierungsaufgabe anzeigen",
+			"tool.title.editSchedule": "Automatisierungsaufgabe bearbeiten",
+			"detail.schedule.active": "Aktiviert",
+			"detail.schedule.paused": "Pausiert",
+			"detail.schedule.ended": "Beendet"
+		};
+		/** Russian dictionary, checked against the English keys. */
+		const ru = {
+			"quote.remove": "Удалить цитату",
+			"shortcut.newline": "Новая линия",
+			"shortcut.complementary": "Использовать альтернативное действие: поставить в очередь или направить",
+			"shortcut.slash": "Открыть командное меню",
+			"shortcut.mention": "Открыть справочное меню",
+			"hint.plan": PLAN_NEXT_ACTION_EN,
+			"hint.goal": "описать цель долгосрочной задачи",
+			"hint.goal.active": "цель активна — изменить/приостановить/возобновить/очистить",
+			"placeholder.plan": PLAN_NEXT_ACTION_EN,
+			"placeholder.default": "Отправьте сообщение или запустите задачу, /команды, @файлы или сеансы",
+			"placeholder.unavailable": "Сеанс недоступен",
+			"placeholder.hero": "Опишите, что вы хотите построить: /команды, @файлы или сеансы.",
+			"placeholder.workspace": "Выберите рабочее пространство для начала",
+			"placeholder.steerQueue": "Cmd/Ctrl+Enter управляет всеми сообщениями в очереди.",
+			"input.commands": "Добавляйте файлы или запускайте команды",
+			"input.file": "Файл",
+			"input.stop": "Остановить генерацию",
+			"input.send": "Отправить сообщение",
+			"input.continue": "Продолжить генерацию",
+			"input.sending": "Отправка сообщения",
+			"input.send.queue": "Сообщение в очереди",
+			"input.send.steer": "Направить сообщение",
+			"attachment.pending": "Ожидающие вложения",
+			"attachment.scrollLeft": "Прокрутить вложения влево",
+			"attachment.scrollRight": "Прокрутить вложения вправо",
+			"attachment.dropTitle": "Перетащите файлы или изображения сюда, чтобы добавить их.",
+			"attachment.dropDesc": "Ограничение изображений: до изображений {count}, по {size} каждое.",
+			"attachment.dropBlocked": "Файлы и изображения не могут быть добавлены прямо сейчас.",
+			"attachment.directoryDesktopOnly": "Папки можно добавлять только в настольном приложении; добавлять отдельные файлы в браузере",
+			"attachment.pathUnavailable": "Не удалось получить путь к папке; перетащите это снова",
+			"attachment.pathUnsupported": "Путь содержит символы, которые не может содержать ссылка; переименуй его и попробуй еще раз",
+			"image.pending": "Ожидающие изображения",
+			"image.openOriginal": "Посмотреть оригинал",
+			"image.openOriginalLabel": "{label}, нажмите, чтобы посмотреть оригинал",
+			"image.remove": "Удалить изображение {name}",
+			"image.original": "Исходное изображение",
+			"image.label": "Изображение",
+			"image.loadFailed": "Изображение не удалось загрузить; нажмите, чтобы повторить попытку",
+			"image.loading": "Загрузка изображения…",
+			"image.preview": "Предварительный просмотр исходного изображения",
+			"image.closePreview": "Закрыть предварительный просмотр исходного изображения",
+			"image.unsupportedType": "Поддерживаются только изображения PNG, JPG, WebP и GIF.",
+			"image.tooMany": "Сообщение может содержать до {count} изображений.",
+			"image.fileTooLarge": "Каждое изображение должно быть меньше {size}.",
+			"image.totalTooLarge": "Общее количество изображений превышает {size}; удалите некоторые и попробуйте еще раз",
+			"image.tooManyPixels": "Разрешение изображения слишком высокое; сожми его и попробуй еще раз",
+			"image.dimensionTooLarge": "Стороны изображения должны быть не более {size}px; уменьшите масштаб и попробуйте еще раз",
+			"image.modelUnsupported": "Текущая модель не поддерживает изображения; переключиться на модель, которая делает",
+			"image.sendFailed": "Отправка изображений не удалась ({reason}); добавьте их повторно и попробуйте еще раз",
+			"file.pending": "Ожидающие файлы",
+			"file.remove": "Удалить файл {name}",
+			"file.uploading": "Загрузка…",
+			"file.uploadFailed": "Загрузка не удалась; нажмите, чтобы повторить попытку",
+			"file.retry": "Повторите загрузку {name}.",
+			"file.stillUploading": "Файлы все еще загружаются; отправить после того, как они закончат",
+			"file.sessionUnavailable": "Сессия недоступна; файлы не могут быть загружены",
+			"file.notStaged": "Загрузка файла не завершена; добавьте его еще раз и попробуйте еще раз",
+			"file.label": "Файл",
+			"context.aria": "{percent} используемого контекста",
+			"context.used": "используемого контекста",
+			"context.system": "Системная подсказка",
+			"context.tools": "Определения инструментов",
+			"context.messages": "Сообщения",
+			"settings.enter.title": "Отправлять поведение во время занятости",
+			"settings.enter.description": "Что делают кнопки «Ввод» и «Отправить» во время работы агента; Cmd/Ctrl+Enter использует другое поведение.",
+			"settings.enter.queue": "Очередь",
+			"settings.enter.steer": "Направить",
+			"hero.headline": "В неизвестность",
+			"hero.preview": "Предварительный просмотр",
+			"hero.chooseWorkspace": "Выберите рабочее пространство",
+			"header.more": "Другие действия",
+			"session.hierarchy": "Иерархия сеансов",
+			"session.moreViews": "Больше просмотров беседы",
+			"todo.title": "Дела",
+			"todo.progress.done": "{done} завершено",
+			"todo.progress.active": "{active} в процессе",
+			"todo.progress.pending": "{pending} в ожидании",
+			"todo.status.completed": "Завершено",
+			"todo.status.inProgress": "В процессе",
+			"todo.status.pending": "Ожидается",
+			"todo.rowTitle": "Обновить список дел",
+			"tool.title.createGoal": "Создать цель",
+			"tool.title.getGoal": "Посмотреть цель",
+			"tool.title.updateGoal": "Обновить цель",
+			"tool.preparing.content": "{kilobytes}KB",
+			"tool.title.createSchedule": "Создать задачу автоматизации",
+			"tool.title.listSchedules": "Показать задачи автоматизации",
+			"tool.title.deleteSchedule": "Удалить задачу автоматизации",
+			"tool.title.updateSchedule": "Обновить задачу автоматизации",
+			"detail.state": "Статус",
+			"detail.todo.completed": "Завершено",
+			"detail.todo.in_progress": "В процессе",
+			"detail.todo.pending": "Ожидается",
+			"detail.todo.empty": "Список дел пуст",
+			"todo.diff.initial": "Первоначальный список",
+			"todo.diff.compare": "Изменения по сравнению с предыдущим списком",
+			"todo.diff.unavailable": "Предыдущий список недоступен",
+			"todo.diff.noChanges": "Никаких изменений в списке",
+			"todo.diff.added": "{count} добавлен",
+			"todo.diff.updated": "{count} обновлен",
+			"todo.diff.removed": "{count} удален.",
+			"todo.diff.unchanged": "{count} без изменений",
+			"todo.diff.addedItem": "Добавлено",
+			"todo.diff.updatedItem": "Статус изменен",
+			"todo.diff.movedItem": "Переупорядочен",
+			"todo.diff.removedItem": "Удален",
+			"detail.goal.empty": "Нет цели",
+			"detail.goal.active": "Активный",
+			"detail.goal.disarmed": "Ожидание продолжения",
+			"detail.goal.paused": "Приостановлено",
+			"detail.goal.blocked": "Заблокировано",
+			"detail.goal.complete": "Завершено",
+			"detail.goal.rounds": "Раунды",
+			"detail.goal.reason": "Блокатор",
+			"detail.days": "{count} д",
+			"detail.hours": "{count} ч",
+			"detail.minutes": "{count} мин.",
+			"detail.seconds": "{count} с",
+			"detail.schedule.once": "Однажды",
+			"detail.schedule.every": "Каждый {interval}",
+			"detail.schedule.when": "Запланировано на",
+			"detail.schedule.frequency": "Повторить",
+			"detail.schedule.scheduled": "Запланировано",
+			"detail.schedule.overdue": "Просрочено, ждём возобновления сеанса",
+			"detail.schedule.empty": "Нет задач автоматизации",
+			"detail.schedule.deleted": "Удалено",
+			"detail.schedule.count": "{count} задачи автоматизации",
+			"detail.schedule.daily": "Каждый день в {time} ({zone})",
+			"detail.schedule.weekly": "Еженедельно на {days} по адресу {time} ({zone})",
+			"detail.schedule.cron": "Крон {expression} ({zone})",
+			"detail.schedule.custom": "Произвольно",
+			"detail.weekday.1": "Пн.",
+			"detail.weekday.2": "Вт",
+			"detail.weekday.3": "ср.",
+			"detail.weekday.4": "Чт",
+			"detail.weekday.5": "Пт",
+			"detail.weekday.6": "Суббота",
+			"detail.weekday.7": "Солнце",
+			"detail.weekday.join": ", ",
+			"tool.title.inspectProviders": "Проверка поставщиков",
+			"tool.title.queryRuntime": "Время выполнения запроса",
+			"tool.title.inspectPlugins": "Проверьте плагины",
+			"tool.title.workflow": "Запустить рабочий процесс",
+			"tool.title.ralph": "Запустить цикл Ральфа",
+			"tool.title.readEvent": "Чтение события",
+			"tool.title.searchEvents": "Поиск событий",
+			"tool.title.traceEvent": "Отследить событие",
+			"tool.title.searchSessions": "Поиск сеансов",
+			"tool.title.traceSession": "Трассировка сеанса",
+			"tool.title.listModels": "Список моделей",
+			"tool.title.subagent": "Создать субагент",
+			"tool.title.subagentFork": "Создать субагент (наследовать контекст)",
+			"tool.title.listAgents": "Список субагентов",
+			"tool.title.sendMessage": "Отправить сообщение",
+			"tool.title.interruptAgent": "Агент прерываний",
+			"tool.title.listJobs": "Список фоновых заданий",
+			"tool.title.readJob": "Чтение результатов задания",
+			"tool.title.killJob": "Отменить фоновое задание",
+			"tool.title.openTerminal": "Открыть терминал",
+			"tool.title.readTerminal": "Чтение терминала",
+			"tool.title.listTerminals": "Список терминалов",
+			"tool.title.signalTerminal": "Сигнальный терминал",
+			"tool.title.closeTerminal": "Закрыть терминал",
+			"tool.title.lsp": "Символы кода запроса",
+			"tool.title.findDefinition": "Найти определение",
+			"tool.title.findReferences": "Найдите ссылки",
+			"tool.title.findImplementation": "Найти реализацию",
+			"tool.title.hoverSymbol": "Символ проверки",
+			"tool.title.spawnTeammate": "Создать товарища по команде",
+			"tool.title.createTeamTask": "Создать командную задачу",
+			"tool.title.getTeamTask": "Прочитать командное задание",
+			"tool.title.updateTeamTask": "Обновить групповую задачу",
+			"tool.title.listTeamTasks": "Перечислить командные задачи",
+			"tool.title.waitAgent": "Ожидание сообщений…",
+			"detail.recordedResult": "Записанный результат",
+			"detail.empty": "Нет результатов",
+			"detail.none": "Нет",
+			"detail.yes": "Да",
+			"detail.no": "Нет",
+			"detail.moreInInspect": "{count} больше элементов доступно в Inspect",
+			"detail.status.running": "Бег",
+			"detail.status.idle": "Простой",
+			"detail.status.ready": "Готово",
+			"detail.status.inactive": "Неактивный",
+			"detail.status.provisioning": "обеспечение",
+			"detail.status.failed": "Не удалось",
+			"detail.status.corrupt": "Повреждено",
+			"detail.status.unsupported": "Не поддерживается",
+			"detail.status.unavailable": "Недоступно",
+			"detail.status.completed": "Завершено",
+			"detail.status.deleted": "Удалено",
+			"detail.status.killed": "Отменено",
+			"detail.status.accepted": "Принято",
+			"detail.status.queued": "В очереди",
+			"detail.status.exited": "Вышел",
+			"detail.field.id": "ID",
+			"detail.field.revision": "Редакция",
+			"detail.field.platform": "Платформа",
+			"detail.field.provider": "Поставщик",
+			"detail.field.model": "Модель",
+			"detail.field.role": "Роль",
+			"detail.field.context": "Контекст",
+			"detail.field.owner": "Владелец",
+			"detail.field.ready": "Готово",
+			"detail.field.dependencies": "Зависимости",
+			"detail.field.writeScopes": "Запись областей",
+			"detail.field.warnings": "Предупреждения",
+			"detail.field.diagnostics": "Диагностика",
+			"detail.field.methods": "Методы",
+			"detail.field.inputSchema": "Входная схема",
+			"detail.field.outputSchema": "Выходная схема",
+			"detail.field.currentPackage": "Текущий пакет",
+			"detail.field.nextPackage": "Следующий пакет",
+			"detail.field.latestRun": "Последний запуск",
+			"detail.field.packages": "Пакеты",
+			"detail.field.registrations": "Регистрации",
+			"detail.field.props": "Реквизит",
+			"detail.field.data": "Данные",
+			"detail.field.source": "Источник",
+			"detail.field.content": "Содержание",
+			"detail.field.message": "Сообщение",
+			"detail.field.messageId": "Идентификатор сообщения",
+			"detail.field.root": "Корень",
+			"detail.field.pid": "Идентификатор процесса",
+			"detail.field.type": "Тип",
+			"detail.field.time": "Время",
+			"detail.field.seq": "Последовательность событий",
+			"detail.field.turn": "Ход",
+			"detail.field.step": "Шаг",
+			"detail.field.callId": "Идентификатор вызова",
+			"detail.field.agents": "Агенты запущены",
+			"detail.field.result": "Результат",
+			"detail.field.parent": "Родитель",
+			"detail.field.exitCode": "Код выхода",
+			"detail.field.signal": "Сигнал",
+			"detail.field.previousStatus": "Предыдущий статус",
+			"detail.field.agent": "Идентификатор агента",
+			"detail.field.agentName": "Имя агента",
+			"detail.field.agentDescription": "Описание задачи агента",
+			"detail.field.job": "Идентификатор вакансии",
+			"detail.field.task": "Задача",
+			"detail.field.processGroup": "Группа процессов",
+			"detail.field.availability": "Доступность",
+			"detail.field.bestMatch": "Лучший матч",
+			"detail.field.target": "Целевое событие",
+			"detail.field.surface": "Статус записи",
+			"detail.agents.count": "{count} агенты",
+			"detail.jobs.count": "{count} фоновые задания",
+			"detail.terminals.count": "Клеммы {count}",
+			"detail.tasks.count": "{count} командные задачи",
+			"detail.tasks.nextPage": "Доступно больше задач; следующий курсор — {cursor}",
+			"detail.locations.count": "{count} локации",
+			"detail.location": "Строка {line}, столбец {column}",
+			"detail.receipt.delivered": "Сообщение доставлено",
+			"detail.receipt.interrupt": "Запрошено прерывание",
+			"detail.receipt.started": "Началось",
+			"detail.receipt.cancel": "Запрос на отмену",
+			"detail.receipt.alreadyFinished": "Уже закончено",
+			"detail.receipt.signal": "Сигнал доставлен",
+			"detail.receipt.closed": "Закрыто",
+			"detail.receipt.closing": "Закрытие",
+			"detail.wait.noProgress": "Нет активных субагентов",
+			"detail.wait.title": "Субагентская деятельность",
+			"detail.wait.timeout": "Время ожидания истекло",
+			"detail.wait.ended": "Ожидание завершено",
+			"detail.agent.reply": "Ответ агента",
+			"detail.models.title": "Доступные модели",
+			"detail.output.lines": "Линии {begin} – {end} из {total}",
+			"detail.output.truncated": "Вывод усечен",
+			"detail.providers.count": "{count} проверяет поставщиков",
+			"detail.plugins.count": "Динамические плагины {count}",
+			"detail.workflow.script": "Сценарий рабочего процесса",
+			"detail.ralph.reportedComplete": "Работник сообщил о завершении",
+			"detail.ralph.reportedBlocker": "Работник сообщил о блокировщике",
+			"detail.ralph.limit": "Достигнут лимит раундов",
+			"detail.report.nextSteps": "Оставшаяся работа",
+			"detail.trace.replacedBy": "Заменено на",
+			"detail.trace.replacementChain": "Замена цепи",
+			"detail.trace.replaces": "Замененные события",
+			"detail.trace.sources": "Исходные события",
+			"detail.trace.derived": "Производные события",
+			"detail.trace.ancestors": "Сеансы предков",
+			"detail.trace.descendants": "Потомки сеансов",
+			"detail.matches.count": "{count} совпадений",
+			"detail.matches.capped": "Достигнут предел результатов; сузить поиск для большего",
+			"detail.event.neighbors": "Сопутствующие события",
+			"todo.completed": "{done}/{total} завершено",
+			"command.attachmentsUnsupported": "/{command} не принимает вложения; сначала удали их",
+			"ask.rowTitle": "Задать вопрос",
+			"ask.waiting": "ожидание",
+			"ask.pending": "продолжение; ответ еще доступен",
+			"ask.pendingDetail": "На эти нерешенные вопросы остается ответ композитора.",
+			"ask.reopen": "Ответ",
+			"ask.review": "Посмотреть ответы",
+			"ask.closed": "закрыто",
+			"ask.closedDetail": "Этот вопрос закрыт; его результат в разговоре ниже.",
+			"ask.cancelled": "отменен",
+			"ask.cancelledDetail": "Этот набор вопросов был отменен до того, как были отправлены ответы.",
+			"ask.interrupted": "прерванный",
+			"ask.interruptedDetail": "Этот набор вопросов был прерван до того, как были представлены ответы.",
+			"ask.answered": "{answered}/{total} ответил",
+			"ask.skipped": "Не ответил",
+			"bash.running": "Бег",
+			"bash.failed": "Не удалось",
+			"bash.stopped": "Остановлено",
+			"row.running": "Бег",
+			"row.preparing": "Подготовка вызова инструмента",
+			"row.failed": "Не удалось",
+			"row.stopped": "Остановлено",
+			"row.commandArguments": "Аргументы команды",
+			"row.input": "IN",
+			"row.output": "OUT",
+			"row.inspect": "Осмотреть",
+			"row.imageSize": "{width}x{height}px, {bytes} байт",
+			"row.imageSizeDownscaled": "{width}x{height}px (уменьшено с {originalWidth}x{originalHeight}px), {bytes} байт",
+			"tool.title.search": "Поиск",
+			"tool.title.read": "Читать",
+			"tool.title.bash": "Баш",
+			"tool.title.write": "Написать",
+			"tool.title.edit": "Редактировать",
+			"tool.title.applyPatch": "Редактировать",
+			"tool.title.code": "Код",
+			"tool.title.generic": "Вызов инструмента",
+			"tool.title.inspect": "Запрос среды Cordis",
+			"tool.title.runCordis": "Запустите плагин Cordis",
+			"tool.title.stopCordis": "Остановить плагин Cordis",
+			"tool.title.removeCordis": "Удалить плагин Cordis",
+			"tool.title.pwsh": "Пшш",
+			"tool.title.readImage": "Читать изображение",
+			"tool.title.grep": "Греп",
+			"tool.title.glob": "Глоб",
+			"tool.title.webSearch": "Поиск",
+			"tool.title.webFetch": "Получить",
+			"tool.autoReviewRejected": "Отклонено Auto review",
+			"tool.autoReviewNotExecuted": "Инструмент не был выполнен. Причина: {reason}",
+			"tool.autoReviewReasonFallback": "Auto review не санкционировал это действие",
+			"diff.collapseAria": "Свернуть разницу",
+			"diff.expandAria": "Разверните {count} больше строк различий",
+			"diff.expandRest": "… {count} еще строки",
+			"read.window": "Показаны линии {shown} {total}.",
+			"read.collapseAria": "Свернуть содержимое",
+			"read.expandAria": "Разверните {count} еще строки",
+			"read.expandRest": "… {count} еще строки",
+			"search.paths": "{shown} пути",
+			"search.paths.truncated": "Отображение путей {shown} из {total}",
+			"search.matches": "{shown} соответствует · файлам {files}",
+			"search.matches.truncated": "Отображение {shown} совпадений {total} · Файлы {files}",
+			"search.noResults": "Нет результатов",
+			"search.collapseAria": "Свернуть результаты",
+			"search.expandAria": "Разверните {count} больше строк результатов",
+			"search.expandRest": "… {count} еще строки",
+			"web.noResults": "Результаты не найдены",
+			"web.sourcesTruncated": "Список источников сокращен",
+			"web.http": "HTTP",
+			"web.contentTruncated": "Содержание усечено",
+			"details.running": "Бег…",
+			"queue.count": "Сообщения в очереди {n}",
+			"queue.sending": "Отправка…",
+			"queue.image": "Изображение сообщения в очереди",
+			"queue.file": "Файл в очереди {name}",
+			"queue.edit": "Изменить сообщение в очереди",
+			"queue.edit.unsupported": "Содержит нетекстовый контент; редактирование пока не поддерживается",
+			"queue.save": "Сохранить сообщение в очереди",
+			"queue.cancelEdit": "Отменить редактирование",
+			"queue.remove": "Удалить сообщение из очереди",
+			"queue.steer": "Направить сообщение из очереди",
+			"queue.steer.unavailable": "Управление доступно только во время работы агента.",
+			"error.sessionInUse": "Этот сеанс уже используется, возможно, другим работающим экземпляром DSH (например, веб-сайтом dsh или настольным приложением). Закройте другие работающие экземпляры DSH и повторите попытку.",
+			"queue.editFailed": "Не удалось изменить: возможно, это сообщение уже начало отправляться.",
+			"queue.removeFailed": "Удаление не удалось: возможно, это сообщение уже начало отправляться.",
+			"queue.steerFailed": "Рулевое управление не удалось. Попробуйте еще раз.",
+			"terminal.signal": "сигнал {signal}",
+			"terminal.exitCode": "код выхода {code}",
+			"terminal.noExitCode": "нет кода выхода",
+			"terminal.commandLine": "Командная строка {n}",
+			"terminal.running": "Бег",
+			"terminal.failed": "Не удалось",
+			"terminal.done": "Готово",
+			"terminal.noOutput": "Нет вывода",
+			"terminal.collapseAria": "Свернуть вывод",
+			"terminal.expandAria": "Разверните оставшиеся выходные строки {n}.",
+			"terminal.expandRest": "… {n} еще строки",
+			"terminal.sendInput": "(отправить ввод)",
+			"terminal.session": "Терминал {sessionId}",
+			"tool.title.viewSchedule": "Посмотреть задачу автоматизации",
+			"tool.title.editSchedule": "Изменить задачу автоматизации",
+			"detail.schedule.active": "Включено",
+			"detail.schedule.paused": "Приостановлена",
+			"detail.schedule.ended": "Завершена"
+		};
+		/** Portuguese dictionary, checked against the English keys. */
+		const pt = {
+			"quote.remove": "Remover cotação",
+			"shortcut.newline": "Nova linha",
+			"shortcut.complementary": "Usar a ação alternativa de enfileirar ou orientar",
+			"shortcut.slash": "Abrir menu de comando",
+			"shortcut.mention": "Abrir menu de referência",
+			"hint.plan": PLAN_NEXT_ACTION_EN,
+			"hint.goal": "descrever o objetivo de uma tarefa de longa duração",
+			"hint.goal.active": "meta ativa — editar/pausar/resumir/limpar",
+			"placeholder.plan": PLAN_NEXT_ACTION_EN,
+			"placeholder.default": "Envie mensagens ou execute uma tarefa, / comandos, @ arquivos ou sessões",
+			"placeholder.unavailable": "Sessão indisponível",
+			"placeholder.hero": "Descreva o que você deseja construir, / comandos, @ arquivos ou sessões",
+			"placeholder.workspace": "Escolha um espaço de trabalho para começar",
+			"placeholder.steerQueue": "Cmd/Ctrl+Enter direciona todas as mensagens na fila",
+			"input.commands": "Adicione arquivos ou execute comandos",
+			"input.file": "Arquivo",
+			"input.stop": "Parar geração",
+			"input.send": "Enviar mensagem",
+			"input.continue": "Continuar gerando",
+			"input.sending": "Enviando mensagem",
+			"input.send.queue": "Mensagem de fila",
+			"input.send.steer": "Orientar com mensagem",
+			"attachment.pending": "Anexos pendentes",
+			"attachment.scrollLeft": "Rolar anexos para a esquerda",
+			"attachment.scrollRight": "Rolar os anexos para a direita",
+			"attachment.dropTitle": "Arraste arquivos ou imagens aqui para adicioná-los",
+			"attachment.dropDesc": "Limite de imagens: até {count} imagens, {size} cada",
+			"attachment.dropBlocked": "Arquivos e imagens não podem ser adicionados no momento",
+			"attachment.directoryDesktopOnly": "As pastas só podem ser adicionadas no aplicativo de desktop; adicione arquivos individuais no navegador",
+			"attachment.pathUnavailable": "Não foi possível obter o caminho da pasta; arraste-o novamente",
+			"attachment.pathUnsupported": "O caminho contém caracteres que uma referência não pode transportar; renomeie-o e tente novamente",
+			"image.pending": "Imagens pendentes",
+			"image.openOriginal": "Ver original",
+			"image.openOriginalLabel": "{label}, clique para ver o original",
+			"image.remove": "Remover imagem {name}",
+			"image.original": "Imagem original",
+			"image.label": "Imagem",
+			"image.loadFailed": "A imagem não foi carregada; clique para tentar novamente",
+			"image.loading": "Carregando imagem…",
+			"image.preview": "Visualização da imagem original",
+			"image.closePreview": "Fechar visualização da imagem original",
+			"image.unsupportedType": "Somente imagens PNG, JPG, WebP e GIF são suportadas",
+			"image.tooMany": "Uma mensagem pode incluir até {count} imagens",
+			"image.fileTooLarge": "Cada imagem deve ser menor que {size}",
+			"image.totalTooLarge": "As imagens excedem {size} no total; remova alguns e tente novamente",
+			"image.tooManyPixels": "A resolução da imagem é muito alta; comprima e tente novamente",
+			"image.dimensionTooLarge": "Os lados da imagem devem ter no máximo {size}px; diminua a escala e tente novamente",
+			"image.modelUnsupported": "O modelo atual não suporta imagens; mude para um modelo que faça",
+			"image.sendFailed": "Falha no envio de imagens ({reason}); adicione-os novamente e tente novamente",
+			"file.pending": "Arquivos pendentes",
+			"file.remove": "Remover arquivo {name}",
+			"file.uploading": "Fazendo upload…",
+			"file.uploadFailed": "Falha no upload; clique para tentar novamente",
+			"file.retry": "Tente fazer upload novamente {name}",
+			"file.stillUploading": "Os arquivos ainda estão sendo carregados; enviar depois que terminarem",
+			"file.sessionUnavailable": "Sessão indisponível; os arquivos não podem ser carregados",
+			"file.notStaged": "O upload do arquivo não foi concluído; adicione novamente e tente novamente",
+			"file.label": "Arquivo",
+			"context.aria": "{percent} de contexto usado",
+			"context.used": "do contexto usado",
+			"context.system": "Alerta do sistema",
+			"context.tools": "Definições de ferramentas",
+			"context.messages": "Mensagens",
+			"settings.enter.title": "Enviar comportamento enquanto estiver ocupado",
+			"settings.enter.description": "O que o botão Enter e o botão Enviar fazem enquanto o agente está em execução; Cmd/Ctrl+Enter usa o outro comportamento",
+			"settings.enter.queue": "Fila",
+			"settings.enter.steer": "Orientar",
+			"hero.headline": "Para o desconhecido",
+			"hero.preview": "Visualização",
+			"hero.chooseWorkspace": "Escolha o espaço de trabalho",
+			"header.more": "Mais ações",
+			"session.hierarchy": "Hierarquia de sessão",
+			"session.moreViews": "Mais visualizações de conversas",
+			"todo.title": "Tarefas",
+			"todo.progress.done": "{done} concluído",
+			"todo.progress.active": "{active} em andamento",
+			"todo.progress.pending": "{pending} pendente",
+			"todo.status.completed": "Concluído",
+			"todo.status.inProgress": "Em andamento",
+			"todo.status.pending": "Pendente",
+			"todo.rowTitle": "Atualizar lista de tarefas",
+			"tool.title.createGoal": "Criar meta",
+			"tool.title.getGoal": "Ver meta",
+			"tool.title.updateGoal": "Atualizar meta",
+			"tool.preparing.content": "{kilobytes}KB",
+			"tool.title.createSchedule": "Criar tarefa de automação",
+			"tool.title.listSchedules": "Listar tarefas de automação",
+			"tool.title.deleteSchedule": "Excluir tarefa de automação",
+			"tool.title.updateSchedule": "Atualizar tarefa de automação",
+			"detail.state": "Estado",
+			"detail.todo.completed": "Concluído",
+			"detail.todo.in_progress": "Em andamento",
+			"detail.todo.pending": "Pendente",
+			"detail.todo.empty": "A lista de tarefas está vazia",
+			"todo.diff.initial": "Lista inicial",
+			"todo.diff.compare": "Mudanças desde a lista anterior",
+			"todo.diff.unavailable": "Lista anterior indisponível",
+			"todo.diff.noChanges": "Sem alterações na lista",
+			"todo.diff.added": "{count} adicionado",
+			"todo.diff.updated": "{count} atualizado",
+			"todo.diff.removed": "{count} removido",
+			"todo.diff.unchanged": "{count} inalterado",
+			"todo.diff.addedItem": "Adicionado",
+			"todo.diff.updatedItem": "Status alterado",
+			"todo.diff.movedItem": "Reordenado",
+			"todo.diff.removedItem": "Removido",
+			"detail.goal.empty": "Sem objetivo",
+			"detail.goal.active": "Ativo",
+			"detail.goal.disarmed": "Aguardando continuação",
+			"detail.goal.paused": "Pausado",
+			"detail.goal.blocked": "Bloqueado",
+			"detail.goal.complete": "Concluído",
+			"detail.goal.rounds": "Rodadas",
+			"detail.goal.reason": "Bloqueador",
+			"detail.days": "{count}d",
+			"detail.hours": "{count}h",
+			"detail.minutes": "{count} min",
+			"detail.seconds": "{count} segundos",
+			"detail.schedule.once": "Uma vez",
+			"detail.schedule.every": "A cada {interval}",
+			"detail.schedule.when": "Agendado para",
+			"detail.schedule.frequency": "Repetir",
+			"detail.schedule.scheduled": "Agendado",
+			"detail.schedule.overdue": "Atrasado, aguardando retomada da sessão",
+			"detail.schedule.empty": "Sem tarefas de automação",
+			"detail.schedule.deleted": "Excluído",
+			"detail.schedule.count": "{count} tarefas de automação",
+			"detail.schedule.daily": "Todos os dias às {time} ({zone})",
+			"detail.schedule.weekly": "Semanalmente em {days} às {time} ({zone})",
+			"detail.schedule.cron": "Cron {expression} ({zone})",
+			"detail.schedule.custom": "Personalizado",
+			"detail.weekday.1": "segunda-feira",
+			"detail.weekday.2": "Terça",
+			"detail.weekday.3": "Quarta",
+			"detail.weekday.4": "Qui",
+			"detail.weekday.5": "Sexta-feira",
+			"detail.weekday.6": "Sábado",
+			"detail.weekday.7": "Sol",
+			"detail.weekday.join": ", ",
+			"tool.title.inspectProviders": "Inspecionar fornecedores",
+			"tool.title.queryRuntime": "Tempo de execução da consulta",
+			"tool.title.inspectPlugins": "Inspecionar plug-ins",
+			"tool.title.workflow": "Executar fluxo de trabalho",
+			"tool.title.ralph": "Execute o circuito Ralph",
+			"tool.title.readEvent": "Ler evento",
+			"tool.title.searchEvents": "Pesquisar eventos",
+			"tool.title.traceEvent": "Evento de rastreamento",
+			"tool.title.searchSessions": "Buscar sessões",
+			"tool.title.traceSession": "Sessão de rastreamento",
+			"tool.title.listModels": "Listar modelos",
+			"tool.title.subagent": "Criar subagente",
+			"tool.title.subagentFork": "Criar subagente (herdar contexto)",
+			"tool.title.listAgents": "Listar subagentes",
+			"tool.title.sendMessage": "Enviar mensagem",
+			"tool.title.interruptAgent": "Agente de interrupção",
+			"tool.title.listJobs": "Listar trabalhos em segundo plano",
+			"tool.title.readJob": "Ler saída do trabalho",
+			"tool.title.killJob": "Cancelar trabalho em segundo plano",
+			"tool.title.openTerminal": "Terminal aberto",
+			"tool.title.readTerminal": "Ler terminal",
+			"tool.title.listTerminals": "Listar terminais",
+			"tool.title.signalTerminal": "Terminal de sinal",
+			"tool.title.closeTerminal": "Fechar terminal",
+			"tool.title.lsp": "Símbolos de código de consulta",
+			"tool.title.findDefinition": "Encontre a definição",
+			"tool.title.findReferences": "Encontre referências",
+			"tool.title.findImplementation": "Encontre implementação",
+			"tool.title.hoverSymbol": "Símbolo de inspeção",
+			"tool.title.spawnTeammate": "Criar companheiro de equipe",
+			"tool.title.createTeamTask": "Criar tarefa de equipe",
+			"tool.title.getTeamTask": "Ler tarefa da equipe",
+			"tool.title.updateTeamTask": "Atualizar tarefa da equipe",
+			"tool.title.listTeamTasks": "Listar tarefas da equipe",
+			"tool.title.waitAgent": "Aguardando mensagens…",
+			"detail.recordedResult": "Resultado registrado",
+			"detail.empty": "Nenhum resultado",
+			"detail.none": "Nenhum",
+			"detail.yes": "Sim",
+			"detail.no": "Não",
+			"detail.moreInInspect": "Mais {count} itens disponíveis no Inspecionar",
+			"detail.status.running": "Correndo",
+			"detail.status.idle": "Inativo",
+			"detail.status.ready": "Pronto",
+			"detail.status.inactive": "Inativo",
+			"detail.status.provisioning": "Provisionamento",
+			"detail.status.failed": "Falha",
+			"detail.status.corrupt": "Corrompido",
+			"detail.status.unsupported": "Não suportado",
+			"detail.status.unavailable": "Indisponível",
+			"detail.status.completed": "Concluído",
+			"detail.status.deleted": "Excluído",
+			"detail.status.killed": "Cancelado",
+			"detail.status.accepted": "Aceito",
+			"detail.status.queued": "Na fila",
+			"detail.status.exited": "Saiu",
+			"detail.field.id": "ID",
+			"detail.field.revision": "Revisão",
+			"detail.field.platform": "Plataforma",
+			"detail.field.provider": "Provedor",
+			"detail.field.model": "Modelo",
+			"detail.field.role": "Função",
+			"detail.field.context": "Contexto",
+			"detail.field.owner": "Proprietário",
+			"detail.field.ready": "Pronto",
+			"detail.field.dependencies": "Dependências",
+			"detail.field.writeScopes": "Escrever escopos",
+			"detail.field.warnings": "Avisos",
+			"detail.field.diagnostics": "Diagnóstico",
+			"detail.field.methods": "Métodos",
+			"detail.field.inputSchema": "Esquema de entrada",
+			"detail.field.outputSchema": "Esquema de saída",
+			"detail.field.currentPackage": "Pacote atual",
+			"detail.field.nextPackage": "Próximo pacote",
+			"detail.field.latestRun": "Última execução",
+			"detail.field.packages": "Pacotes",
+			"detail.field.registrations": "Inscrições",
+			"detail.field.props": "Adereços",
+			"detail.field.data": "Dados",
+			"detail.field.source": "Fonte",
+			"detail.field.content": "Conteúdo",
+			"detail.field.message": "Mensagem",
+			"detail.field.messageId": "ID da mensagem",
+			"detail.field.root": "Raiz",
+			"detail.field.pid": "ID do processo",
+			"detail.field.type": "Tipo",
+			"detail.field.time": "Hora",
+			"detail.field.seq": "Sequência de eventos",
+			"detail.field.turn": "Turno",
+			"detail.field.step": "Passo",
+			"detail.field.callId": "ID de chamada",
+			"detail.field.agents": "Agentes iniciados",
+			"detail.field.result": "Resultado",
+			"detail.field.parent": "Pai",
+			"detail.field.exitCode": "Código de saída",
+			"detail.field.signal": "Sinal",
+			"detail.field.previousStatus": "Estado anterior",
+			"detail.field.agent": "ID do agente",
+			"detail.field.agentName": "Nome do agente",
+			"detail.field.agentDescription": "Descrição da tarefa do agente",
+			"detail.field.job": "ID do trabalho",
+			"detail.field.task": "Tarefa",
+			"detail.field.processGroup": "Grupo de processos",
+			"detail.field.availability": "Disponibilidade",
+			"detail.field.bestMatch": "Melhor correspondência",
+			"detail.field.target": "Evento alvo",
+			"detail.field.surface": "Status do registro",
+			"detail.agents.count": "{count} agentes",
+			"detail.jobs.count": "{count} trabalhos em segundo plano",
+			"detail.terminals.count": "{count} terminais",
+			"detail.tasks.count": "{count} tarefas de equipe",
+			"detail.tasks.nextPage": "Mais tarefas disponíveis; o próximo cursor é {cursor}",
+			"detail.locations.count": "{count} locais",
+			"detail.location": "Linha {line}, coluna {column}",
+			"detail.receipt.delivered": "Mensagem entregue",
+			"detail.receipt.interrupt": "Interrupção solicitada",
+			"detail.receipt.started": "Iniciado",
+			"detail.receipt.cancel": "Cancelamento solicitado",
+			"detail.receipt.alreadyFinished": "Já terminei",
+			"detail.receipt.signal": "Sinal entregue",
+			"detail.receipt.closed": "Fechado",
+			"detail.receipt.closing": "Fechando",
+			"detail.wait.noProgress": "Nenhum subagente ativo",
+			"detail.wait.title": "Atividade do subagente",
+			"detail.wait.timeout": "A espera expirou",
+			"detail.wait.ended": "Espera encerrada",
+			"detail.agent.reply": "Resposta do agente",
+			"detail.models.title": "Modelos disponíveis",
+			"detail.output.lines": "Linhas {begin}–{end} de {total}",
+			"detail.output.truncated": "Saída truncada",
+			"detail.providers.count": "{count} inspecionar provedores",
+			"detail.plugins.count": "{count} plug-ins dinâmicos",
+			"detail.workflow.script": "Roteiro de fluxo de trabalho",
+			"detail.ralph.reportedComplete": "Conclusão relatada pelo trabalhador",
+			"detail.ralph.reportedBlocker": "Trabalhador relatou um bloqueador",
+			"detail.ralph.limit": "Limite de rodadas atingido",
+			"detail.report.nextSteps": "Trabalho restante",
+			"detail.trace.replacedBy": "Substituído por",
+			"detail.trace.replacementChain": "Cadeia de substituição",
+			"detail.trace.replaces": "Eventos substituídos",
+			"detail.trace.sources": "Eventos de origem",
+			"detail.trace.derived": "Eventos derivados",
+			"detail.trace.ancestors": "Sessões ancestrais",
+			"detail.trace.descendants": "Sessões de descendentes",
+			"detail.matches.count": "{count} correspondências",
+			"detail.matches.capped": "Limite de resultados atingido; restringir a busca por mais",
+			"detail.event.neighbors": "Eventos circundantes",
+			"todo.completed": "{done}/{total} concluído",
+			"command.attachmentsUnsupported": "/{command} não aceita anexos; remova-os primeiro",
+			"ask.rowTitle": "Faça uma pergunta",
+			"ask.waiting": "esperando",
+			"ask.pending": "continuou; resposta ainda disponível",
+			"ask.pendingDetail": "Essas questões pendentes permanecem respondidas pelo compositor.",
+			"ask.reopen": "Resposta",
+			"ask.review": "Ver respostas",
+			"ask.closed": "fechado",
+			"ask.closedDetail": "Esta questão está encerrada; seu resultado está na conversa abaixo.",
+			"ask.cancelled": "cancelado",
+			"ask.cancelledDetail": "Este conjunto de perguntas foi cancelado antes do envio das respostas.",
+			"ask.interrupted": "interrompido",
+			"ask.interruptedDetail": "Este conjunto de perguntas foi interrompido antes do envio das respostas.",
+			"ask.answered": "{answered}/{total} respondeu",
+			"ask.skipped": "Não respondido",
+			"bash.running": "Correndo",
+			"bash.failed": "Falha",
+			"bash.stopped": "Parado",
+			"row.running": "Correndo",
+			"row.preparing": "Preparando chamada de ferramenta",
+			"row.failed": "Falha",
+			"row.stopped": "Parado",
+			"row.commandArguments": "Argumentos de comando",
+			"row.input": "IN",
+			"row.output": "OUT",
+			"row.inspect": "Inspecionar",
+			"row.imageSize": "{width}x{height}px, {bytes} bytes",
+			"row.imageSizeDownscaled": "{width}x{height}px (reduzido de {originalWidth}x{originalHeight}px), {bytes} bytes",
+			"tool.title.search": "Pesquisar",
+			"tool.title.read": "Leia",
+			"tool.title.bash": "Bash",
+			"tool.title.write": "Escreva",
+			"tool.title.edit": "Editar",
+			"tool.title.applyPatch": "Editar",
+			"tool.title.code": "Código",
+			"tool.title.generic": "Chamada de ferramenta",
+			"tool.title.inspect": "Consultar ambiente Cordis",
+			"tool.title.runCordis": "Execute o plug-in Cordis",
+			"tool.title.stopCordis": "Parar o plug-in Cordis",
+			"tool.title.removeCordis": "Remover plug-in Cordis",
+			"tool.title.pwsh": "Pwsh",
+			"tool.title.readImage": "Ler imagem",
+			"tool.title.grep": "Grep",
+			"tool.title.glob": "globo",
+			"tool.title.webSearch": "Pesquisar",
+			"tool.title.webFetch": "Buscar",
+			"tool.autoReviewRejected": "Rejeitado por Auto review",
+			"tool.autoReviewNotExecuted": "A ferramenta não foi executada. Motivo: {reason}",
+			"tool.autoReviewReasonFallback": "Auto review não autorizou esta ação",
+			"diff.collapseAria": "Recolher diferença",
+			"diff.expandAria": "Expanda mais {count} linhas de diferenças",
+			"diff.expandRest": "… mais {count} linhas",
+			"read.window": "Mostrando {shown} de {total} linhas",
+			"read.collapseAria": "Recolher conteúdo",
+			"read.expandAria": "Expanda mais {count} linhas",
+			"read.expandRest": "… mais {count} linhas",
+			"search.paths": "{shown} caminhos",
+			"search.paths.truncated": "Mostrando {shown} de {total} caminhos",
+			"search.matches": "{shown} correspondências · {files} arquivos",
+			"search.matches.truncated": "Mostrando {shown} de {total} correspondências · {files} arquivos",
+			"search.noResults": "Nenhum resultado",
+			"search.collapseAria": "Recolher resultados",
+			"search.expandAria": "Expanda mais {count} linhas de resultados",
+			"search.expandRest": "… mais {count} linhas",
+			"web.noResults": "Nenhum resultado encontrado",
+			"web.sourcesTruncated": "Lista de fontes truncada",
+			"web.http": "HTTP",
+			"web.contentTruncated": "Conteúdo truncado",
+			"details.running": "Correndo…",
+			"queue.count": "{n} mensagens na fila",
+			"queue.sending": "Enviando…",
+			"queue.image": "Imagem de mensagem na fila",
+			"queue.file": "Arquivo na fila {name}",
+			"queue.edit": "Editar mensagem na fila",
+			"queue.edit.unsupported": "Contém conteúdo não textual; a edição ainda não é suportada",
+			"queue.save": "Salvar mensagem na fila",
+			"queue.cancelEdit": "Cancelar edição",
+			"queue.remove": "Remover mensagem na fila",
+			"queue.steer": "Orientar com mensagem da fila",
+			"queue.steer.unavailable": "A direção está disponível apenas enquanto o agente está em execução",
+			"error.sessionInUse": "Esta sessão já está em uso, possivelmente por outra instância DSH em execução (como dsh web ou aplicativo de desktop). Saia de outras instâncias DSH em execução e tente novamente.",
+			"queue.editFailed": "Falha na edição: esta mensagem pode já ter começado a ser enviada.",
+			"queue.removeFailed": "Falha na remoção: esta mensagem pode já ter começado a ser enviada.",
+			"queue.steerFailed": "A direção falhou. Tente novamente.",
+			"terminal.signal": "sinal {signal}",
+			"terminal.exitCode": "código de saída {code}",
+			"terminal.noExitCode": "sem código de saída",
+			"terminal.commandLine": "Linha de comando {n}",
+			"terminal.running": "Correndo",
+			"terminal.failed": "Falha",
+			"terminal.done": "Concluído",
+			"terminal.noOutput": "Sem saída",
+			"terminal.collapseAria": "Recolher saída",
+			"terminal.expandAria": "Expanda as {n} linhas de saída restantes",
+			"terminal.expandRest": "… mais {n} linhas",
+			"terminal.sendInput": "(enviar entrada)",
+			"terminal.session": "Terminal {sessionId}",
+			"tool.title.viewSchedule": "Ver tarefa de automação",
+			"tool.title.editSchedule": "Editar tarefa de automação",
+			"detail.schedule.active": "Habilitado",
+			"detail.schedule.paused": "Pausada",
+			"detail.schedule.ended": "Concluída"
+		};
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/queue/QueueDock.module.css.mjs
-		const css$6 = "._7yHdaG_dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto calc(0px - var(--dsh-composer-stack-gap) - 3px);padding:0 var(--dsh-composer-dock-inset);flex:none}._7yHdaG_panel{isolation:isolate;border-radius:var(--dsw-radius-lg) var(--dsw-radius-lg) 0 0;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);width:100%;padding:2px 0;position:relative;overflow:hidden}._7yHdaG_panel:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:\"\";pointer-events:none;position:absolute;inset:0}._7yHdaG_panel:after{border:.5px solid var(--dsw-alias-border-l1);border-radius:inherit;content:\"\";pointer-events:none;border-bottom:none;position:absolute;inset:0}._7yHdaG_header{box-sizing:border-box;border-radius:var(--dsw-radius-md);width:100%;height:36px;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;background:0 0;border:none;align-items:center;gap:10px;padding:4px 12px;display:flex}._7yHdaG_header:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}._7yHdaG_header:disabled{cursor:default}._7yHdaG_lead{color:var(--dsw-alias-label-tertiary);flex:none;place-items:center;display:grid}._7yHdaG_count{min-width:0;font-family:Inter, var(--dsw-font-family);flex:auto;font-size:13px;font-weight:500;line-height:24px}._7yHdaG_chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;place-items:center;display:grid}._7yHdaG_list{max-height:180px;margin:0;padding:0;list-style:none;overflow-y:auto}._7yHdaG_row{box-sizing:border-box;border-radius:var(--dsw-radius-md);align-items:center;gap:10px;width:100%;min-height:36px;padding:4px 5px 4px 12px;display:flex}._7yHdaG_row+._7yHdaG_row{box-shadow:inset 0 1px 0 var(--dsw-alias-border-l1)}._7yHdaG_attachments{flex:none;gap:4px;min-width:0;max-width:55%;display:flex;overflow:hidden}._7yHdaG_pendingRow ._7yHdaG_attachments{flex-shrink:1}._7yHdaG_file{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-base);box-sizing:border-box;flex:0 180px;align-items:center;gap:4px;min-width:74px;height:24px;padding:0 6px;display:inline-flex;overflow:hidden}._7yHdaG_fileIcon{flex:none;width:16px;height:16px;display:inline-flex}._7yHdaG_fileName{min-width:0;color:var(--dsw-alias-label-primary-dimmed);font:var(--dsw-font-xs-13);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}._7yHdaG_fileSize{color:var(--dsw-alias-label-tertiary);white-space:nowrap;flex:none;font-size:10px}._7yHdaG_thumb{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xs);background:var(--dsw-alias-bg-base);object-fit:cover;width:24px;height:24px}._7yHdaG_preview{min-width:0;font:var(--dsw-font-xs-13);font-family:Inter, var(--dsw-font-family);color:var(--dsw-alias-label-primary-dimmed);text-overflow:ellipsis;white-space:nowrap;word-break:break-word;flex:auto;overflow:hidden}._7yHdaG_actions{flex:none;align-items:center;gap:10px;display:flex}._7yHdaG_status{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);white-space:nowrap;flex:none}._7yHdaG_action{corner-shape:round;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;flex:none;place-items:center;padding:0;display:grid}._7yHdaG_action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}._7yHdaG_action:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}._7yHdaG_action:disabled{cursor:default;opacity:.45}";
+		const css$6 = "._7yHdaG_dock{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto calc(0px - var(--dsh-composer-stack-gap) - 3px);padding:0 var(--dsh-composer-dock-inset);flex:none}._7yHdaG_panel{isolation:isolate;border-radius:var(--dsw-radius-lg) var(--dsw-radius-lg) 0 0;--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);width:100%;padding:2px 0;position:relative;overflow:hidden}._7yHdaG_panel:before{z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:\"\";pointer-events:none;position:absolute;inset:0}._7yHdaG_panel:after{border:.5px solid var(--dsw-alias-border-l1);border-radius:inherit;content:\"\";pointer-events:none;border-bottom:none;position:absolute;inset:0}._7yHdaG_header{box-sizing:border-box;border-radius:var(--dsw-radius-md);width:100%;height:36px;color:var(--dsw-alias-label-primary);text-align:left;cursor:pointer;background:0 0;border:none;align-items:center;gap:10px;padding:4px 12px;display:flex}._7yHdaG_header:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}._7yHdaG_header:disabled{cursor:default}._7yHdaG_lead{color:var(--dsw-alias-label-tertiary);flex:none;place-items:center;display:grid}._7yHdaG_count{min-width:0;font-family:Inter, var(--dsw-font-family);flex:auto;font-size:13px;font-weight:500;line-height:24px}._7yHdaG_chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;place-items:center;display:grid}._7yHdaG_list{max-height:180px;margin:0;padding:0;list-style:none;overflow-y:auto}._7yHdaG_row{box-sizing:border-box;border-radius:var(--dsw-radius-md);align-items:center;gap:10px;width:100%;min-height:36px;padding:4px 5px 4px 12px;display:flex}._7yHdaG_row+._7yHdaG_row{box-shadow:inset 0 1px 0 var(--dsw-alias-border-l1)}._7yHdaG_attachments{flex:none;gap:4px;min-width:0;max-width:55%;display:flex;overflow:hidden}._7yHdaG_pendingRow ._7yHdaG_attachments{flex-shrink:1}._7yHdaG_file{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-base);box-sizing:border-box;flex:0 180px;align-items:center;gap:4px;min-width:74px;height:24px;padding:0 6px;display:inline-flex;overflow:hidden}._7yHdaG_fileIcon{flex:none;width:16px;height:16px;display:inline-flex}._7yHdaG_fileName{min-width:0;color:var(--dsw-alias-label-primary-dimmed);font:var(--dsw-font-xs-13);text-overflow:ellipsis;white-space:nowrap;overflow:hidden}._7yHdaG_fileSize{color:var(--dsw-alias-label-tertiary);white-space:nowrap;flex:none;font-size:10px}._7yHdaG_thumb{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-xs);background:var(--dsw-alias-bg-base);object-fit:cover;width:24px;height:24px}._7yHdaG_preview{min-width:0;font:var(--dsw-font-xs-13);font-family:Inter, var(--dsw-font-family);color:var(--dsw-alias-label-primary-dimmed);flex:auto}._7yHdaG_actions{flex:none;align-items:center;gap:10px;display:flex}._7yHdaG_status{color:var(--dsw-alias-label-tertiary);font:var(--dsw-font-xs-13);white-space:nowrap;flex:none}._7yHdaG_action{corner-shape:round;width:28px;height:28px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;border-radius:999px;flex:none;place-items:center;padding:0;display:grid}@media (hover:hover){._7yHdaG_action:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}}._7yHdaG_action:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-2px}._7yHdaG_action:disabled{cursor:default;opacity:.45}";
 		const tagId$6 = "@deepseek-ai/dsh-client-ui-conversation/QueueDock.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$6) + "]") === null) {
 			const tag = document.createElement("style");
@@ -20115,12 +19672,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#endregion
 		//#region lib/types/client/queue/QueueDock.js
 		const EMPTY_QUEUE = [];
-		const QUEUE_PREVIEW_CHARS = 200;
-		function previewOf(content) {
-			const flat = content.filter((block) => block.type !== "image" && block.type !== "file").map((block) => block.type === "text" ? block.text : `[${block.type}]`).join(" ").replace(/\s+/g, " ").trim();
-			const chars = Array.from(flat);
-			return chars.length > QUEUE_PREVIEW_CHARS ? `${chars.slice(0, QUEUE_PREVIEW_CHARS).join("")}…` : flat;
-		}
+		const QUEUE_TEXT_FACTS = {
+			collapseWhitespace: true,
+			trimWhitespace: true
+		};
 		function textOf(content) {
 			if (!content.every((block) => block.type === "text")) return null;
 			return content.map((block) => block.text).join("");
@@ -20204,7 +19759,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* collapsible count header; an empty queue renders nothing. Local queued submissions
 		* show sending status and disabled actions until their Host queue rows arrive.
 		*/
-		function QueueDock({ useSession, useProjection, updateQueue, notify, loadImage, t }) {
+		function QueueDock({ useSession, useProjection, updateQueue, notify, loadImage, renderFactorySlot, t }) {
 			const inbox = useProjection("inbox");
 			const pendingSubmissions = useSession((s) => s.pendingSubmissions);
 			const queue = (0, react.useMemo)(() => {
@@ -20336,7 +19891,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 										}, `${item.attachment.attachmentId}:${item.attachment.name}:${index}`))
 									}), (0, react_jsx_runtime.jsx)("span", {
 										className: QueueDock_module_css_default.preview,
-										children: (0, _deepseek_ai_dsh_client_ui_primitives.projectUserText)(previewOf(row.content), [])
+										children: renderFactorySlot("conversation.user.text", {
+											text: row.content.filter((block) => block.type === "text").map((block) => block.text).join(""),
+											facts: QUEUE_TEXT_FACTS,
+											interactive: false,
+											ellipsis: true
+										})
 									})] }),
 									queueMutable && (0, react_jsx_runtime.jsx)("div", {
 										className: QueueDock_module_css_default.actions,
@@ -20453,7 +20013,12 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 									}),
 									(0, react_jsx_runtime.jsx)("span", {
 										className: QueueDock_module_css_default.preview,
-										children: (0, _deepseek_ai_dsh_client_ui_primitives.projectUserText)(submission.text, [])
+										children: renderFactorySlot("conversation.user.text", {
+											text: submission.text,
+											facts: QUEUE_TEXT_FACTS,
+											interactive: false,
+											ellipsis: true
+										})
 									}),
 									(0, react_jsx_runtime.jsx)("span", {
 										className: QueueDock_module_css_default.status,
@@ -20529,7 +20094,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		};
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/settings/EnterBehaviorRow.module.css.mjs
-		const css$5 = ".T1PP_q_row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.T1PP_q_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}.T1PP_q_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.T1PP_q_desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}.T1PP_q_selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}.T1PP_q_selector:hover{background:var(--dsw-alias-interactive-bg-hover)}.T1PP_q_chevron{flex:none}@media (width<=600px){.T1PP_q_row{justify-content:space-between;padding:12px 0}.T1PP_q_rowText{padding-right:12px}}";
+		const css$5 = ".T1PP_q_row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex}.T1PP_q_rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}@media (width<=767px){html:not([data-windows-titlebar]):not([data-platform=darwin]) .T1PP_q_rowText{padding-right:16px}}.T1PP_q_title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}.T1PP_q_desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}.T1PP_q_selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}@media (hover:hover){.T1PP_q_selector:hover{background:var(--dsw-alias-interactive-bg-hover)}}.T1PP_q_chevron{flex:none}@media (width<=600px){.T1PP_q_row{justify-content:space-between;padding:12px 0}.T1PP_q_rowText{padding-right:12px}}";
 		const tagId$5 = "@deepseek-ai/dsh-client-ui-conversation/EnterBehaviorRow.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$5) + "]") === null) {
 			const tag = document.createElement("style");
@@ -20626,7 +20191,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ConversationRoot.module.css.mjs
-		const css$4 = ".wSkVaW_root{background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;position:relative}.wSkVaW_header{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l3);flex:none;grid-template-columns:auto minmax(0,1fr);min-height:76px;padding:10px 28px 0 20px;display:grid}.wSkVaW_header:where(:not(:has(.wSkVaW_tabs))){min-height:0;padding-bottom:10px}.wSkVaW_headerBlank{border-bottom:none;min-height:0;padding-bottom:0}.wSkVaW_headerBlank .wSkVaW_headerCorner{margin-left:auto}html:not([data-platform=darwin]) .wSkVaW_headerSessionless{padding-top:0}html:not([data-platform=darwin]) .wSkVaW_headerSessionless .wSkVaW_titleRow{min-height:0}[data-platform=darwin] .wSkVaW_headerLeading,[data-platform=darwin] .wSkVaW_headerActions,[data-platform=darwin] .wSkVaW_headerUtilities,[data-platform=darwin] .wSkVaW_headerCorner{-webkit-app-region:no-drag}.wSkVaW_titleRow{min-height:30px;grid-column:2;align-items:center;gap:0;padding-inline-start:max(0px, calc(var(--dsh-frame-leading-clearance,0px) - 20px));display:flex;container-type:inline-size}.wSkVaW_titleCluster{flex:1;align-items:center;gap:10px;min-width:0;display:flex}.wSkVaW_headerLeading{flex:none;grid-area:1/1;align-items:center;gap:8px;display:flex}.wSkVaW_crumbs{white-space:nowrap;align-items:center;gap:4px;min-width:0;display:flex;overflow:hidden}.wSkVaW_crumbSeg{align-items:center;gap:4px;min-width:0;display:inline-flex}.wSkVaW_crumbSep{color:var(--dsw-alias-label-caption);font-size:14px;line-height:20px}.wSkVaW_crumb{border-radius:var(--dsw-radius-md);max-width:220px;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;cursor:pointer;background:0 0;border:none;padding:4px 8px;font-size:14px;line-height:20px;display:inline-block;overflow:hidden}.wSkVaW_crumbSubagent{font-size:12px;line-height:18px}button.wSkVaW_crumb:hover{background:var(--dsw-alias-interactive-bg-hover)}.wSkVaW_crumbCurrent{color:var(--dsw-alias-label-primary);cursor:default;font-weight:500}.wSkVaW_headerActions{flex:none;align-items:center;gap:8px;display:flex}.wSkVaW_headerUtilities{flex:none;align-items:center;gap:8px;margin-left:20px;display:flex}.wSkVaW_headerUtilities:empty{display:none}.wSkVaW_headerCorner{flex:none;align-items:center;margin-left:8px;margin-right:-16px;display:flex}.wSkVaW_headerCorner:empty{display:none}.wSkVaW_tabs{z-index:1;grid-column:1/-1;gap:36px;margin-top:10px;padding-left:8px;display:flex;position:relative}.wSkVaW_tab{color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;padding:0 0 9px;font-size:13px;font-weight:500;line-height:16px;position:relative}.wSkVaW_tab:after{content:\"\";background:0 0;border-radius:2px;height:2px;position:absolute;bottom:-1px;left:0;right:0}.wSkVaW_tabActive{color:var(--dsw-alias-state-business-primary)}.wSkVaW_tabActive:after{background:var(--dsw-alias-state-business-primary)}.wSkVaW_viewArea{flex-direction:column;flex:1;min-height:0;display:flex}.wSkVaW_widthHandle{z-index:0;width:min(10px, calc((100% - var(--dsh-chat-content-width)) / 2 - 24px - 24px));cursor:col-resize;position:absolute;top:0;bottom:0}.wSkVaW_widthHandle[data-side=left]{right:calc(50% + var(--dsh-chat-content-width) / 2 + 24px)}.wSkVaW_widthHandle[data-side=right]{left:calc(50% + var(--dsh-chat-content-width) / 2 + 24px)}.wSkVaW_widthHandle:after{content:\"\";background:linear-gradient(to bottom, transparent calc(var(--dsh-width-handle-pointer-y,50%) - 36px), var(--dsw-alias-scrollbar-bg-l1) calc(var(--dsh-width-handle-pointer-y,50%) - 8px), var(--dsw-alias-scrollbar-bg-l1) calc(var(--dsh-width-handle-pointer-y,50%) + 8px), transparent calc(var(--dsh-width-handle-pointer-y,50%) + 36px));opacity:0;pointer-events:none;border-radius:2px;width:2px;position:absolute;top:0;bottom:0}.wSkVaW_widthHandle[data-side=left]:after{right:4px}.wSkVaW_widthHandle[data-side=right]:after{left:4px}.wSkVaW_widthHandle:hover:after,.wSkVaW_widthHandle[data-dragging]:after{opacity:1}.wSkVaW_widthHandle[data-dragging]{z-index:8}.wSkVaW_root:has([data-conversation-composer-overlay]) .wSkVaW_widthHandle{display:none}.wSkVaW_composerStack{--dsh-composer-stack-gap:6px;gap:var(--dsh-composer-stack-gap);flex-direction:column;display:flex}.wSkVaW_composerSeat{--dsh-composer-text-max-height:336px;flex-direction:column;flex:none;display:flex}.wSkVaW_root[data-phase=active]{overflow:hidden}.wSkVaW_root[data-phase=active] .wSkVaW_header{flex:none}.wSkVaW_body{--dsh-chat-content-width:var(--dsh-chat-user-width,clamp(680px, calc(var(--dsh-conversation-column-width,0px) * .64), 920px));--dsh-composer-card-max-width:calc(var(--dsh-chat-content-width) + 32px);--dsh-composer-side-clearance:16px;--dsh-composer-dock-inset:8px;flex-direction:column;flex:1;min-height:0;display:flex;position:relative}.wSkVaW_embeddedBody{--dsh-chat-content-width:min(calc(100% - 32px), 920px);--dsh-composer-card-max-width:min(calc(100% - 16px), 952px);--dsh-composer-side-clearance:8px;--dsh-composer-dock-inset:8px;overflow:hidden}.wSkVaW_scrollBody{scrollbar-gutter:stable;overflow-anchor:none;flex-direction:column;flex:1;min-height:0;margin-right:2px;display:flex;overflow-y:auto}.wSkVaW_scrollBody::-webkit-scrollbar-track{margin:2px}.wSkVaW_root[data-phase=active] .wSkVaW_viewArea,.wSkVaW_embeddedBody[data-content-phase=active] .wSkVaW_viewArea{flex:1 0 auto;min-height:auto}.wSkVaW_root[data-phase=active] .wSkVaW_composerSeat,.wSkVaW_embeddedBody[data-content-phase=active] .wSkVaW_composerSeat{z-index:7;background:linear-gradient(180deg, color-mix(in srgb, var(--dsw-alias-bg-base) 0%, transparent) 0px, var(--dsw-alias-bg-base) 36px);position:sticky;bottom:0}.wSkVaW_root[data-phase=active] .wSkVaW_composerSeat:has([data-trigger-menu]){z-index:9}.wSkVaW_scrollBody:has([data-conversation-composer-overlay]){scrollbar-gutter:auto;position:relative;overflow:hidden auto}.wSkVaW_scrollBody:has([data-conversation-composer-overlay])>[data-slot=conversation\\.session]>.wSkVaW_viewArea{flex:1 1 0;min-height:0;overflow:hidden}.wSkVaW_scrollBody:has([data-conversation-composer-overlay])>.wSkVaW_composerSeat{right:var(--dsh-scrollbar-width);position:absolute;bottom:0;left:0}.wSkVaW_composerHero{width:min(calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance)), 100%);z-index:1;align-self:center;gap:8px;padding-bottom:32px}.wSkVaW_heroWorkspaceRow{align-items:center;gap:2px;min-width:0;margin-top:4px;padding:0 16px 0 20px;display:flex}.wSkVaW_root[data-phase=hero] .wSkVaW_scrollBody,.wSkVaW_embeddedBody[data-content-phase=hero] .wSkVaW_scrollBody{justify-content:center;overflow-y:auto}.wSkVaW_root[data-phase=settling] .wSkVaW_composerSeat,.wSkVaW_embeddedBody[data-content-phase=settling] .wSkVaW_composerSeat{visibility:hidden}@media (width<=768px){.wSkVaW_header{min-height:64px;padding:10px 16px 0 50px}.wSkVaW_titleRow{min-height:36px}.wSkVaW_crumb{max-width:min(160px,45vw)}}";
+		const css$4 = ".wSkVaW_root{background:var(--dsw-alias-bg-base);flex-direction:column;min-width:0;height:100%;display:flex;position:relative}.wSkVaW_root[data-phase=hero]{isolation:isolate}.wSkVaW_header{box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l3);flex:none;grid-template-columns:auto minmax(0,1fr);min-height:76px;padding:10px 28px 0 20px;display:grid}.wSkVaW_header:where(:not(:has(.wSkVaW_tabs))){min-height:0;padding-bottom:10px}.wSkVaW_headerBlank{border-bottom:none;min-height:0;padding-bottom:0}.wSkVaW_headerBlank .wSkVaW_headerCorner{margin-left:auto}[data-platform=darwin] .wSkVaW_headerLeading,[data-platform=darwin] .wSkVaW_headerActions,[data-platform=darwin] .wSkVaW_headerUtilities,[data-platform=darwin] .wSkVaW_headerCorner{-webkit-app-region:no-drag}.wSkVaW_titleRow{min-height:30px;grid-column:2;align-items:center;gap:0;padding-inline-start:max(0px, calc(var(--dsh-frame-leading-clearance,0px) - 20px));display:flex;container-type:inline-size}.wSkVaW_titleCluster{--title-cluster-fade:20px;min-width:0;margin:-4px calc(-1 * var(--title-cluster-fade)) -4px -4px;padding:4px var(--title-cluster-fade) 4px 4px;mask-image:linear-gradient(to left, transparent calc(.3 * var(--title-cluster-fade)), #000 var(--title-cluster-fade));flex:1;align-items:center;gap:10px;display:flex;overflow:clip}.wSkVaW_titleCluster:has(+.wSkVaW_headerUtilities:empty){--title-cluster-fade:8px}.wSkVaW_headerLeading{flex:none;grid-area:1/1;align-items:center;gap:8px;display:flex}.wSkVaW_crumbs{white-space:nowrap;align-items:center;gap:4px;min-width:0;display:flex;overflow:hidden}.wSkVaW_crumbSeg{align-items:center;gap:4px;min-width:0;display:inline-flex}.wSkVaW_crumbSep{color:var(--dsw-alias-label-caption);font-size:14px;line-height:20px}.wSkVaW_crumb{border-radius:var(--dsw-radius-md);max-width:220px;color:var(--dsw-alias-label-tertiary);text-overflow:ellipsis;white-space:nowrap;cursor:pointer;background:0 0;border:none;padding:4px 8px;font-size:14px;line-height:20px;display:inline-block;overflow:hidden}@media (hover:hover){button.wSkVaW_crumb:hover{background:var(--dsw-alias-interactive-bg-hover)}}.wSkVaW_crumbCurrent{color:var(--dsw-alias-label-primary);cursor:default;font-weight:500}.wSkVaW_headerActions{flex:none;align-items:center;gap:10px;display:flex}@container (width<=460px){.wSkVaW_headerActions{gap:8px}}.wSkVaW_headerUtilities{flex:none;align-items:center;gap:8px;margin-left:20px;display:flex}.wSkVaW_headerUtilities:empty{display:none}.wSkVaW_headerMenuButton{width:28px;color:var(--dsw-alias-label-secondary);flex:none;padding:0}.wSkVaW_headerMenuButton svg{width:15px;height:15px}.wSkVaW_headerCorner{flex:none;align-items:center;margin-left:8px;margin-right:-16px;display:flex}.wSkVaW_headerCorner:empty{display:none}.wSkVaW_tabs{z-index:1;box-sizing:border-box;flex-wrap:wrap;grid-column:1/-1;align-items:flex-start;gap:16px 20px;width:100%;min-width:0;margin-top:10px;padding-left:8px;display:flex;position:relative}@media (width<=767px){html:not([data-platform]) .wSkVaW_tabs{padding-left:0}}.wSkVaW_viewTabs{flex-wrap:wrap;gap:32px;min-width:0;min-height:25px;display:flex}.wSkVaW_tab{--dsh-tab-hit-inline:10px;box-sizing:border-box;min-height:35px;margin:-10px calc(-1 * var(--dsh-tab-hit-inline)) 0;padding:10px var(--dsh-tab-hit-inline) 9px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:none;font-size:13px;font-weight:500;line-height:16px;position:relative}.wSkVaW_tab:after{content:\"\";right:var(--dsh-tab-hit-inline);bottom:-1px;left:var(--dsh-tab-hit-inline);background:0 0;border-radius:2px;height:2px;position:absolute}.wSkVaW_tabActive{color:var(--dsw-alias-state-business-primary)}.wSkVaW_tabActive:after{background:var(--dsw-alias-state-business-primary)}.wSkVaW_viewsMoreAnchor{flex:none}.wSkVaW_viewsMore{width:22px;height:22px;color:var(--dsw-alias-label-secondary);margin-top:-3px;padding:0}.wSkVaW_viewsMoreActive{color:var(--dsw-alias-state-business-primary)}.wSkVaW_tabLabel{text-overflow:ellipsis;white-space:nowrap;max-width:88px;display:block;overflow:hidden}.wSkVaW_viewsMore[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}.wSkVaW_viewsMoreMenu{width:288px;max-width:calc(100vw - 24px)}.wSkVaW_viewArea{flex-direction:column;flex:1;min-height:0;display:flex}.wSkVaW_widthHandle{z-index:0;width:min(10px, calc((100% - var(--dsh-chat-content-width)) / 2 - 24px - 24px));cursor:col-resize;position:absolute;top:0;bottom:0}.wSkVaW_widthHandle[data-side=left]{right:calc(50% + var(--dsh-chat-content-width) / 2 + 24px)}.wSkVaW_widthHandle[data-side=right]{left:calc(50% + var(--dsh-chat-content-width) / 2 + 24px)}.wSkVaW_widthHandle:after{content:\"\";background:linear-gradient(to bottom, transparent calc(var(--dsh-width-handle-pointer-y,50%) - 36px), var(--dsw-alias-scrollbar-bg-l1) calc(var(--dsh-width-handle-pointer-y,50%) - 8px), var(--dsw-alias-scrollbar-bg-l1) calc(var(--dsh-width-handle-pointer-y,50%) + 8px), transparent calc(var(--dsh-width-handle-pointer-y,50%) + 36px));opacity:0;pointer-events:none;border-radius:2px;width:2px;position:absolute;top:0;bottom:0}.wSkVaW_widthHandle[data-side=left]:after{right:4px}.wSkVaW_widthHandle[data-side=right]:after{left:4px}.wSkVaW_widthHandle[data-dragging]:after{opacity:1}@media (hover:hover){.wSkVaW_widthHandle:hover:after{opacity:1}}.wSkVaW_root:has([data-conversation-composer-overlay]) .wSkVaW_widthHandle{display:none}.wSkVaW_composerStack{--dsh-composer-stack-gap:6px;gap:var(--dsh-composer-stack-gap);flex-direction:column;display:flex}.wSkVaW_composerSeat{--dsh-composer-text-max-height:336px;flex-direction:column;flex:none;display:flex}.wSkVaW_root[data-phase=active]{overflow:hidden}.wSkVaW_root[data-phase=active] .wSkVaW_header{flex:none}.wSkVaW_body{--dsh-chat-content-width:var(--dsh-chat-user-width,clamp(680px, calc(var(--dsh-conversation-column-width,0px) * .64), 920px));--dsh-composer-card-max-width:calc(var(--dsh-chat-content-width) + 32px);--dsh-composer-side-clearance:16px;--dsh-composer-dock-inset:8px;flex-direction:column;flex:1;min-height:0;display:flex;position:relative}.wSkVaW_embeddedBody{--dsh-chat-content-width:min(calc(100% - 32px), 920px);--dsh-composer-card-max-width:min(calc(100% - 16px), 952px);--dsh-composer-side-clearance:8px;--dsh-composer-dock-inset:8px;overflow:hidden}.wSkVaW_scrollBody{scrollbar-gutter:stable;overflow-anchor:none;flex-direction:column;flex:1;min-height:0;margin-right:2px;display:flex;overflow-y:auto}.wSkVaW_scrollBody::-webkit-scrollbar-track{margin:2px}.wSkVaW_root[data-phase=active] .wSkVaW_viewArea,.wSkVaW_embeddedBody[data-content-phase=active] .wSkVaW_viewArea{flex:1 0 auto;min-height:auto}.wSkVaW_root[data-phase=active] .wSkVaW_composerSeat,.wSkVaW_embeddedBody[data-content-phase=active] .wSkVaW_composerSeat{z-index:9;will-change:transform;overflow-anchor:none;background:linear-gradient(180deg, color-mix(in srgb, var(--dsw-alias-bg-base) 0%, transparent) 0px, var(--dsw-alias-bg-base) 36px);margin-top:auto;position:sticky;bottom:0}.wSkVaW_scrollBody:has([data-conversation-composer-overlay]){scrollbar-gutter:auto;position:relative;overflow:hidden auto}.wSkVaW_scrollBody:has([data-conversation-composer-overlay])>[data-slot=conversation\\.session]>.wSkVaW_viewArea{flex:1 1 0;min-height:0;overflow:hidden}.wSkVaW_scrollBody:has([data-conversation-composer-overlay])>.wSkVaW_composerSeat{right:var(--dsh-scrollbar-width);position:absolute;bottom:0;left:0}.wSkVaW_composerHero{width:min(calc(var(--dsh-composer-card-max-width) + 2 * var(--dsh-composer-side-clearance)), 100%);z-index:1;align-self:center;gap:8px;padding-bottom:32px}.wSkVaW_heroWorkspaceRow{align-items:center;gap:2px;min-width:0;margin-top:4px;padding:0 16px 0 20px;display:flex}.wSkVaW_heroOptions{flex:none;align-items:center;gap:2px;min-width:0;margin-left:auto;display:flex}.wSkVaW_heroOptions:empty{display:none}.wSkVaW_root[data-phase=hero] .wSkVaW_scrollBody,.wSkVaW_embeddedBody[data-content-phase=hero] .wSkVaW_scrollBody{justify-content:center;overflow-y:auto}.wSkVaW_root[data-phase=settling] .wSkVaW_composerSeat,.wSkVaW_embeddedBody[data-content-phase=settling] .wSkVaW_composerSeat{visibility:hidden}@media (width<=768px){.wSkVaW_header{min-height:64px;padding:10px 16px 0 50px}.wSkVaW_titleRow{min-height:36px}.wSkVaW_crumb{max-width:min(160px,45vw)}}";
 		const tagId$4 = "@deepseek-ai/dsh-client-ui-conversation/ConversationRoot.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$4) + "]") === null) {
 			const tag = document.createElement("style");
@@ -20644,7 +20209,6 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"crumbCurrent": "wSkVaW_crumbCurrent",
 			"crumbSeg": "wSkVaW_crumbSeg",
 			"crumbSep": "wSkVaW_crumbSep",
-			"crumbSubagent": "wSkVaW_crumbSubagent",
 			"crumbs": "wSkVaW_crumbs",
 			"embeddedBody": "wSkVaW_embeddedBody",
 			"header": "wSkVaW_header",
@@ -20652,17 +20216,24 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"headerBlank": "wSkVaW_headerBlank",
 			"headerCorner": "wSkVaW_headerCorner",
 			"headerLeading": "wSkVaW_headerLeading",
-			"headerSessionless": "wSkVaW_headerSessionless",
+			"headerMenuButton": "wSkVaW_headerMenuButton",
 			"headerUtilities": "wSkVaW_headerUtilities",
+			"heroOptions": "wSkVaW_heroOptions",
 			"heroWorkspaceRow": "wSkVaW_heroWorkspaceRow",
 			"root": "wSkVaW_root",
 			"scrollBody": "wSkVaW_scrollBody",
 			"tab": "wSkVaW_tab",
 			"tabActive": "wSkVaW_tabActive",
+			"tabLabel": "wSkVaW_tabLabel",
 			"tabs": "wSkVaW_tabs",
 			"titleCluster": "wSkVaW_titleCluster",
 			"titleRow": "wSkVaW_titleRow",
 			"viewArea": "wSkVaW_viewArea",
+			"viewTabs": "wSkVaW_viewTabs",
+			"viewsMore": "wSkVaW_viewsMore",
+			"viewsMoreActive": "wSkVaW_viewsMoreActive",
+			"viewsMoreAnchor": "wSkVaW_viewsMoreAnchor",
+			"viewsMoreMenu": "wSkVaW_viewsMoreMenu",
 			"widthHandle": "wSkVaW_widthHandle"
 		};
 		//#endregion
@@ -20761,8 +20332,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				const body = event.currentTarget.parentElement;
 				/* v8 ignore next -- a width handle renders only inside the Conversation body. */
 				if (body === null) return;
-				const scrollport = body.querySelector(":scope > [data-conversation-scroll]");
-				/* v8 ignore next -- the Conversation body always contains its direct scroll element. */
+				const scrollport = body.querySelector("[data-conversation-scroll]");
+				/* v8 ignore next -- the Conversation body always contains its scroll element. */
 				if (scrollport === null) return;
 				if (event.ctrlKey || event.deltaY === 0) return;
 				scrollport.scrollBy({ top: wheelDeltaY(event, scrollport) });
@@ -20843,8 +20414,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const shellPhase = session === void 0 || conversation === void 0 ? "blank" : conversationPhase(session, conversation);
 			const openState = session?.openState;
 			const summaryBlank = useSessions((s) => sessionId === void 0 ? void 0 : s.byId[sessionId]?.blank);
-			const parentAvailabilityPending = session?.subagent?.address.mode === "continuable" && session.subagent.parentAvailable === void 0;
-			const settling = sessionId !== void 0 && (shellPhase === "blank" && openState === "loading" && summaryBlank !== true || parentAvailabilityPending);
+			const settling = sessionId !== void 0 && shellPhase === "blank" && openState === "loading" && summaryBlank !== true;
 			const hero = sessionId === void 0 || shellPhase === "blank" && (openState === "open" || summaryBlank === true);
 			const phase = settling ? "settling" : hero ? "hero" : "active";
 			return (0, react_jsx_runtime.jsxs)("div", {
@@ -20877,7 +20447,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/HeroShell.module.css.mjs
-		const css$3 = ".pXSMma_root{justify-content:center;align-items:center;min-width:0;height:100%;padding:0 24px;display:flex}.pXSMma_stack{width:100%;max-width:var(--dsh-composer-card-max-width);flex-direction:column;align-items:stretch;gap:12px;display:flex;overflow:visible}.pXSMma_headline{color:var(--dsw-alias-label-primary);flex-wrap:wrap;justify-content:center;align-items:center;gap:12px 10px;font-size:26px;font-weight:500;line-height:32px;display:flex}.pXSMma_titleGroup{flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 7px;min-width:0;display:flex}.pXSMma_previewBadge{border:.5px solid var(--dsw-alias-interactive-bg-hover);corner-shape:round;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish);font-family:var(--ds-font-family-code);white-space:nowrap;border-radius:999px;align-self:flex-start;margin-top:2px;padding:1px 7px 0;font-size:12px;font-weight:500;line-height:18px}.pXSMma_fishHitbox{flex:none;justify-content:center;align-items:center;display:inline-flex}.pXSMma_fish{transform-origin:50% 60%;color:var(--dsw-alias-label-primary);display:block;overflow:visible}@keyframes pXSMma_hero-fish-swim{0%,to{transform:none}35%{transform:rotate(-4deg)translate(-.4px,-.9px)}70%{transform:rotate(1.6deg)translate(.3px,.2px)}}@media (hover:hover) and (prefers-reduced-motion:no-preference){.pXSMma_fishHitbox:hover .pXSMma_fish{animation:1.6s ease-in-out infinite pXSMma_hero-fish-swim}}.pXSMma_body{flex-direction:column;gap:12px;min-width:0;display:flex;position:relative;overflow:visible}.pXSMma_body>*{z-index:1;position:relative}.pXSMma_body>.pXSMma_workspaceRow{z-index:10;align-items:center;min-width:0;padding-left:8px;display:flex}.pXSMma_workspace{border-radius:var(--dsw-radius-sm);max-width:min(100%,360px);min-height:28px;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:none;align-items:center;gap:4px;padding:0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.pXSMma_workspace:not(:disabled):hover,.pXSMma_workspace[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}.pXSMma_workspace:disabled{cursor:default}.pXSMma_folder{color:var(--dsw-alias-label-primary);flex:none}.pXSMma_workspaceLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.pXSMma_chevron{color:var(--dsw-alias-label-caption);flex:none}.pXSMma_modalInput{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);width:100%;height:44px;color:var(--dsw-alias-label-primary);background:0 0;outline:none;padding:7px 14px;font-size:14px;font-weight:400;line-height:22px}.pXSMma_modalInput::placeholder{color:var(--dsw-alias-label-caption)}.pXSMma_modalInput:disabled{color:var(--dsw-alias-label-dimmed)}.pXSMma_modalAction{min-width:72px}.pXSMma_modalError{color:var(--dsw-alias-state-error-primary);margin-top:8px;font-size:12px;line-height:18px}@media (width<=768px){.pXSMma_root{padding:0 12px}.pXSMma_headline{grid-template-columns:28px auto auto;column-gap:8px;font-size:20px;line-height:28px}.pXSMma_previewBadge{padding:0 5px;font-size:11px;line-height:16px}.pXSMma_workspace{max-width:100%}}";
+		const css$3 = ".pXSMma_root{justify-content:center;align-items:center;min-width:0;height:100%;padding:0 24px;display:flex}.pXSMma_stack{width:100%;max-width:var(--dsh-composer-card-max-width);flex-direction:column;align-items:stretch;gap:12px;display:flex;overflow:visible}.pXSMma_headline{color:var(--dsw-alias-label-primary);flex-wrap:wrap;justify-content:center;align-items:center;gap:12px 10px;font-size:26px;font-weight:500;line-height:32px;display:flex}.pXSMma_titleGroup{flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 7px;min-width:0;display:flex}.pXSMma_previewBadge{border:.5px solid var(--dsw-alias-interactive-bg-hover);corner-shape:round;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish);font-family:var(--ds-font-family-code);white-space:nowrap;border-radius:999px;align-self:flex-start;margin-top:2px;padding:1px 7px 0;font-size:12px;font-weight:500;line-height:18px}.pXSMma_fishHitbox{flex:none;justify-content:center;align-items:center;display:inline-flex}.pXSMma_fish{transform-origin:50% 60%;color:var(--dsw-alias-label-primary);display:block;overflow:visible}@keyframes pXSMma_hero-fish-swim{0%,to{transform:none}35%{transform:rotate(-4deg)translate(-.4px,-.9px)}70%{transform:rotate(1.6deg)translate(.3px,.2px)}}@media (hover:hover) and (prefers-reduced-motion:no-preference){.pXSMma_fishHitbox:hover .pXSMma_fish{animation:1.6s ease-in-out infinite pXSMma_hero-fish-swim}}.pXSMma_body{flex-direction:column;gap:12px;min-width:0;display:flex;position:relative;overflow:visible}.pXSMma_body>*{z-index:1;position:relative}.pXSMma_body>.pXSMma_workspaceRow{z-index:10;align-items:center;min-width:0;padding-left:8px;display:flex}.pXSMma_workspace{border-radius:var(--dsw-radius-sm);max-width:min(100%,360px);min-height:28px;color:var(--dsw-alias-label-primary);cursor:pointer;background:0 0;border:none;align-items:center;gap:4px;padding:0 8px;font-size:13px;font-weight:500;line-height:20px;display:inline-flex}.pXSMma_workspace[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}@media (hover:hover){.pXSMma_workspace:not(:disabled):hover{background:var(--dsw-alias-interactive-bg-hover)}}.pXSMma_workspace:disabled{cursor:default}.pXSMma_folder{color:var(--dsw-alias-label-primary);flex:none}.pXSMma_workspaceLabel{text-overflow:ellipsis;white-space:nowrap;min-width:0;overflow:hidden}.pXSMma_chevron{color:var(--dsw-alias-label-caption);flex:none}.pXSMma_modalInput{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);width:100%;height:44px;color:var(--dsw-alias-label-primary);background:0 0;outline:none;padding:7px 14px;font-size:14px;font-weight:400;line-height:22px}.pXSMma_modalInput::placeholder{color:var(--dsw-alias-label-caption)}.pXSMma_modalInput:disabled{color:var(--dsw-alias-label-dimmed)}.pXSMma_modalAction{min-width:72px}.pXSMma_modalError{color:var(--dsw-alias-state-error-primary);margin-top:8px;font-size:12px;line-height:18px}@media (width<=768px){.pXSMma_root{padding:0 12px}.pXSMma_headline{grid-template-columns:28px auto auto;column-gap:8px;font-size:20px;line-height:28px}.pXSMma_previewBadge{padding:0 5px;font-size:11px;line-height:16px}.pXSMma_workspace{max-width:100%}}";
 		const tagId$3 = "@deepseek-ai/dsh-client-ui-conversation/HeroShell.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$3) + "]") === null) {
 			const tag = document.createElement("style");
@@ -21007,10 +20577,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						className: HeroShell_module_css_default.headline,
 						children: [(0, react_jsx_runtime.jsx)("span", {
 							className: HeroShell_module_css_default.fishHitbox,
-							onMouseEnter: () => {
-								if (window.matchMedia("(hover: hover) and (prefers-reduced-motion: no-preference)").matches) setHovering(true);
+							onPointerEnter: (event) => {
+								if (event.pointerType !== "touch" && window.matchMedia("(hover: hover) and (prefers-reduced-motion: no-preference)").matches) setHovering(true);
 							},
-							onMouseLeave: () => {
+							onPointerLeave: () => {
 								setHovering(false);
 							},
 							children: renderSlot("conversation.hero.brand.mark", {
@@ -21112,7 +20682,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							setPickerOpen(false);
 						}
 					}),
-					renderSlot("conversation.hero.agentPreset", {})
+					renderSlot("conversation.hero.agentPreset", {}),
+					sessionId === void 0 ? null : (0, react_jsx_runtime.jsx)("div", {
+						className: ConversationRoot_module_css_default.heroOptions,
+						children: renderSlot("conversation.hero.options", {})
+					})
 				]
 			});
 			const inert = sessionId === void 0 || hero && chipTitle === void 0;
@@ -21165,11 +20739,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				"data-conversation-session": sessionId,
 				"data-conversation-region": "chat",
 				"data-content-phase": phase,
-				children: [(0, react_jsx_runtime.jsxs)("div", {
+				children: [renderSlot("conversation.hero.frame", { hero: hero && props.variant !== "embedded" }, { children: (0, react_jsx_runtime.jsxs)("div", {
 					className: ConversationRoot_module_css_default.scrollBody,
 					"data-conversation-scroll": "",
 					children: [sessionId === void 0 ? null : (0, react_jsx_runtime.jsx)(Views, {}), composerSeat]
-				}), (0, react_jsx_runtime.jsx)(WidthControls, {
+				}) }), (0, react_jsx_runtime.jsx)(WidthControls, {
 					container: body,
 					phase
 				})]
@@ -21198,7 +20772,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const conversation = useConversation((s) => s);
 			const blank = session === void 0 || conversation === void 0 || session.blank && conversationPhase(session, conversation) === "blank";
 			return (0, react_jsx_runtime.jsxs)("header", {
-				className: clsx(ConversationRoot_module_css_default.header, blank && ConversationRoot_module_css_default.headerBlank, sessionId === void 0 && ConversationRoot_module_css_default.headerSessionless),
+				className: clsx(ConversationRoot_module_css_default.header, blank && ConversationRoot_module_css_default.headerBlank),
 				"data-window-drag": true,
 				children: [(0, react_jsx_runtime.jsx)("div", {
 					className: ConversationRoot_module_css_default.headerLeading,
@@ -21215,6 +20789,30 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		*/
 		function resolveActiveView(tabs, selectedId) {
 			return (selectedId === null ? void 0 : tabs.find((view) => view.id === selectedId)) ?? tabs.find((view) => view.id === "chat");
+		}
+		//#endregion
+		//#region lib/types/client/view-pins.js
+		/** In-memory pin choices for the Conversation View tabs. */
+		/** View whose tab always shows and never enters the customization list. */
+		const FIXED_VIEW_ID = "chat";
+		const NO_VIEWS = [];
+		/**
+		* Create the in-memory View pin list; the snapshot keeps its reference until the list changes.
+		* @returns Unpinned View ids and the pin mutation.
+		*/
+		function createViewPins() {
+			const store = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)({ unpinned: NO_VIEWS });
+			return {
+				unpinned: {
+					getSnapshot: () => store.getSnapshot().unpinned,
+					subscribe: (listener) => store.subscribe(listener)
+				},
+				setPinned: (id, pinned) => {
+					const current = store.getSnapshot().unpinned;
+					if (id === "chat" || pinned !== current.includes(id)) return;
+					store.set({ unpinned: pinned ? current.filter((entry) => entry !== id) : [...current, id] });
+				}
+			};
 		}
 		//#endregion
 		//#region lib/types/client/skeleton/DefaultConversationViews.js
@@ -21253,6 +20851,66 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		//#endregion
 		//#region lib/types/client/skeleton/ConversationSession.js
 		/** Strict per-session header/body content inserted into the resident conversation layout. */
+		/** The View tab row's More launcher; its menu rows come from `conversation.session.header.views.actions`. */
+		function ViewsMoreMenu({ label, current, entries, onOpen, onPinnedChange, renderSlot }) {
+			const [open, setOpen] = (0, react.useState)(false);
+			const onDismiss = () => {
+				setOpen(false);
+			};
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Menu, {
+				open,
+				onClose: onDismiss,
+				portal: true,
+				autoFocus: true,
+				className: ConversationRoot_module_css_default.viewsMoreAnchor,
+				listClassName: ConversationRoot_module_css_default.viewsMoreMenu,
+				anchor: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+					label,
+					portal: true,
+					children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Button, {
+						size: "sm",
+						className: clsx(ConversationRoot_module_css_default.viewsMore, current && ConversationRoot_module_css_default.viewsMoreActive),
+						"aria-label": label,
+						"aria-haspopup": "menu",
+						"aria-expanded": open,
+						onClick: () => {
+							setOpen((value) => !value);
+						},
+						children: (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconEllipsisOutlineRegular, { size: 13 })
+					})
+				}),
+				children: renderSlot("conversation.session.header.views.actions", {
+					entries,
+					onOpen,
+					onPinnedChange,
+					onDismiss
+				})
+			});
+		}
+		/** Approximate 13px text advance: full-width glyphs take one em, other glyphs about half. */
+		const WIDE_GLYPH = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6]/u;
+		const WIDE_GLYPH_WIDTH = 13;
+		const NARROW_GLYPH_WIDTH = 7;
+		/** Mirrors the `.tabLabel` max-width in `ConversationRoot.module.css`. */
+		const TAB_LABEL_MAX_WIDTH = 88;
+		/** Estimate whether a View tab label exceeds its 88px cell. */
+		function labelNeedsTooltip(label) {
+			let width = 0;
+			for (const glyph of label) width += WIDE_GLYPH.test(glyph) ? WIDE_GLYPH_WIDTH : NARROW_GLYPH_WIDTH;
+			return width > TAB_LABEL_MAX_WIDTH;
+		}
+		/** One View tab label; its full-name tooltip is offered only when the text is expected to overflow. */
+		function ViewTabLabel({ label }) {
+			return (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+				label,
+				portal: true,
+				disabled: !labelNeedsTooltip(label),
+				children: (0, react_jsx_runtime.jsx)("span", {
+					className: ConversationRoot_module_css_default.tabLabel,
+					children: label
+				})
+			});
+		}
 		function deriveAncestry(list, id) {
 			const chain = [];
 			const seen = /* @__PURE__ */ new Set();
@@ -21283,11 +20941,45 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* @param props - Strict Session store, view ledger, navigation, render, and locale shares.
 		* @returns Session navigation controls, with title and tabs after conversation starts.
 		*/
-		function ConversationSessionHeader({ sessionId, hideChrome, useSessions, useConversationViews, useStore, renderSlot, open, selectView, t }) {
+		function ConversationSessionHeader({ sessionId, hideChrome, useSessions, useConversationViews, useStore, renderSlot, renderFactorySlot, open, useContextMenu, selectView, setPinned, t, useEntryPins, useEntryActions }) {
+			const { getTriggerProps } = useContextMenu();
 			const tabs = useConversationViews((value) => value);
 			const active = resolveActiveView(tabs, useStore((s) => s.view));
 			const ancestry = useSessions((s) => deriveAncestry(s, sessionId), equalBreadcrumbs);
+			const unpinned = useEntryPins((ids) => ids);
+			const hasEntryActions = useEntryActions((registered) => registered);
 			const showTabs = !hideChrome && tabs.length > 1;
+			const tabRow = (0, react.useRef)(null);
+			const [visibleViewLimit, setVisibleViewLimit] = (0, react.useState)(1);
+			(0, react.useLayoutEffect)(() => {
+				const row = tabRow.current;
+				if (row === null || !hasEntryActions) return;
+				const updateLimit = () => {
+					setVisibleViewLimit(Math.max(1, Math.floor((row.clientWidth - 48) / 120)));
+				};
+				updateLimit();
+				if (typeof ResizeObserver === "undefined") return;
+				const observer = new ResizeObserver(updateLimit);
+				observer.observe(row);
+				return () => {
+					observer.disconnect();
+				};
+			}, [showTabs, hasEntryActions]);
+			const { visibleTabs, moreTabs } = (0, react.useMemo)(() => {
+				const preferred = [...tabs.filter((tab) => tab.id === FIXED_VIEW_ID), ...tabs.filter((tab) => tab.id !== "chat" && !unpinned.includes(tab.id))];
+				const visibleTabs = hasEntryActions ? preferred.slice(0, visibleViewLimit) : preferred;
+				const visibleIds = new Set(visibleTabs.map((tab) => tab.id));
+				return {
+					visibleTabs,
+					moreTabs: tabs.filter((tab) => !visibleIds.has(tab.id))
+				};
+			}, [
+				tabs,
+				unpinned,
+				hasEntryActions,
+				visibleViewLimit
+			]);
+			const currentInMore = moreTabs.some((tab) => tab.id === active?.id);
 			return (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {
 				className: ConversationRoot_module_css_default.titleRow,
 				children: [!hideChrome && (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [(0, react_jsx_runtime.jsxs)("div", {
@@ -21298,11 +20990,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						children: [ancestry.map((summary, index) => {
 							const last = index === ancestry.length - 1;
 							const title = last ? (0, react_jsx_runtime.jsx)("span", {
-								className: clsx(ConversationRoot_module_css_default.crumb, summary.subagent && ConversationRoot_module_css_default.crumbSubagent, ConversationRoot_module_css_default.crumbCurrent),
+								className: clsx(ConversationRoot_module_css_default.crumb, ConversationRoot_module_css_default.crumbCurrent),
 								children: summary.displayTitle
 							}) : (0, react_jsx_runtime.jsx)("button", {
 								type: "button",
-								className: clsx(ConversationRoot_module_css_default.crumb, summary.subagent && ConversationRoot_module_css_default.crumbSubagent),
+								className: ConversationRoot_module_css_default.crumb,
 								onClick: () => {
 									open(summary.id);
 								},
@@ -21318,6 +21010,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 							};
 							return (0, react_jsx_runtime.jsxs)("span", {
 								className: ConversationRoot_module_css_default.crumbSeg,
+								...getTriggerProps({
+									kind: "session",
+									value: {
+										sessionId: summary.id,
+										displayTitle: summary.displayTitle
+									}
+								}),
 								children: [index > 0 && (0, react_jsx_runtime.jsx)("span", {
 									className: ConversationRoot_module_css_default.crumbSep,
 									children: "/"
@@ -21331,28 +21030,52 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						className: ConversationRoot_module_css_default.headerActions,
 						children: renderSlot("conversation.session.header.actions", {})
 					})]
-				}), (0, react_jsx_runtime.jsx)("div", {
+				}), (0, react_jsx_runtime.jsxs)("div", {
 					className: ConversationRoot_module_css_default.headerUtilities,
-					children: renderSlot("conversation.session.header.utilities", {})
+					children: [renderSlot("conversation.session.header.utilities", {}), renderFactorySlot("contextMenu.button", {
+						target: {
+							kind: "sessionHeader",
+							value: { sessionId }
+						},
+						label: t("header.more"),
+						className: ConversationRoot_module_css_default.headerMenuButton,
+						size: "sm"
+					})]
 				})] }), (0, react_jsx_runtime.jsx)("div", {
 					className: ConversationRoot_module_css_default.headerCorner,
 					"data-conversation-header-corner": "",
 					children: renderSlot("conversation.session.header.corner", {})
 				})]
-			}), showTabs && (0, react_jsx_runtime.jsx)("div", {
+			}), showTabs && (0, react_jsx_runtime.jsxs)("div", {
+				ref: tabRow,
 				className: ConversationRoot_module_css_default.tabs,
-				role: "tablist",
-				"data-conversation-tabs": "",
-				children: tabs.map((viewTab) => (0, react_jsx_runtime.jsx)("button", {
-					type: "button",
-					role: "tab",
-					"aria-selected": viewTab.id === active?.id,
-					className: clsx(ConversationRoot_module_css_default.tab, viewTab.id === active?.id && ConversationRoot_module_css_default.tabActive),
-					onClick: () => {
-						selectView(viewTab.id);
-					},
-					children: viewTab.label
-				}, viewTab.id))
+				children: [(0, react_jsx_runtime.jsx)("div", {
+					className: ConversationRoot_module_css_default.viewTabs,
+					role: "tablist",
+					"data-conversation-tabs": "",
+					children: visibleTabs.map((viewTab) => (0, react_jsx_runtime.jsx)("button", {
+						type: "button",
+						role: "tab",
+						"aria-selected": viewTab.id === active?.id,
+						className: clsx(ConversationRoot_module_css_default.tab, viewTab.id === active?.id && ConversationRoot_module_css_default.tabActive),
+						onClick: () => {
+							selectView(viewTab.id);
+						},
+						children: (0, react_jsx_runtime.jsx)(ViewTabLabel, { label: viewTab.label })
+					}, viewTab.id))
+				}), hasEntryActions && (0, react_jsx_runtime.jsx)(ViewsMoreMenu, {
+					label: t("session.moreViews"),
+					current: currentInMore,
+					entries: moreTabs.map((viewTab) => ({
+						id: viewTab.id,
+						label: viewTab.label,
+						pinned: !unpinned.includes(viewTab.id),
+						active: viewTab.id === active?.id
+					})),
+					onOpen: selectView,
+					onPinnedChange: setPinned,
+					renderSlot
+				})]
 			})] });
 		}
 		/**
@@ -21442,7 +21165,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				ref: scrollRef,
 				className: css.scroll,
 				"data-input-scroll": true,
-				children: (0, react_jsx_runtime.jsxs)("div", {
+				children: (0, react_jsx_runtime.jsxs)(_deepseek_ai_dsh_client_ui_primitives.HoverCardGroup, {
 					className: css.grow,
 					children: [
 						(0, react_jsx_runtime.jsx)(ComposerContentEditable, {
@@ -21475,6 +21198,106 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		/** Composition state a keydown can trust (see the module doc's Safari note). */
 		function isComposingEvent(event, recentlyComposing) {
 			return event.isComposing || event.keyCode === 229 || recentlyComposing();
+		}
+		function isApplePlatform() {
+			return typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.platform);
+		}
+		/** Whether the browser caret touches one side of an atomic quote element. */
+		function domCaretTouches(element, backward) {
+			const selection = element.ownerDocument.defaultView?.getSelection();
+			if (selection === null || selection === void 0 || !selection.isCollapsed) return false;
+			const focus = selection.focusNode;
+			if (focus === null) return false;
+			const parent = element.parentNode;
+			if (parent === null) return false;
+			const offset = selection.focusOffset;
+			if (focus === parent) return focus.childNodes.item(backward ? offset - 1 : offset) === element;
+			if (focus.nodeType === Node.TEXT_NODE) {
+				const size = focus.textContent?.length ?? 0;
+				if (backward ? offset !== 0 : offset !== size) return false;
+			} else if (backward ? offset !== 0 : offset !== focus.childNodes.length) return false;
+			let boundary = focus;
+			while (boundary.parentNode !== null && boundary.parentNode !== parent) {
+				if ((backward ? boundary.previousSibling : boundary.nextSibling) !== null) return false;
+				boundary = boundary.parentNode;
+			}
+			return boundary.parentNode === parent && (backward ? boundary.previousSibling : boundary.nextSibling) === element;
+		}
+		/** Find an atomic quote immediately beside both editor and browser carets. */
+		function adjacentQuote(editor, backward) {
+			const selection = Kr();
+			if (!ur(selection) || !selection.isCollapsed()) return null;
+			const adjacent = kl(selection.focus, backward);
+			if (!$isQuoteNode(adjacent)) return null;
+			const element = editor.getElementByKey(adjacent.getKey());
+			return element !== null && domCaretTouches(element, backward) ? adjacent : null;
+		}
+		function lineLeadingQuoteBeforeSelection(editor) {
+			let quote = adjacentQuote(editor, true);
+			if (quote === null) return null;
+			let previous = quote.getPreviousSibling();
+			while (previous !== null) {
+				if (Yi(previous)) return quote;
+				if ($isQuoteNode(previous)) {
+					quote = previous;
+					previous = previous.getPreviousSibling();
+					continue;
+				}
+				if (!Xo(previous)) return null;
+				const text = previous.getTextContent();
+				const lastBreak = text.lastIndexOf("\n");
+				if (lastBreak >= 0) return text.slice(lastBreak + 1) === "" ? quote : null;
+				if (text.trim() !== "") return null;
+				const precedingQuote = previous.getPreviousSibling();
+				if (!$isQuoteNode(precedingQuote)) return null;
+				quote = precedingQuote;
+				previous = quote.getPreviousSibling();
+			}
+			return quote;
+		}
+		/** Put the browser caret before an adjacent line-leading quote. */
+		function moveBeforeQuote(editor, event) {
+			if (event.shiftKey) return false;
+			const quote = lineLeadingQuoteBeforeSelection(editor);
+			if (quote === null) return false;
+			const element = editor.getElementByKey(quote.getKey());
+			if (element === null) return false;
+			const view = element.ownerDocument.defaultView;
+			if (view === null) return false;
+			const domSelection = view.getSelection();
+			if (domSelection === null) return false;
+			const range = element.ownerDocument.createRange();
+			range.setStartBefore(element);
+			range.collapse(true);
+			domSelection.removeAllRanges();
+			domSelection.addRange(range);
+			event.preventDefault();
+			return true;
+		}
+		/** Move from immediately before a quote to the end of its hard line. */
+		function movePastQuote(editor, event) {
+			if (!isApplePlatform() || event.key !== "ArrowRight" || !event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return false;
+			const quote = adjacentQuote(editor, false);
+			if (quote === null) return false;
+			const block = quote.getParent();
+			if (!Pi(block)) return false;
+			let lineEnd = quote.getIndexWithinParent() + 1;
+			while (lineEnd < block.getChildrenSize()) {
+				const child = block.getChildAtIndex(lineEnd);
+				if (Yi(child)) break;
+				if (Xo(child)) {
+					const hardBreak = child.getTextContent().indexOf("\n");
+					if (hardBreak >= 0) {
+						event.preventDefault();
+						child.select(hardBreak, hardBreak);
+						return true;
+					}
+				}
+				lineEnd += 1;
+			}
+			event.preventDefault();
+			block.select(lineEnd, lineEnd);
+			return true;
 		}
 		/**
 		* Register the composer keymap on one editor.
@@ -21517,7 +21340,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				root?.addEventListener("compositionstart", onCompositionStart);
 				root?.addEventListener("compositionend", onCompositionEnd);
 				syncComposition();
-			}), editor.registerUpdateListener(syncComposition), editor.registerCommand(sn$2, arrow("up"), 4), editor.registerCommand(ln$2, arrow("down"), 4), editor.registerCommand(hn$2, (event) => arrow(event.shiftKey ? "tabBack" : "tab")(event), 4), editor.registerCommand(fn$1, (event) => {
+			}), editor.registerCommand(tn$2, (event) => {
+				if (!isApplePlatform() || !event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+				if (event.key.toLowerCase() === "a") return moveBeforeQuote(editor, event);
+				return false;
+			}, 4), editor.registerCommand(nn$2, (event) => movePastQuote(editor, event), 4), editor.registerUpdateListener(syncComposition), editor.registerCommand(sn$2, arrow("up"), 4), editor.registerCommand(ln$2, arrow("down"), 4), editor.registerCommand(hn$2, (event) => arrow(event.shiftKey ? "tabBack" : "tab")(event), 4), editor.registerCommand(fn$1, (event) => {
 				handlers.dismissPopup();
 				if (handlers.arbitrate("escape", isComposingEvent(event, recentlyComposing)) === "consumed") {
 					event.preventDefault();
@@ -21570,6 +21397,21 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region lib/types/client/input/editor/view-binding.js
+		/**
+		* Transfer mobile editor focus after a submission empties the draft.
+		* A control the user already focused retains focus.
+		* @param editor - the Session-owned editor.
+		* @param destination - stable, focusable non-text element that retains the composer's keyboard position.
+		* @returns the update-listener cleanup.
+		*/
+		function installDraftKeyboardDismissal(editor, destination) {
+			return editor.registerUpdateListener(({ editorState, tags }) => {
+				if (!tags.has("dsh-draft-submitted") || !(0, _deepseek_ai_dsh_client_ui_primitives.isMobileDevice)()) return;
+				const input = editor.getRootElement();
+				if (input === null || input.ownerDocument.activeElement !== input) return;
+				if (editorState.read(() => nl().getTextContentSize() === 0) && destination.current !== null) (0, _deepseek_ai_dsh_client_ui_primitives.focusWithoutRing)(destination.current, { preventScroll: true });
+			});
+		}
 		/**
 		* Reveal the DOM selection within the draft's own scrollport.
 		* @param scrollRef - the InputBar-owned scrollport reference.
@@ -21663,7 +21505,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						return;
 					}
 					if (g.uploadsPending) {
-						g.showToast(g.t("file.stillUploading"));
+						g.showToast(g.uploadsHeldText);
 						return;
 					}
 					keyboard.submit(resolveSubmitMode(g.busyEnter, g.running, accelerated ? "accelerated" : "enter", g.steeringAvailable), "enter");
@@ -21750,7 +21592,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css.mjs
-		const css$2 = ".JObwrW_root{flex:none;display:inline-flex}.JObwrW_trigger{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:var(--dsh-content-font-size-secondary,13px);font-variant-numeric:tabular-nums;line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));white-space:nowrap;cursor:pointer;background:0 0;border:none;flex:none;align-items:center;gap:6px;padding:1px 8px;display:inline-flex}.JObwrW_trigger:hover,.JObwrW_trigger[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}.JObwrW_track{fill:none;stroke:var(--dsw-alias-border-l3);stroke-width:2px}.JObwrW_fill{fill:none;stroke:var(--dsw-alias-label-tertiary);stroke-width:2px;stroke-linecap:round}.JObwrW_panel{z-index:1100;box-sizing:border-box;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu);width:min(264px,100vw - 24px);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);cursor:default;border:0;padding:12px;font-size:12px;line-height:20px;position:fixed}.JObwrW_header{align-items:center;gap:6px;display:flex}.JObwrW_figures{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary);margin-left:auto;font-weight:500}.JObwrW_percent{color:var(--dsw-alias-label-primary);font-weight:500}.JObwrW_headline{color:var(--dsw-alias-label-tertiary)}.JObwrW_headline:empty{display:none}.JObwrW_bar{corner-shape:round;background:var(--dsw-alias-interactive-bg-hover);border-radius:999px;gap:1px;height:4px;margin:10px 0 12px;display:flex;overflow:hidden}.JObwrW_segment{background:var(--meter-tint,var(--dsw-alias-label-tertiary));border-radius:1px;flex:none;min-width:2px;height:100%}.JObwrW_swatch{background:var(--meter-tint);vertical-align:baseline;border-radius:2px;width:8px;height:8px;margin-right:6px;display:inline-block}.JObwrW_colorSystem{--meter-tint:var(--dsw-static-neutral-bluish-400)}.JObwrW_colorTools{--meter-tint:#a78bfa}.JObwrW_colorMessages{--meter-tint:var(--dsw-static-blue-450)}.JObwrW_rows{margin:6px 0 0}.JObwrW_row{justify-content:space-between;align-items:center;gap:12px;padding:2px 0;display:flex}.JObwrW_row dt{color:var(--dsw-alias-label-secondary)}.JObwrW_row dd{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary);margin:0}";
+		const css$2 = ".JObwrW_root{flex:none;display:inline-flex}.JObwrW_trigger{border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:var(--dsh-content-font-size-secondary,13px);font-variant-numeric:tabular-nums;line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px));white-space:nowrap;cursor:pointer;background:0 0;border:none;flex:none;align-items:center;gap:6px;padding:1px 8px;display:inline-flex}.JObwrW_trigger[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}@media (hover:hover){.JObwrW_trigger:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}}.JObwrW_track{fill:none;stroke:var(--dsw-alias-border-l3);stroke-width:2px}.JObwrW_fill{fill:none;stroke:var(--dsw-alias-label-tertiary);stroke-width:2px;stroke-linecap:round}.JObwrW_panel{z-index:1100;box-sizing:border-box;border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu);width:min(264px,100vw - 24px);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);cursor:default;max-width:calc(100vw - 24px);max-height:calc(100dvh - 12px - max(12px, var(--dsh-frame-overlay-top,12px)));--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);position-area:none;top:max(12px, var(--dsh-frame-overlay-top,12px));bottom:max(12px, calc(anchor(top) + 8px));left:max(12px, anchor(left));position-try-fallbacks:--dsh-context-window, --dsh-context-opposite, --dsh-context-wide-opposite, --dsh-context-tall, --dsh-context-viewport;border:0;place-self:end start;height:fit-content;min-height:0;margin:0;padding:12px;font-size:12px;line-height:20px;position:fixed;right:12px;overflow:hidden auto}.JObwrW_header{align-items:center;gap:6px;display:flex}.JObwrW_figures{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary);margin-left:auto;font-weight:500}.JObwrW_percent{color:var(--dsw-alias-label-primary);font-weight:500}.JObwrW_headline{color:var(--dsw-alias-label-tertiary)}.JObwrW_headline:empty{display:none}.JObwrW_bar{corner-shape:round;background:var(--dsw-alias-interactive-bg-hover);border-radius:999px;gap:1px;height:4px;margin:10px 0 12px;display:flex;overflow:hidden}.JObwrW_segment{background:var(--meter-tint,var(--dsw-alias-label-tertiary));border-radius:1px;flex:none;min-width:2px;height:100%}.JObwrW_swatch{background:var(--meter-tint);vertical-align:baseline;border-radius:2px;width:8px;height:8px;margin-right:6px;display:inline-block}.JObwrW_colorSystem{--meter-tint:var(--dsw-static-neutral-bluish-400)}.JObwrW_colorTools{--meter-tint:#a78bfa}.JObwrW_colorMessages{--meter-tint:var(--dsw-static-blue-450)}.JObwrW_rows{margin:6px 0 0}.JObwrW_row{justify-content:space-between;align-items:center;gap:12px;padding:2px 0;display:flex}.JObwrW_row dt{color:var(--dsw-alias-label-secondary)}.JObwrW_row dd{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary);margin:0}@position-try --dsh-context-window{position-area:none;top:max(12px, var(--dsh-frame-overlay-top,12px));bottom:max(12px, calc(anchor(top) + 8px));left:12px;right:12px;margin:0;align-self:safe end;justify-self:safe end}@position-try --dsh-context-opposite{top:max(12px, calc(anchor(bottom) + 8px));bottom:12px;align-self:start}@position-try --dsh-context-wide-opposite{top:max(12px, calc(anchor(bottom) + 8px));bottom:12px;left:12px;right:12px;align-self:start;justify-self:safe end}@position-try --dsh-context-tall{position-area:none;top:max(12px, var(--dsh-frame-overlay-top,12px));bottom:12px;left:max(12px, anchor(left));right:12px;margin:0;align-self:safe start;justify-self:start}@position-try --dsh-context-viewport{position-area:none;inset:max(12px, var(--dsh-frame-overlay-top,12px)) 12px 12px;margin:0;align-self:safe start;justify-self:safe end}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-conversation/ContextMeter.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
 			const tag = document.createElement("style");
@@ -21832,14 +21674,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const panelRef = (0, react.useRef)(null);
 			const context = contextOccupancy(pressure);
 			const available = context !== null;
-			const position = (0, _deepseek_ai_dsh_client_ui_primitives.useAnchoredPosition)({
-				open: open && available,
-				anchorRef: rootRef,
-				panelRef,
-				side: "top",
-				gap: 8,
-				margin: 12
-			});
+			const anchorName = `--dsh-context-${(0, react.useId)().replaceAll(":", "")}`;
 			(0, _deepseek_ai_dsh_client_ui_primitives.useDismissOnOutsidePointer)(rootRef, open && available, setOpen, panelRef);
 			(0, react.useEffect)(() => {
 				if (!available && open) setOpen(false);
@@ -21870,12 +21705,14 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}))).filter((part) => part.width > 0);
 			return (0, react_jsx_runtime.jsxs)("span", {
 				ref: rootRef,
+				style: { anchorName },
 				className: ContextMeter_module_css_default.root,
 				children: [(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
 					label: t("context.aria", { percent: reading }),
 					side: "top",
 					delayMs: 200,
 					disabled: open,
+					portal: true,
 					children: (0, react_jsx_runtime.jsxs)("button", {
 						type: "button",
 						className: ContextMeter_module_css_default.trigger,
@@ -21908,11 +21745,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				}), open && (0, react_dom.createPortal)((0, react_jsx_runtime.jsxs)("div", {
 					ref: panelRef,
 					className: ContextMeter_module_css_default.panel,
-					style: position ?? {
-						visibility: "hidden",
-						left: 0,
-						top: 0
-					},
+					style: { positionAnchor: anchorName },
 					role: "dialog",
 					"aria-label": t("context.used"),
 					children: [
@@ -21999,7 +21832,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		}
 		//#endregion
 		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-conversation/src/client/skeleton/InputBar.module.css.mjs
-		const css$1 = ".uV2eYG_root{padding:0 var(--dsh-composer-side-clearance) 4px;flex-direction:column;align-items:center;display:flex}.uV2eYG_dock{justify-content:center;align-items:center;gap:12px;max-width:100%;padding-top:4px;display:flex}.uV2eYG_hero .uV2eYG_dock:empty{display:none}.uV2eYG_hero{padding:0 var(--dsh-composer-side-clearance)}.uV2eYG_notice{width:100%;max-width:var(--dsh-composer-card-max-width);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);margin-bottom:6px;padding:4px 8px;font-size:12px;line-height:18px}.uV2eYG_card{box-sizing:border-box;width:100%;max-width:var(--dsh-composer-card-max-width);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:0;flex-direction:column;gap:12px;padding-top:8px;display:flex;position:relative}.uV2eYG_cardWorkspaceTrigger{--dsw-elevation-stroke-color:transparent;cursor:pointer}.uV2eYG_cardWorkspaceTrigger:after{content:\"\";box-sizing:border-box;border-radius:var(--dsw-radius-panel);color:var(--dsw-alias-border-l4);pointer-events:none;border:1px dashed;transition:color .1s;position:absolute;inset:0}.uV2eYG_cardWorkspaceTrigger :disabled{pointer-events:none}.uV2eYG_cardWorkspaceTrigger:hover:after{color:var(--dsw-alias-state-business-primary)}.uV2eYG_accessory{align-items:center;gap:8px;padding:10px 12px 0;display:flex}.uV2eYG_overlayAnchor{height:0;position:absolute;inset:0 0 auto}.uV2eYG_scroll{max-height:var(--dsh-composer-text-max-height);margin-right:4px;overflow-y:auto}.uV2eYG_scroll::-webkit-scrollbar-track{margin-top:8px}.uV2eYG_grow{position:relative}.uV2eYG_pending{corner-shape:round;background:var(--dsw-alias-state-business-primary);border-radius:50%;width:8px;height:8px;animation:1s ease-in-out infinite alternate uV2eYG_input-pending}@keyframes uV2eYG_input-pending{0%{opacity:.35}to{opacity:1}}.uV2eYG_input{box-sizing:border-box;min-height:36px;font-family:var(--dsw-font-family);font-size:inherit;line-height:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);caret-color:var(--dsw-alias-state-business-primary);outline:none;padding:4px 8px 0 14px}.uV2eYG_input p{margin:0}.uV2eYG_input p:last-child:after{content:var(--dsh-composer-hint);color:var(--dsw-alias-label-caption)}.uV2eYG_input[data-composer-composing] p:last-child:after{content:none}.uV2eYG_input[data-composer-composing]+.uV2eYG_placeholder{visibility:hidden}.uV2eYG_placeholder{color:var(--dsw-alias-label-caption);white-space:nowrap;text-overflow:ellipsis;pointer-events:none;user-select:none;position:absolute;inset:4px 8px auto 14px;overflow:hidden}.uV2eYG_inputDisabled{color:var(--dsw-alias-label-tertiary);cursor:not-allowed}.uV2eYG_input[aria-haspopup=menu]{cursor:pointer}.uV2eYG_hero .uV2eYG_input{min-height:52px}.uV2eYG_hero .uV2eYG_placeholder{white-space:normal;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box}.uV2eYG_row{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;min-width:0;padding:2px 8px 6px;display:flex;container-type:inline-size}.uV2eYG_row[data-model-compact]{--dsh-composer-model-text-display:none;--dsh-composer-model-icon-display:block}.uV2eYG_tools,.uV2eYG_modes,.uV2eYG_trailing{align-items:center;min-width:0;display:flex}.uV2eYG_tools,.uV2eYG_modes{gap:12px}.uV2eYG_trailing{flex:none;gap:12px;margin-left:auto}@container (width<=560px){.uV2eYG_tools,.uV2eYG_modes,.uV2eYG_trailing{gap:8px}}.uV2eYG_add{corner-shape:round;background:var(--dsw-specific-selector);width:28px;height:28px;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:999px;flex:none;place-items:center;display:grid}.uV2eYG_add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}.uV2eYG_add:disabled{opacity:.5;cursor:default}.uV2eYG_select{border-radius:var(--dsw-radius-sm);max-width:220px;height:28px;color:var(--dsw-alias-label-secondary);white-space:nowrap;cursor:pointer;appearance:none;background-color:#0000;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-position:right 4px center;background-repeat:no-repeat;background-size:12px 12px;border:none;outline:none;padding:0 20px 0 8px;font-size:13px;font-weight:500;line-height:20px}.uV2eYG_select:hover:not(:disabled){background-color:var(--dsw-alias-interactive-bg-hover)}.uV2eYG_select:disabled{opacity:.5;cursor:default}.uV2eYG_primary{corner-shape:round;background:var(--dsw-alias-button-info-fill);color:#fff;cursor:pointer;border:none;border-radius:999px;flex:none;place-items:center;width:34px;height:34px;transition:background-color .1s;display:grid;transform:translateY(-2px)}.uV2eYG_primary:hover:not(:disabled){background:var(--dsw-alias-button-info-hover)}.uV2eYG_primary:disabled{opacity:.4;cursor:default}.uV2eYG_retry{border-radius:var(--dsw-radius-sm);color:inherit;cursor:pointer;background:0 0;border:1px solid;margin-left:8px;padding:1px 8px;font-size:12px}.uV2eYG_standardControls{align-items:center;gap:12px;min-width:0;display:flex}.uV2eYG_tools[hidden],.uV2eYG_standardControls[hidden]{display:none}.uV2eYG_trailingActive{flex:1;margin-left:0}.uV2eYG_activity{flex:none;align-items:center;display:flex}.uV2eYG_activity:empty{display:none}.uV2eYG_activityExpanded{flex:1;min-width:0}";
+		const css$1 = ".uV2eYG_root{padding:0 var(--dsh-composer-side-clearance) 4px;flex-direction:column;align-items:center;display:flex}.uV2eYG_dock{justify-content:center;align-items:center;gap:12px;max-width:100%;padding-top:4px;display:flex}.uV2eYG_root:not(.uV2eYG_hero)>.uV2eYG_dock{min-height:calc(22px + var(--dsh-content-font-delta-secondary,0px))}.uV2eYG_hero .uV2eYG_dock:empty{display:none}.uV2eYG_hero{padding:0 var(--dsh-composer-side-clearance)}.uV2eYG_notice{width:100%;max-width:var(--dsh-composer-card-max-width);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);margin-bottom:6px;padding:4px 8px;font-size:12px;line-height:18px}.uV2eYG_card{box-sizing:border-box;width:100%;max-width:var(--dsh-composer-card-max-width);--dsw-elevation-stroke-color:var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-panel);background:var(--dsw-specific-input-major);box-shadow:var(--dsw-elevation-soft);font-size:var(--dsh-content-font-size,14px);line-height:calc(24px + var(--dsh-content-font-delta,0px));--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2);border:0;flex-direction:column;gap:12px;padding-top:8px;display:flex;position:relative}@media (pointer:coarse){.uV2eYG_card{font-size:max(16px, var(--dsh-content-font-size,14px))}}.uV2eYG_cardWorkspaceTrigger{--dsw-elevation-stroke-color:transparent;cursor:pointer}.uV2eYG_cardWorkspaceTrigger:after{content:\"\";box-sizing:border-box;border-radius:var(--dsw-radius-panel);color:var(--dsw-alias-border-l4);pointer-events:none;border:1px dashed;transition:color .1s;position:absolute;inset:0}.uV2eYG_cardWorkspaceTrigger :disabled{pointer-events:none}@media (hover:hover){.uV2eYG_cardWorkspaceTrigger:hover:after{color:var(--dsw-alias-state-business-primary)}}.uV2eYG_accessory{align-items:center;gap:8px;padding:10px 12px 0;display:flex}.uV2eYG_overlayAnchor{height:0;position:absolute;inset:0 0 auto}.uV2eYG_scroll{max-height:var(--dsh-composer-text-max-height);margin-right:4px;overflow-y:auto}.uV2eYG_scroll::-webkit-scrollbar-track{margin-top:8px}.uV2eYG_grow{position:relative}.uV2eYG_pending{corner-shape:round;background:var(--dsw-alias-state-business-primary);border-radius:50%;width:8px;height:8px;animation:1s ease-in-out infinite alternate uV2eYG_input-pending}@keyframes uV2eYG_input-pending{0%{opacity:.35}to{opacity:1}}.uV2eYG_input{box-sizing:border-box;min-height:36px;font-family:var(--dsw-font-family);font-size:inherit;line-height:inherit;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);caret-color:var(--dsw-alias-state-business-primary);outline:none;padding:4px 8px 0 14px}.uV2eYG_input p{margin:0}.uV2eYG_input p:last-child:after{content:var(--dsh-composer-hint);color:var(--dsw-alias-label-caption)}.uV2eYG_input[data-composer-composing] p:last-child:after{content:none}.uV2eYG_input[data-composer-chip-selected]{caret-color:#0000}.uV2eYG_input[data-composer-composing]+.uV2eYG_placeholder{visibility:hidden}.uV2eYG_placeholder{color:var(--dsw-alias-label-caption);white-space:nowrap;text-overflow:ellipsis;pointer-events:none;user-select:none;position:absolute;inset:4px 8px auto 14px;overflow:hidden}.uV2eYG_inputDisabled{color:var(--dsw-alias-label-tertiary);cursor:not-allowed}.uV2eYG_input[aria-haspopup=menu]{cursor:pointer}.uV2eYG_hero .uV2eYG_input{min-height:52px}.uV2eYG_hero .uV2eYG_placeholder{white-space:normal;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;display:-webkit-box}.uV2eYG_row{flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;min-width:0;padding:2px 8px 6px;display:flex;container-type:inline-size}.uV2eYG_row[data-model-compact]{--dsh-composer-model-text-display:none;--dsh-composer-model-icon-display:block}.uV2eYG_tools,.uV2eYG_modes,.uV2eYG_trailing{align-items:center;min-width:0;display:flex}.uV2eYG_tools,.uV2eYG_modes{gap:12px}.uV2eYG_trailing{flex:none;gap:12px;margin-left:auto}@container (width<=560px){.uV2eYG_tools,.uV2eYG_modes,.uV2eYG_trailing{gap:8px}}.uV2eYG_add{corner-shape:round;background:var(--dsw-specific-selector);width:28px;height:28px;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;border-radius:999px;flex:none;place-items:center;display:grid}@media (hover:hover){.uV2eYG_add:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}}.uV2eYG_add:disabled{opacity:.5;cursor:default}.uV2eYG_select{border-radius:var(--dsw-radius-sm);max-width:220px;height:28px;color:var(--dsw-alias-label-secondary);white-space:nowrap;cursor:pointer;appearance:none;background-color:#0000;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2381858C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E\");background-position:right 4px center;background-repeat:no-repeat;background-size:12px 12px;border:none;outline:none;padding:0 20px 0 8px;font-size:13px;font-weight:500;line-height:20px}@media (hover:hover){.uV2eYG_select:hover:not(:disabled){background-color:var(--dsw-alias-interactive-bg-hover)}}.uV2eYG_select:disabled{opacity:.5;cursor:default}.uV2eYG_primary{corner-shape:round;background:var(--dsw-alias-button-info-fill);color:#fff;cursor:pointer;border:none;border-radius:999px;flex:none;place-items:center;width:34px;height:34px;transition:background-color .1s;display:grid;transform:translateY(-2px)}.uV2eYG_continueIcon{transform:scale(1.5)}@media (hover:hover){.uV2eYG_primary:hover:not(:disabled){background:var(--dsw-alias-button-info-hover)}}.uV2eYG_primary:disabled{opacity:.4;cursor:default}.uV2eYG_primary[data-sending]:disabled{opacity:1;cursor:progress}.uV2eYG_sendingSpinner{animation:.8s linear infinite uV2eYG_input-sending}@media (prefers-reduced-motion:reduce){.uV2eYG_sendingSpinner{animation-duration:2.4s}}@keyframes uV2eYG_input-sending{to{transform:rotate(360deg)}}.uV2eYG_retry{border-radius:var(--dsw-radius-sm);color:inherit;cursor:pointer;background:0 0;border:1px solid;margin-left:8px;padding:1px 8px;font-size:12px}.uV2eYG_standardControls{align-items:center;gap:12px;min-width:0;display:flex}.uV2eYG_tools[hidden],.uV2eYG_standardControls[hidden]{display:none}.uV2eYG_trailingActive{flex:1;margin-left:0}.uV2eYG_activity{flex:none;align-items:center;display:flex}.uV2eYG_activity:empty{display:none}.uV2eYG_activityExpanded{flex:1;min-width:0}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-conversation/InputBar.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
 			const tag = document.createElement("style");
@@ -22015,11 +21848,13 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"add": "uV2eYG_add",
 			"card": "uV2eYG_card",
 			"cardWorkspaceTrigger": "uV2eYG_cardWorkspaceTrigger",
+			"continueIcon": "uV2eYG_continueIcon",
 			"dock": "uV2eYG_dock",
 			"grow": "uV2eYG_grow",
 			"hero": "uV2eYG_hero",
 			"input": "uV2eYG_input",
 			"input-pending": "uV2eYG_input-pending",
+			"input-sending": "uV2eYG_input-sending",
 			"inputDisabled": "uV2eYG_inputDisabled",
 			"modes": "uV2eYG_modes",
 			"notice": "uV2eYG_notice",
@@ -22032,6 +21867,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			"row": "uV2eYG_row",
 			"scroll": "uV2eYG_scroll",
 			"select": "uV2eYG_select",
+			"sendingSpinner": "uV2eYG_sendingSpinner",
 			"standardControls": "uV2eYG_standardControls",
 			"tools": "uV2eYG_tools",
 			"trailing": "uV2eYG_trailing",
@@ -22053,11 +21889,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 		* The no-session state renders the SAME div inert as the Workspace-picker
 		* trigger instead of a parallel tree.
 		*/
-		const InputBar = (0, react.memo)(function InputBar({ useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments, retryFileUpload, toggleCommandMenu, stop, t, renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut, useProjection, sessionId, variant, disabled: inert = false, blocked, workspacePickerOpen = false, onRequestWorkspace, placeholder, accessory }) {
+		const InputBar = (0, react.memo)(function InputBar({ useSession, useInput, inputActions, keyboard, addFiles, removeAttachment, resolveDraftAttachments, retryFileUpload, toggleCommandMenu, stop, retry, t, renderSlot, useBusyEnter, useFileUploads, useNotices, useLexicon, useMenuLauncher, useStopShortcut, useAccess, useProjection, sessionId, variant, disabled: inert = false, blocked, workspacePickerOpen = false, onRequestWorkspace, placeholder, accessory }) {
 			const input = useInput((s) => s);
 			const notice = useNotices((s) => s);
 			const busyEnter = useBusyEnter((s) => s);
 			const stopKeys = useStopShortcut((keys) => keys);
+			const promptDenied = useAccess("session/prompt") === false;
+			const cancelDenied = useAccess("session/cancel") === false;
+			const uploadDenied = useAccess("fileUploads/upload") === false;
+			const stopAction = cancelDenied ? void 0 : stop;
 			const commandMenuOpen = useMenuLauncher((source) => source === "command");
 			const [activity, setActivity] = (0, react.useState)(false);
 			(0, react.useEffect)(() => {
@@ -22065,6 +21905,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			}, [sessionId]);
 			const promptError = useSession((s) => s.promptError) ?? null;
 			const running = useSession((s) => s.running) ?? false;
+			const retryableFailure = useProjection("conversationContinuation") ?? void 0;
+			const pendingHumanInput = useProjection("inbox", (inbox) => inbox?.["next-step"].some((message) => typeof message === "object" && message !== null && "source" in message && typeof message.source === "object" && message.source !== null && "kind" in message.source && message.source.kind === "user") ?? false);
+			const historyOpen = useSession((s) => s.openState === "open") ?? false;
+			const submissionPending = useSession((s) => s.pendingSubmissions.length > 0) ?? false;
 			const subagent = useSession((s) => s.subagent) ?? null;
 			const removed = useSession((s) => s.removed) ?? false;
 			const planActive = useProjection("plan", (plan) => plan !== void 0 && (plan.pending ? !plan.active : plan.active));
@@ -22075,7 +21919,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const attachments = (0, react.useMemo)(() => input === void 0 || resolveDraftAttachments === void 0 ? [] : resolveDraftAttachments(input.attachmentIds), [resolveDraftAttachments, input?.attachmentIds]);
 			const empty = draft.trim() === "" && attachments.length === 0;
 			const uploads = useFileUploads((snapshot) => snapshot);
-			const uploadsPending = attachments.some((attachment) => attachment.kind === "file" && uploads[attachment.id]?.status !== "ready");
+			const uploadsPending = attachments.some((attachment) => attachment.kind === "file" ? uploads[attachment.id]?.status !== "ready" : uploads[attachment.id] !== void 0 && uploads[attachment.id]?.status !== "ready");
 			const [toast, setToast] = (0, react.useState)(null);
 			const toastSeq = (0, react.useRef)(0);
 			const showToast = (0, react.useCallback)((text) => {
@@ -22089,6 +21933,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				setToast(null);
 			}, []);
 			const imageLimits = useProjection("imageLimits");
+			const failedUpload = attachments.map((attachment) => uploads[attachment.id]).find((upload) => upload?.status === "error");
+			const uploadsHeldText = failedUpload?.status !== "error" ? t("file.stillUploading") : failedUpload.reason === void 0 ? t("file.uploadFailed") : attachmentErrorText(t, failedUpload.reason, imageLimits);
 			(0, react.useEffect)(() => {
 				if (promptError === null) return;
 				const { error } = promptError;
@@ -22115,11 +21961,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const cardRef = (0, react.useRef)(null);
 			const scrollRef = (0, react.useRef)(null);
 			const continuable = subagent?.address.mode === "continuable";
-			const parentOffline = continuable && subagent.parentAvailable !== true;
-			const disabled = removed || inert || !live || blocked !== void 0 || parentOffline;
+			const disabled = removed || inert || !live || blocked !== void 0;
 			const locked = disabled;
 			const modelSeatLocked = removed || inert || !live;
-			const machineBusy = input?.phase === "adjudicating" || input?.phase === "submitting";
+			const machineBusy = input?.phase === "adjudicating" || input?.phase === "submitting" || input?.phase === "sending";
+			const sending = input?.phase === "sending";
 			const workspaceTrigger = inert && !removed && onRequestWorkspace !== void 0;
 			const editorDisabled = removed || locked && !workspaceTrigger;
 			const editable = live && !locked && !machineBusy;
@@ -22138,12 +21984,27 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			};
 			(0, react.useEffect)(() => {
 				if (locked || editor === null) return;
+				if ((0, _deepseek_ai_dsh_client_ui_primitives.isMobileDevice)()) return;
 				focusDraftEditor(editor, revealSelection);
 			}, [
 				locked,
 				sessionId,
 				editor
 			]);
+			const busyPhaseSeen = (0, react.useRef)(false);
+			(0, react.useEffect)(() => {
+				if (machineBusy) {
+					busyPhaseSeen.current = true;
+					return;
+				}
+				if (!busyPhaseSeen.current) return;
+				busyPhaseSeen.current = false;
+				if (locked || editor === null) return;
+				if (document.activeElement !== null && document.activeElement !== document.body) return;
+				if ((0, _deepseek_ai_dsh_client_ui_primitives.isMobileDevice)()) {
+					if (cardRef.current !== null) (0, _deepseek_ai_dsh_client_ui_primitives.focusWithoutRing)(cardRef.current, { preventScroll: true });
+				} else focusDraftEditor(editor, revealSelection);
+			}, [machineBusy]);
 			(0, react.useEffect)(() => {
 				if (locked || draft === "") return;
 				revealSelection();
@@ -22152,7 +22013,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				return installDraftWheel(scrollRef);
 			}, []);
 			const intakeFiles = (0, react.useCallback)((files, directories) => {
-				if (locked || machineBusy || subagent !== null && !continuable || addFiles === void 0 || files.length === 0) return;
+				if (uploadDenied || locked || machineBusy || subagent !== null && !continuable || addFiles === void 0 || files.length === 0) return;
 				const rejected = (() => {
 					if (continuable && files.some((file) => directories?.has(file) || !isImageMediaType(file.type))) return t("image.unsupportedType");
 					if (imageLimits !== void 0) {
@@ -22167,6 +22028,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				})();
 				if (rejected !== null) showToast(rejected);
 			}, [
+				uploadDenied,
 				locked,
 				machineBusy,
 				subagent,
@@ -22177,7 +22039,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				showToast,
 				t
 			]);
-			const canAcceptDrop = (subagent === null || continuable) && !locked && !machineBusy && addFiles !== void 0;
+			const canAcceptDrop = !uploadDenied && (subagent === null || continuable) && !locked && !machineBusy && addFiles !== void 0;
 			const fileInputRef = (0, react.useRef)(null);
 			const onPickFiles = (e) => {
 				const picked = e.target.files === null ? [] : [...e.target.files];
@@ -22193,8 +22055,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				busyEnter,
 				intakeFiles,
 				uploadsPending,
+				uploadsHeldText,
 				showToast,
-				t,
 				canAcceptDrop
 			});
 			gate.current = {
@@ -22206,8 +22068,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				busyEnter,
 				intakeFiles,
 				uploadsPending,
+				uploadsHeldText,
 				showToast,
-				t,
 				canAcceptDrop
 			};
 			(0, react.useEffect)(() => {
@@ -22218,6 +22080,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				if (editor === null || keyboard === void 0) return;
 				return installDraftKeymap(editor, keyboard, gate);
 			}, [editor, keyboard]);
+			(0, react.useEffect)(() => {
+				if (editor === null) return;
+				return installDraftKeyboardDismissal(editor, cardRef);
+			}, [editor]);
 			const keepFocus = (e) => {
 				keepDraftFocus(e, editor);
 			};
@@ -22228,7 +22094,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				if (target.closest("[data-composer-overlay]") !== null) return;
 				if (scrollRef.current?.contains(target)) return;
 				const control = target.closest("button, a, input, select, textarea, [role=\"button\"], [contenteditable], [tabindex]");
-				if (control !== null && e.currentTarget.contains(control)) return;
+				if (control !== null && control !== e.currentTarget && e.currentTarget.contains(control)) return;
 				e.preventDefault();
 				if (document.activeElement !== editor.getRootElement()) focusDraftEditor(editor, revealSelection);
 			};
@@ -22244,15 +22110,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					onRequestWorkspace();
 				}
 			};
-			const primaryStops = running && subagent === null && (empty || blocked !== void 0);
-			const primaryDisabled = primaryStops ? stop === void 0 : empty || disabled || machineBusy || uploadsPending;
-			const interruptible = running && continuable;
+			const primaryStops = running && subagent === null && !sending && (empty || blocked !== void 0);
+			const primaryRetries = !running && subagent === null && empty && retryableFailure !== void 0 && !pendingHumanInput && historyOpen && !submissionPending && !disabled && input.queue.length === 0 && input.phase === "plain" && retry !== void 0;
+			const primaryDisabled = primaryStops ? stopAction === void 0 : !primaryRetries && empty || disabled || machineBusy || uploadsPending;
+			const interruptible = running && (continuable || sending && subagent === null);
 			const primarySubmitMode = resolveSubmitMode(busyEnter, running, "enter", steeringAvailable);
 			const plainMessageDraft = !empty && input?.phase === "plain" && !draft.trimStart().startsWith("/");
-			const primaryLabel = primaryStops ? t("input.stop") : running && steeringAvailable && !disabled && !uploadsPending && plainMessageDraft ? t(primarySubmitMode === "steer" ? "input.send.steer" : "input.send.queue") : t("input.send");
+			const primaryLabel = primaryStops ? t("input.stop") : sending ? t("input.sending") : primaryRetries ? t("input.continue") : running && steeringAvailable && !disabled && !uploadsPending && plainMessageDraft ? t(primarySubmitMode === "steer" ? "input.send.steer" : "input.send.queue") : t("input.send");
 			const onPrimary = () => {
 				if (primaryStops) {
-					stop?.();
+					stopAction?.();
+					return;
+				}
+				if (primaryRetries) {
+					retry(retryableFailure);
 					return;
 				}
 				if (keyboard === void 0) return;
@@ -22268,7 +22139,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				const translated = t(hintKey);
 				return translated !== hintKey ? translated : rawHint;
 			})();
-			const placeholderText = placeholder ?? (parentOffline ? t("placeholder.parentOffline") : disabled ? t("placeholder.unavailable") : canSteerQueue ? t("placeholder.steerQueue") : planActive ? t("placeholder.plan") : t("placeholder.default"));
+			const placeholderText = placeholder ?? (disabled ? t("placeholder.unavailable") : canSteerQueue ? t("placeholder.steerQueue") : planActive ? t("placeholder.plan") : t("placeholder.default"));
 			return (0, react_jsx_runtime.jsxs)("div", {
 				className: clsx(InputBar_module_css_default.root, variant === "hero" && InputBar_module_css_default.hero),
 				children: [
@@ -22285,6 +22156,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					}),
 					(0, react_jsx_runtime.jsxs)("div", {
 						ref: cardRef,
+						tabIndex: -1,
 						className: clsx(InputBar_module_css_default.card, workspaceTrigger && InputBar_module_css_default.cardWorkspaceTrigger),
 						"data-composer-card": true,
 						onClick: workspaceTrigger ? onRequestWorkspace : void 0,
@@ -22313,6 +22185,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								onRetryFile: (id) => {
 									retryFileUpload?.(id);
 								},
+								uploadFailureText: (reason) => attachmentErrorText(t, reason, imageLimits),
 								dropLimits: imageLimits === void 0 ? void 0 : {
 									count: imageLimits.maxImagesPerMessage,
 									size: imageSizeText(imageLimits.maxImageBytes)
@@ -22344,6 +22217,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 											label: t("input.commands"),
 											side: "top",
 											delayMs: 500,
+											portal: true,
 											children: (0, react_jsx_runtime.jsx)("button", {
 												type: "button",
 												className: InputBar_module_css_default.add,
@@ -22360,7 +22234,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 											ref: fileInputRef,
 											type: "file",
 											multiple: true,
-											disabled: subagent !== null,
+											disabled: !canAcceptDrop || subagent !== null,
 											hidden: true,
 											onChange: onPickFiles
 										}),
@@ -22385,19 +22259,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 												onActiveChange: setActivity
 											})
 										}),
-										interruptible && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+										interruptible && !cancelDenied && (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
 											label: t("input.stop"),
 											shortcutKeys: stopKeys,
 											side: "top",
 											delayMs: 500,
-											disabled: stop === void 0,
+											disabled: stopAction === void 0,
+											portal: true,
 											children: (0, react_jsx_runtime.jsx)("button", {
 												type: "button",
 												className: InputBar_module_css_default.primary,
 												"aria-label": t("input.stop"),
-												disabled: stop === void 0,
+												disabled: stopAction === void 0,
 												onMouseDown: keepFocus,
-												onClick: stop,
+												onClick: stopAction,
 												children: (0, react_jsx_runtime.jsx)("svg", {
 													viewBox: "0 0 16 16",
 													width: "16",
@@ -22414,16 +22289,19 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 												})
 											})
 										}),
-										(0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
+										(primaryStops ? cancelDenied : promptDenied) ? null : (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.Tooltip, {
 											label: primaryStops ? t("input.stop") : primaryLabel,
 											shortcutKeys: primaryStops ? stopKeys : void 0,
 											side: "top",
 											delayMs: 500,
 											disabled: primaryDisabled,
+											portal: true,
 											children: (0, react_jsx_runtime.jsx)("button", {
 												type: "button",
 												className: InputBar_module_css_default.primary,
 												"aria-label": primaryLabel,
+												"aria-busy": sending,
+												"data-sending": sending ? "" : void 0,
 												disabled: primaryDisabled,
 												onMouseDown: keepFocus,
 												onClick: onPrimary,
@@ -22440,6 +22318,30 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 														rx: "3",
 														fill: "currentColor"
 													})
+												}) : sending ? (0, react_jsx_runtime.jsxs)("svg", {
+													className: InputBar_module_css_default.sendingSpinner,
+													viewBox: "0 0 16 16",
+													width: "16",
+													height: "16",
+													"aria-hidden": true,
+													children: [(0, react_jsx_runtime.jsx)("circle", {
+														cx: "8",
+														cy: "8",
+														r: "6",
+														fill: "none",
+														stroke: "currentColor",
+														strokeOpacity: "0.35",
+														strokeWidth: "2"
+													}), (0, react_jsx_runtime.jsx)("path", {
+														d: "M8 2a6 6 0 0 1 6 6",
+														fill: "none",
+														stroke: "currentColor",
+														strokeWidth: "2",
+														strokeLinecap: "round"
+													})]
+												}) : primaryRetries ? (0, react_jsx_runtime.jsx)(_deepseek_ai_dsh_client_ui_primitives.IconTriangleRightFillRegular, {
+													size: 16,
+													className: InputBar_module_css_default.continueIcon
 												}) : (0, react_jsx_runtime.jsx)("svg", {
 													viewBox: "0 0 16 16",
 													width: "16",
@@ -22795,9 +22697,49 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 			const maxConcurrentFileUploads = config.maxConcurrentFileUploads;
 			const workspaceNavigation = ctx.get("uiWorkspace");
 			const uiConversation = new UiConversation(ctx, sessions);
+			uiConversation.userText.register(sessionReferenceRule);
+			uiConversation.userText.register(collapseWhitespaceRule);
+			uiConversation.userText.register(trimWhitespaceRule);
+			slots.registerFactory({
+				name: "conversation.user.text",
+				scope: "session",
+				children: { "conversation.user.text.node": {
+					kind: "keyed",
+					scope: "session",
+					inline: true
+				} },
+				inject: () => ({
+					hooks: { userTextRevision: {
+						getSnapshot: () => uiConversation.userText.getSnapshot(),
+						subscribe: (listener) => uiConversation.userText.subscribe(listener)
+					} },
+					createUserTextEvaluator: () => uiConversation.userText.createEvaluator(),
+					reportTransformFailure: (error) => {
+						console.error("[ui-conversation] user-text transformation failed:", error);
+					}
+				})
+			}, UserText);
+			slots.inject("conversation.user.text.node", function* () {
+				yield slots.register({
+					name: "conversation.user.text.node",
+					key: "text",
+					priority: 100
+				}, PlainUserText);
+				yield slots.register({
+					name: "conversation.user.text.node",
+					key: "session",
+					priority: 100
+				}, SessionReference);
+			});
 			ctx.effect(() => ctx.locale.register(NS, {
 				zh,
-				en
+				en,
+				ja,
+				es,
+				fr,
+				de,
+				ru,
+				pt
 			}), "ui-conversation: dictionaries");
 			const t = ctx.locale.bind(NS);
 			const conversationStore = createConversationStore();
@@ -22838,6 +22780,11 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 				activateView(sessionId, readConversationViewPreference(sessionId));
 			};
 			const conversationViews = (0, _deepseek_ai_dsh_client_store.createSnapshotStore)(viewTabs());
+			const viewPins = createViewPins();
+			const viewActions = {
+				getSnapshot: () => slots.entriesOfSlot("conversation.session.header.views.actions").length > 0,
+				subscribe: (listener) => slots.subscribe("conversation.session.header.views.actions", listener)
+			};
 			const bindings = /* @__PURE__ */ new Set();
 			const trackedBindings = /* @__PURE__ */ new WeakSet();
 			const trackBinding = (binding) => {
@@ -23016,6 +22963,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						kind: "list",
 						scope: "session"
 					},
+					"conversation.hero.frame": {
+						kind: "hoc",
+						scope: "root"
+					},
 					"conversation.hero.brand.mark": {
 						kind: "single",
 						scope: "root"
@@ -23027,6 +22978,10 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					"conversation.hero.agentPreset": {
 						kind: "single",
 						scope: "session-maybe"
+					},
+					"conversation.hero.options": {
+						kind: "list",
+						scope: "session"
 					}
 				},
 				slots: {
@@ -23038,12 +22993,15 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					selectWorkspace: (workspaceId) => workspaceNavigation.openWorkspace(workspaceId, (nextId) => {
 						if (sessionId !== void 0 && nextId !== sessionId) {
 							const from = inputHub.shell(sessionId);
+							if (from.snapshot.phase !== "plain" && from.snapshot.phase !== "claimed") return;
 							const draft = from.draftSnapshot;
 							const attachmentIds = from.snapshot.attachmentIds;
 							const next = inputHub.shell(nextId);
 							if (attachmentIds.length === 0 || next.addAttachments(attachmentIds)) {
-								if (sessions.binding(nextId) === void 0) throw new Error(`ui-conversation: session "${nextId}" resolved no binding`);
-								concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds);
+								const binding = sessions.binding(nextId);
+								if (binding === void 0) throw new Error(`ui-conversation: session "${nextId}" resolved no binding`);
+								const ordinary = binding.session.getSnapshot().subagent === null;
+								concreteConversation(ctx).rebindDraftFiles(nextId, attachmentIds, ordinary);
 								if (draft.text !== "") {
 									next.setDraft(draft);
 									from.setDraft("");
@@ -23124,11 +23082,20 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 					"conversation.session.header.corner": {
 						kind: "single",
 						scope: "session"
+					},
+					"conversation.session.header.views.actions": {
+						kind: "list",
+						scope: "root"
 					}
 				},
 				store: conversationStore,
 				inject: (sessionId, actions) => ({
-					hooks: { conversationViews },
+					hooks: {
+						conversationViews,
+						entryPins: viewPins.unpinned,
+						entryActions: viewActions
+					},
+					setPinned: viewPins.setPinned,
 					open: (id) => {
 						workspaceNavigation.openSession(id);
 					},
@@ -23188,6 +23155,7 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						retryFileUpload: void 0,
 						toggleCommandMenu: void 0,
 						stop: void 0,
+						retry: void 0,
 						hooks: {
 							stopShortcut,
 							busyEnter: submissionPolicy.busyEnter,
@@ -23205,7 +23173,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						keyboard: shell,
 						addFiles: (files, directories = /* @__PURE__ */ new Set()) => {
 							if (sessions.binding(sessionId) === void 0) return t("file.sessionUnavailable");
-							if (shell.snapshot.phase === "adjudicating" || shell.snapshot.phase === "submitting") return t("attachment.dropBlocked");
+							const { phase } = shell.snapshot;
+							if (phase === "adjudicating" || phase === "submitting" || phase === "sending") return t("attachment.dropBlocked");
 							const uploads = [];
 							const references = [];
 							const cwd = sessions.list.getSnapshot().byId[sessionId]?.cwd;
@@ -23234,7 +23203,8 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 								});
 							}
 							try {
-								const drafts = conversation.createDrafts(sessionId, uploads);
+								const ordinary = sessions.binding(sessionId)?.session.getSnapshot().subagent === null;
+								const drafts = conversation.createDrafts(sessionId, uploads, ordinary);
 								if (!shell.addFiles(references, drafts.map((draft) => draft.id))) {
 									conversation.releaseDraftAttachments(drafts);
 									return t("attachment.dropBlocked");
@@ -23268,6 +23238,9 @@ Set the \`cycles\` parameter to \`"ref"\` to resolve cyclical schemas with defs.
 						},
 						stop: () => {
 							stop(sessionId);
+						},
+						retry: (failureSeq) => {
+							inputHub.retry(sessionId, failureSeq);
 						},
 						hooks: {
 							stopShortcut,
