@@ -1369,7 +1369,7 @@ index fa1065dc56..fdf8a0e4a7 100644
 +  to { opacity: 1; }
 +}
 diff --git a/packages/client/ui-layout/src/client/AppFrame.tsx b/packages/client/ui-layout/src/client/AppFrame.tsx
-index 23e71c9c03..c12df7cef9 100644
+index 23e71c9c03..b82303ec6b 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.tsx
 +++ b/packages/client/ui-layout/src/client/AppFrame.tsx
 @@ -148,7 +148,7 @@ export function AppFrame({
@@ -1419,15 +1419,13 @@ index 23e71c9c03..c12df7cef9 100644
    return (
      <div
        ref={frameRef}
-@@ -313,7 +344,10 @@ export function AppFrame({
+@@ -313,7 +344,8 @@ export function AppFrame({
          onClick={drawerOpen ? () => { actions.toggleSidebar() } : undefined} />}
        <div className={css.sidebarCol}
          style={drawer ? { width: sidebarWidth } : undefined}
 -        {...{ inert: drawer && sidebarCollapsed ? '' : undefined }}>
 +        {...{ inert: drawer && sidebarCollapsed ? '' : undefined }}
 +        onClick={onSidebarColClick}>
-+        {sidebar}
-+      </div>
          {sidebar}
        </div>
        <>
@@ -2764,22 +2762,9 @@ index 3c4676ba0d..d3f1cc7864 100644
      for (const helper of [
        'httpErrorCode',
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
-index 1302589633..c3840bfe27 100644
+index 1302589633..76016f5016 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
 +++ b/packages/llm/llm-pi-ai/src/adapter.ts
-@@ -38,11 +38,11 @@ import type {
-   ThinkingLevel,
- } from '@earendil-works/pi-ai'
- import {
--  attributionHeaders,
-   contentHasImage,
-   LlmAdapter,
-   LlmError,
-   ReasoningEffortId,
-+  requestHeaders,
- } from '@deepseek-ai/dsh-llm'
- import type {
-   GenerateOptions,
 @@ -236,7 +236,7 @@ function requestHeaderDiagnostic(error: unknown): string {
      : 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'
  }
@@ -2789,16 +2774,18 @@ index 1302589633..c3840bfe27 100644
  function requestHeaders(
    configured: Readonly<Record<string, string>> | undefined,
    options: GenerateOptions<string>,
-@@ -245,7 +245,8 @@ function requestHeaders(
+@@ -245,8 +245,9 @@ function requestHeaders(
  ): Record<string, string> {
    try {
      const initial = new Headers()
 -    // Profile aliases overwrite case-insensitively; the Headers constructor appends them.
+-    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
 +    // Attribution first so a route's configured headers can win per header name.
-+    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, value)
-     for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
++    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, String(value))
++    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, String(value))
      const request: PiAiRequestHeaderContext = Object.freeze({
        provider: options.provider,
+       model: options.model,
 @@ -255,7 +256,6 @@ function requestHeaders(
        ...options.purpose === undefined ? {} : { purpose: options.purpose },
      })

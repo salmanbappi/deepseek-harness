@@ -348,8 +348,6 @@ export function AppFrame({
         onClick={onSidebarColClick}>
         {sidebar}
       </div>
-        {sidebar}
-      </div>
       <>
         <CenterColumn inert={drawerOpen}>{main}</CenterColumn>
         <RightbarColumn inert={drawerOpen}>

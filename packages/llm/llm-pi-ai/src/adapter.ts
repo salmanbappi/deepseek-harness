@@ -38,11 +38,11 @@ import type {
   ThinkingLevel,
 } from '@earendil-works/pi-ai'
 import {
+  attributionHeaders,
   contentHasImage,
   LlmAdapter,
   LlmError,
   ReasoningEffortId,
-  requestHeaders,
 } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
@@ -246,8 +246,8 @@ function requestHeaders(
   try {
     const initial = new Headers()
     // Attribution first so a route's configured headers can win per header name.
-    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, value)
-    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
+    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, String(value))
+    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, String(value))
     const request: PiAiRequestHeaderContext = Object.freeze({
       provider: options.provider,
       model: options.model,

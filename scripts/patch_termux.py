@@ -1054,8 +1054,8 @@ def patch_llm_pi_ai_gateway():
     return Object.fromEntries(headers)""",
             """    const initial = new Headers()
     // Attribution first so a route's configured headers can win per header name.
-    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, value)
-    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
+    for (const [name, value] of Object.entries(attributionHeaders())) initial.set(name, String(value))
+    for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, String(value))
     const request: PiAiRequestHeaderContext = Object.freeze({
       provider: options.provider,
       model: options.model,
@@ -1179,9 +1179,9 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
             c = f.read()
         changed = False
         pending = {}
+        if key == "adapter" and "// Attribution first so a route's configured headers can win" in c:
+            continue
         for marker, upstream, patched, label in edits[key]:
-            if key == "adapter" and re.search(r"import\s*\{[^}]*\brequestHeaders\b[^}]*\}\s*from\s*['\"]@deepseek-ai/dsh-llm['\"]", c):
-                continue
             # A removal is done when its upstream line is gone; every other edit
             # is done when its marker is present.
             if (upstream not in c) if patched == "" else (marker in c):
