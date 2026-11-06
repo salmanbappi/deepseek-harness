@@ -5,6 +5,9 @@
 #       download prebuilt lib/ bundle → apply → verify → done.
 # ==============================================================================
 set -euo pipefail
+export COREPACK_ENABLE_PROJECT_SPEC=0
+export COREPACK_ENABLE_STRICT=0
+export COREPACK_ENABLE_AUTO_PIN=0
 export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
 
 # ── Config ──────────────────────────────────────────────────────────────────

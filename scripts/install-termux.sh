@@ -7,6 +7,11 @@ set -e
 
 export DEBIAN_FRONTEND=noninteractive
 export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
+# Prevent Corepack from attempting to download @pnpm/exe native binaries on Android
+export COREPACK_ENABLE_PROJECT_SPEC=0
+export COREPACK_ENABLE_STRICT=0
+export COREPACK_ENABLE_AUTO_PIN=0
+corepack disable 2>/dev/null || true
 
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -15,12 +20,22 @@ CYAN='\033[0;36m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+# Architecture verification
+ARCH=$(uname -m 2>/dev/null || echo "unknown")
+BIT=$(getconf LONG_BIT 2>/dev/null || echo "64")
+
 echo -e "${CYAN}"
 echo "  ======================================================="
 echo "       DeepSeek Harness (Termux & Mobile Edition)        "
 echo "               Automated Setup Installer                 "
 echo "  ======================================================="
 echo -e "${NC}"
+
+if [ "$BIT" = "32" ] || [ "$ARCH" = "armv7l" ] || [ "$ARCH" = "armv8l" ] || [ "$ARCH" = "arm" ]; then
+    echo -e "${YELLOW}[!] Notice: 32-bit CPU/userspace detected ($ARCH / ${BIT}-bit).${NC}"
+    echo -e "${YELLOW}    Pre-compiled native binaries target 64-bit ARM (aarch64).${NC}"
+    echo -e "${YELLOW}    Enabling pure-JS/WASM compatibility mode...${NC}\n"
+fi
 
 # Step 1: System packages check & installation
 echo -e "${BLUE}[1/5] Checking and installing minimal Termux system packages...${NC}"
@@ -86,6 +101,8 @@ mkdir -p "$BIN_DIR"
 cat <<'LAUNCHER_EOF' > "$BIN_DIR/dsh"
 #!/data/data/com.termux/files/usr/bin/bash
 set -e
+export COREPACK_ENABLE_PROJECT_SPEC=0
+export COREPACK_ENABLE_STRICT=0
 export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
 DSH_DIR="$HOME/deepseek-harness"
 
@@ -219,8 +236,8 @@ python3 scripts/patch_termux.py --apply || true
 
 # Production-only dependency install saves 2-3 GB of devDependencies
 echo "  -> Linking production dependencies..."
-CI=true pnpm install --prod --frozen-lockfile=false --ignore-scripts || true
-pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
+COREPACK_ENABLE_PROJECT_SPEC=0 COREPACK_ENABLE_STRICT=0 CI=true pnpm install --prod --frozen-lockfile=false --ignore-scripts || COREPACK_ENABLE_PROJECT_SPEC=0 COREPACK_ENABLE_STRICT=0 npm install --omit=dev --ignore-scripts || true
+COREPACK_ENABLE_PROJECT_SPEC=0 COREPACK_ENABLE_STRICT=0 pnpm add -w @img/sharp-wasm32 --ignore-scripts 2>/dev/null || true
 
 # Prune unneeded pnpm cache files
 echo "  -> Pruning package cache..."

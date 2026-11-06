@@ -651,6 +651,26 @@ def patch_koffi():
 
 def patch_node_addon_require_builtin():
     """Patches node-addon-require-builtin to fallback to direct require on Android/Termux (--expose-internals)."""
+    # 1. Patch compiled app-boot/lib/index.js if present
+    app_boot_lib = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "index.js")
+    if os.path.exists(app_boot_lib):
+        try:
+            with open(app_boot_lib, "r", encoding="utf-8") as f:
+                content = f.read()
+            old = 'const addon = createRequire(import.meta.url)("node-addon-require-builtin");'
+            if old in content:
+                patched = content.replace(
+                    old,
+                    'let requireInternal;\n\ttry {\n\t\tconst addon = createRequire(import.meta.url)("node-addon-require-builtin");\n\t\trequireInternal = (moduleId) => addon.requireBuiltin(moduleId);\n\t} catch {\n\t\trequireInternal = (moduleId) => createRequire(import.meta.url)(moduleId);\n\t}',
+                    1
+                )
+                patched = patched.replace('addon.requireBuiltin(', 'requireInternal(')
+                with open(app_boot_lib, "w", encoding="utf-8") as f:
+                    f.write(patched)
+                print("  [+] Patched app-boot lib/index.js pure JS resolver fallback.")
+        except Exception as e:
+            print(f"  [!] Notice patching {app_boot_lib}: {e}")
+
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
     if not os.path.exists(node_modules):
         return
@@ -1947,8 +1967,22 @@ def check_status():
         set_ok = "mobileHeader" in t and "mobileClose" in t and ".mobileHeader" in s and ".mobileClose" in s
     print(f"[*] Mobile Settings & Close Button:    {'[PASS]' if set_ok else '[FAIL]'}")
 
+    # 13. App-Boot Pure JS Resolver Fallback
+    boot_lib = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "index.js")
+    boot_src = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "src", "profile-resolution", "resolver.ts")
+    boot_ok = False
+    if os.path.exists(boot_src):
+        with open(boot_src, "r", encoding="utf-8") as f:
+            c = f.read()
+        boot_ok = "requireInternal" in c
+    if os.path.exists(boot_lib):
+        with open(boot_lib, "r", encoding="utf-8") as f:
+            c = f.read()
+        boot_ok = boot_ok and "requireInternal" in c
+    print(f"[*] App-Boot Pure JS Resolver Fallback:{'[PASS]' if boot_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok and boot_ok
     return all_ok
 
 
