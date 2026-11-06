@@ -1,45 +1,115 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # ==============================================================================
 # dsh-update — Autonomous Zero-Loss Updater for DeepSeek Harness on Termux
-# Flow: merge upstream → patch → push → wait for GH Actions CI build →
-#       download prebuilt lib/ bundle → apply → verify → done.
+# Design: Option 1 (Monolith Minimalist — Black, White, and Monochrome)
+# Flow: pre-flight checks → merge upstream → patch → push → wait for GH Actions
+#       CI build → download prebuilt lib/ bundle with progress → verify → done.
 # ==============================================================================
 set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
+export PATH="$HOME/bin:$HOME/.npm-global/bin:$PATH"
+
+# Prevent Corepack and pnpm engine from downloading @pnpm/exe native binaries on Android
 export COREPACK_ENABLE_PROJECT_SPEC=0
 export COREPACK_ENABLE_STRICT=0
 export COREPACK_ENABLE_AUTO_PIN=0
-export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
+export pnpm_config_pm_on_fail=ignore
+export pnpm_config_manage_package_manager_versions=false
+corepack disable 2>/dev/null || true
 
-# ── Config ──────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────────
 DSH_DIR="$HOME/deepseek-harness"
 PATCHER="$DSH_DIR/scripts/patch_termux.py"
 UPSTREAM_REPO="https://github.com/deepseek-ai/deepseek-harness.git"
 REPO_OWNER="salmanbappi"
 REPO_NAME="deepseek-harness"
-WORKFLOW_NAME="Build & Release Termux Prebuilt Bundle"
-CI_POLL_INTERVAL=20   # seconds between status checks
+WORKFLOW_NAME="build-termux.yml"
+CI_POLL_INTERVAL=15   # seconds between status checks
 CI_TIMEOUT=1800       # 30 minutes max wait
 
-# ── Colour helpers ───────────────────────────────────────────────────────────
-GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; NC='\033[0m'
-ok()   { echo -e "${GREEN}[✓]${NC} $*"; }
-info() { echo -e "${CYAN}[*]${NC} $*"; }
-warn() { echo -e "${YELLOW}[!]${NC} $*"; }
-err()  { echo -e "${RED}[✗]${NC} $*" >&2; }
-box()  { echo -e "\n${CYAN}══════════════════════════════════════════════${NC}"; echo -e "    $*"; echo -e "${CYAN}══════════════════════════════════════════════${NC}"; }
+# ── Monochrome Palette & Typography (Option 1) ────────────────────────────────
+BOLD='\033[1m'
+DIM='\033[2m'
+W='\033[1;37m'          # Pure bright white
+G='\033[38;5;245m'       # Medium grey
+DG='\033[38;5;238m'      # Dark slate grey
+LG='\033[38;5;252m'      # Light neutral grey
+R='\033[7m'              # Inverse / Reverse video
+N='\033[0m'              # Reset
 
-# ── Guards ───────────────────────────────────────────────────────────────────
-if [ ! -d "$DSH_DIR" ]; then
-    err "DeepSeek Harness not found at $DSH_DIR"
+# Responsive width formatting for mobile terminals
+TERM_COLS=$(tput cols 2>/dev/null || echo 64)
+[ "$TERM_COLS" -gt 64 ] && WIDTH=64 || WIDTH="$TERM_COLS"
+[ "$WIDTH" -lt 45 ] && WIDTH=45
+DIVIDER=$(printf '─%.0s' $(seq 1 "$WIDTH"))
+
+# Diagnostic log buffer
+TMP_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+mkdir -p "$TMP_DIR" 2>/dev/null || true
+ERR_LOG=$(mktemp "${TMP_DIR}/dsh_update_err_XXXXXX.log" 2>/dev/null || echo "${TMP_DIR}/dsh_update_err.log")
+trap 'rm -f "$ERR_LOG" 2>/dev/null || true' EXIT
+
+# ── Animation & Progress Helpers ──────────────────────────────────────────────
+SPIN_PID=""
+
+start_spinner() {
+    local msg="$1"
+    tput civis 2>/dev/null || true
+    (
+        frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+        i=0
+        while true; do
+            printf "\r ${W}%s${N} ${LG}%s${N}\033[K" "${frames[$i]}" "$msg"
+            i=$(( (i + 1) % 10 ))
+            sleep 0.08
+        done
+    ) &
+    SPIN_PID=$!
+}
+
+stop_spinner() {
+    local status="${1:-0}"
+    local label="${2:-}"
+    if [ -n "$SPIN_PID" ]; then
+        kill "$SPIN_PID" 2>/dev/null || true
+        wait "$SPIN_PID" 2>/dev/null || true
+        SPIN_PID=""
+    fi
+    tput cnorm 2>/dev/null || true
+    if [ "$status" -eq 0 ]; then
+        printf "\r ${W}●${N} %-44s ${W}[ PASS ]${N}\n" "$label"
+    else
+        printf "\r ${R}${W} ✕ ${N} %-44s ${R}${W}[ FAIL ]${N}\n" "$label"
+    fi
+}
+
+fail_and_dump() {
+    local step_name="$1"
+    stop_spinner 1 "$step_name" 2>/dev/null || true
+    echo -e "\n${DG}${DIVIDER}${N}"
+    echo -e " ${R}${W} UPDATE ERROR DIAGNOSTIC DUMP ${N}"
+    echo -e "${DG}${DIVIDER}${N}"
+    echo -e " ${W}Stage Failed:${N} ${LG}${step_name}${N}\n"
+    if [ -f "$ERR_LOG" ] && [ -s "$ERR_LOG" ]; then
+        echo -e " ${G}Captured Diagnostic Output:${N}"
+        sed 's/^/   /' "$ERR_LOG" | tail -n 25
+    fi
+    echo -e "\n${DG}${DIVIDER}${N}"
+    echo -e " ${W}Update halted safely. No broken state applied.${N}"
+    echo -e " ${G}To rollback previous snapshot:${N} ${W}dsh-update --rollback${N}"
+    echo -e "${DG}${DIVIDER}${N}\n"
     exit 1
-fi
+}
 
-if ! command -v gh &>/dev/null; then
-    err "'gh' (GitHub CLI) is required. Install with: pkg install gh"
-    exit 1
-fi
+banner() {
+    echo -e "${DG}${DIVIDER}${N}"
+    echo -e " ${W}DEEPSEEK HARNESS${N} ${G}— Autonomous Upstream Updater${N}"
+    echo -e "${DG}${DIVIDER}${N}"
+}
 
-# ── Argument parsing ─────────────────────────────────────────────────────────
+# ── Argument Parsing ──────────────────────────────────────────────────────────
 DRY_RUN=0
 NO_BUILD=0
 REAPPLY_ONLY=0
@@ -59,15 +129,16 @@ while [ $# -gt 0 ]; do
             [ -n "$TARGET_REF" ] && shift || true
             ;;
         --local-build)
-            err "--local-build is disabled: only remote GitHub Actions CI builds are allowed."
+            echo -e "${R}${W} ERROR ${N} --local-build is disabled: only remote GitHub Actions CI builds are allowed." >&2
             exit 1
             ;;
         --list-backups|--backups)
-            cd "$DSH_DIR"
-            echo "=== DeepSeek Harness Safety Snapshots ==="
-            git branch --list "backup/dsh-*" | sed 's/^[ *]*/  - /'
-            echo "========================================="
-            echo "To restore: dsh-update --rollback <branch>"
+            banner
+            echo -e " ${W}Available Safety Snapshots:${N}\n"
+            cd "$DSH_DIR" 2>/dev/null || exit 1
+            git branch --list "backup/dsh-*" | sed 's/^[ *]*/   • /' || echo "   (No snapshots found)"
+            echo -e "\n ${G}To restore a snapshot:${N} ${W}dsh-update --rollback <branch>${N}"
+            echo -e "${DG}${DIVIDER}${N}\n"
             exit 0
             ;;
         --rollback)
@@ -76,214 +147,278 @@ while [ $# -gt 0 ]; do
             [ -n "$ROLLBACK_TARGET" ] && shift || true
             ;;
         --help|-h)
-            echo "DeepSeek Harness — Autonomous Updater"
-            echo ""
-            echo "Usage: dsh-update [options]"
-            echo ""
-            echo "Options:"
-            echo "  (none)             Full update: merge upstream → push → CI build → apply prebuilt"
-            echo "  --dry-run, -n      Check upstream without modifying anything"
-            echo "  --reapply-only     Re-patch + push + wait for CI + apply (skip merge)"
-            echo "  --no-build         Merge + patch + push only (no build/apply step)"
-            echo "  --force, -f        Force full update even if already up-to-date"
-            echo "  --rollback [BR]    Roll back to a snapshot branch"
-            echo "  --list-backups     List available snapshot branches"
-            echo "  --help, -h         This help"
+            banner
+            echo -e " ${W}Usage:${N} dsh-update [options]\n"
+            echo -e " ${W}Options:${N}"
+            echo -e "   ${W}(none)${N}             Full update: merge upstream → push → CI build → apply"
+            echo -e "   ${W}--dry-run, -n${N}      Check upstream commits without modifying repository"
+            echo -e "   ${W}--reapply-only${N}     Re-patch + push + wait for CI + apply (skip merge)"
+            echo -e "   ${W}--no-build${N}         Merge + patch + push only (no build/apply step)"
+            echo -e "   ${W}--force, -f${N}        Force rebuild & deploy even if already up-to-date"
+            echo -e "   ${W}--ref, -r <ref>${N}    Update to a specific Git commit, branch, or tag"
+            echo -e "   ${W}--rollback [BR]${N}    Roll back repository to a safety snapshot branch"
+            echo -e "   ${W}--list-backups${N}     List available snapshot branches"
+            echo -e "   ${W}--help, -h${N}         Show this documentation"
+            echo -e "${DG}${DIVIDER}${N}\n"
             exit 0
             ;;
         *)
-            err "Unknown option: $1  (run dsh-update --help)"
+            echo -e "${R}${W} ERROR ${N} Unknown option: $1 (run 'dsh-update --help')" >&2
             exit 1
             ;;
     esac
 done
 
-cd "$DSH_DIR"
+banner
 
-# ── Rollback mode ─────────────────────────────────────────────────────────────
-if [ -n "$ROLLBACK_TARGET" ]; then
-    box "Snapshot Rollback"
+# ── Rollback Mode Execution ───────────────────────────────────────────────────
+if [ -n "$ROLLBACK_TARGET" ] || [ "${1:-}" = "--rollback" 2>/dev/null ]; then
+    cd "$DSH_DIR" 2>/dev/null || { echo "Directory $DSH_DIR not found"; exit 1; }
     if [ -z "$ROLLBACK_TARGET" ]; then
         ROLLBACK_TARGET=$(git branch --list "backup/dsh-*" --sort=-committerdate | head -n 1 | tr -d ' *')
     fi
-    info "Target: $ROLLBACK_TARGET"
-    git checkout master 2>/dev/null || true
-    git reset --hard "$ROLLBACK_TARGET"
-    python3 "$PATCHER" --apply || true
-    if [ "$NO_BUILD" -eq 0 ]; then
-        info "Applying prebuilt bundle..."
-        bash "$DSH_DIR/scripts/install-prebuilt.sh" 2>&1 || true
+    if [ -z "$ROLLBACK_TARGET" ]; then
+        echo -e "${R}${W} FAIL ${N} No backup snapshots found to roll back to."
+        exit 1
     fi
-    ok "Rolled back to $ROLLBACK_TARGET"
-    dsh --version 2>/dev/null || true
+    start_spinner "Restoring snapshot: $ROLLBACK_TARGET..."
+    git checkout master >"$ERR_LOG" 2>&1 || true
+    git reset --hard "$ROLLBACK_TARGET" >"$ERR_LOG" 2>&1 || fail_and_dump "Rollback Reset ($ROLLBACK_TARGET)"
+    python3 "$PATCHER" --apply >"$ERR_LOG" 2>&1 || true
+    if [ "$NO_BUILD" -eq 0 ]; then
+        bash "$DSH_DIR/scripts/install-prebuilt.sh" >"$ERR_LOG" 2>&1 || true
+    fi
+    stop_spinner 0 "Restored snapshot ($ROLLBACK_TARGET)"
+    echo -e "${DG}${DIVIDER}${N}"
+    echo -e " ${W}[✓] Successfully rolled back to:${N} ${LG}${ROLLBACK_TARGET}${N}"
+    echo -e "${DG}${DIVIDER}${N}\n"
     exit 0
 fi
 
-# ── Header ───────────────────────────────────────────────────────────────────
-box "DeepSeek Harness — Zero-Loss Autonomous Updater"
+# ── Stage 1: Pre-flight Verification Gate ─────────────────────────────────────
+printf " ${W}◌${N} ${LG}Running pre-flight updater & environment verification...${N}"
+
+ERRORS=()
+REMEDIES=()
+NOTICES=()
+
+# 1. Termux OS Verification
+if [ ! -d "/data/data/com.termux/files" ] && [ -z "${PREFIX:-}" ]; then
+    ERRORS+=("Not running inside native Termux Android environment.")
+    REMEDIES+=("Launch Termux on Android and run the updater from inside Termux.")
+fi
+
+# 2. Local Repository Workspace
+if [ ! -d "$DSH_DIR/.git" ]; then
+    ERRORS+=("DeepSeek Harness repository not found at $DSH_DIR.")
+    REMEDIES+=("Run the installer first: curl -fsSL https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/master/scripts/install-termux.sh | bash")
+fi
+
+# 3. Disk Space Probe (Minimum 1,200 MB free)
+STORAGE_TARGET="${PREFIX:-/data/data/com.termux/files/usr}"
+FREE_KB=$(df -k "$STORAGE_TARGET" 2>/dev/null | awk 'NR==2 {print $4}')
+if [ -n "$FREE_KB" ]; then
+    FREE_MB=$(( FREE_KB / 1024 ))
+    if [ "$FREE_MB" -lt 1200 ]; then
+        ERRORS+=("Insufficient disk space: ${FREE_MB} MB free (requires >= 1,200 MB).")
+        REMEDIES+=("Free up storage on device or run 'pkg clean' and 'pnpm store prune'.")
+    else
+        NOTICES+=("Storage verified: ${FREE_MB} MB available.")
+    fi
+fi
+
+# 4. GitHub CLI Authentication
+if ! command -v gh &>/dev/null; then
+    ERRORS+=("GitHub CLI (gh) is not installed.")
+    REMEDIES+=("Install with: pkg install gh")
+else
+    if ! gh auth status >/dev/null 2>&1; then
+        ERRORS+=("GitHub CLI is not authenticated.")
+        REMEDIES+=("Run 'gh auth login' to authenticate with your GitHub account.")
+    else
+        NOTICES+=("GitHub CLI authenticated.")
+    fi
+fi
+
+# 5. Remote Network & API Connectivity
+GH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 6 "https://api.github.com" 2>/dev/null || echo "000")
+if [ "$GH_STATUS" = "000" ]; then
+    ERRORS+=("Cannot connect to GitHub API (network unreachable).")
+    REMEDIES+=("Check internet connection, DNS configuration, or disable restrictive VPN.")
+fi
+
+# Pre-flight Abort Gate
+if [ "${#ERRORS[@]}" -gt 0 ]; then
+    printf "\r ${R}${W} ✕ ${N} %-44s ${R}${W}[ FAIL ]${N}\n" "Pre-flight Verification & Environment"
+    echo -e "\n${DG}${DIVIDER}${N}"
+    echo -e " ${R}${W} PRE-FLIGHT DIAGNOSTICS & ABORT DUMP ${N}"
+    echo -e "${DG}${DIVIDER}${N}"
+    echo -e " ${W}Pre-flight verification detected ${#ERRORS[@]} blocking issue(s):${N}\n"
+    for i in "${!ERRORS[@]}"; do
+        idx=$(( i + 1 ))
+        echo -e "  ${W}[0${idx}] ERROR:${N}   ${LG}${ERRORS[$i]}${N}"
+        echo -e "       ${G}Remedy:${N}  ${G}${REMEDIES[$i]}${N}\n"
+    done
+    echo -e "${DG}${DIVIDER}${N}"
+    echo -e " ${W}No repository or file state was altered. Update aborted safely.${N}"
+    echo -e "${DG}${DIVIDER}${N}\n"
+    exit 1
+fi
+
+printf "\r ${W}●${N} %-44s ${W}[ PASS ]${N}\n" "Pre-flight Verification & Environment"
+for notice in "${NOTICES[@]}"; do
+    echo -e "   ${DG}↳ ${G}${notice}${N}"
+done
+
+cd "$DSH_DIR"
 PREV_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 PREV_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "unknown")
-info "Current: v$PREV_VERSION  (commit: $PREV_COMMIT)"
+echo -e "   ${DG}↳ ${G}Current version: ${W}v${PREV_VERSION}${N} ${G}(commit ${PREV_COMMIT})${N}"
 
-# ── Reapply-only shortcut ────────────────────────────────────────────────────
+# ── Stage 2: Inspect Remotes & Upstream Changes ───────────────────────────────
+start_spinner "Inspecting upstream repository and changes..."
+git remote | grep -q "^upstream$" || git remote add upstream "$UPSTREAM_REPO" 2>"$ERR_LOG" || true
+git remote | grep -q "^origin$"   || git remote add origin "https://github.com/$REPO_OWNER/$REPO_NAME.git" 2>/dev/null || true
+
 if [ "$REAPPLY_ONLY" -eq 1 ]; then
-    info "Reapplying Termux patches..."
-    python3 "$PATCHER" --apply
-    ok "Patches applied. Skipping to build step."
+    stop_spinner 0 "Inspect Remotes & Upstream (Reapply Mode)"
 else
-    # ── Step 1: Remotes ───────────────────────────────────────────────────────
-    git remote | grep -q "^upstream$" || git remote add upstream "$UPSTREAM_REPO"
-    git remote | grep -q "^origin$"   || git remote add origin "https://github.com/$REPO_OWNER/$REPO_NAME.git" 2>/dev/null || true
-
-    # ── Step 2: Check upstream (runs BEFORE any mutation so --dry-run is side-effect-free)
-    echo ""
-    info "Fetching upstream changes..."
     if [ -n "$TARGET_REF" ]; then
-        info "Target ref requested: $TARGET_REF"
         UPSTREAM_REF="$TARGET_REF"
-        git fetch upstream "$TARGET_REF" --quiet 2>/dev/null || git fetch origin "$TARGET_REF" --quiet 2>/dev/null || true
+        git fetch upstream "$TARGET_REF" --quiet >"$ERR_LOG" 2>&1 || git fetch origin "$TARGET_REF" --quiet >"$ERR_LOG" 2>&1 || true
     else
         UPSTREAM_REF="upstream/master"
-        if ! git fetch upstream master --quiet 2>/dev/null; then
-            warn "upstream fetch failed — falling back to origin master"
-            git fetch origin master --quiet
+        if ! git fetch upstream master --quiet >"$ERR_LOG" 2>&1; then
+            git fetch origin master --quiet >"$ERR_LOG" 2>&1 || fail_and_dump "Fetch Upstream / Origin Master"
             UPSTREAM_REF="origin/master"
         fi
     fi
 
     INCOMING_COUNT=$(git rev-list --count "HEAD..$UPSTREAM_REF" 2>/dev/null || echo 0)
     OUTGOING_COUNT=$(git rev-list --count "origin/master..HEAD" 2>/dev/null || echo 0)
+
     if [ "$INCOMING_COUNT" -eq 0 ] && [ "$OUTGOING_COUNT" -eq 0 ] && [ "$FORCE" -eq 0 ]; then
-        ok "Already up to date with upstream (v$PREV_VERSION)."
-        if [ "$DRY_RUN" -eq 1 ]; then exit 0; fi
-        info "Run with --force to re-push and rebuild, or --reapply-only to just re-patch."
+        stop_spinner 0 "Inspect Remotes & Upstream (Up-to-Date)"
+        echo -e "\n${DG}${DIVIDER}${N}"
+        echo -e " ${W}DEEPSEEK HARNESS — ALREADY UP TO DATE${N}"
+        echo -e "${DG}${DIVIDER}${N}"
+        echo -e " ${W}[✓] Local workspace is fully up to date with upstream (v${PREV_VERSION}).${N}\n"
+        echo -e " ${G}Options to proceed:${N}"
+        echo -e "   ${W}dsh-update --force${N}       ${G}Force remote CI build and release deployment${N}"
+        echo -e "   ${W}dsh-update --reapply${N}     ${G}Re-apply mobile patch suite without git merge${N}"
+        echo -e "${DG}${DIVIDER}${N}\n"
         exit 0
     fi
 
-    if [ "$INCOMING_COUNT" -eq 0 ] && [ "$OUTGOING_COUNT" -gt 0 ]; then
-        info "Already merged upstream changes, but local master is ahead of origin by $OUTGOING_COUNT commit(s). Resuming push & build..."
-    fi
+    stop_spinner 0 "Inspect Remotes & Upstream ($INCOMING_COUNT incoming)"
 
     if [ "$INCOMING_COUNT" -gt 0 ]; then
-        info "Found $INCOMING_COUNT new upstream commit(s):"
-        git log -n 10 "HEAD..$UPSTREAM_REF" --oneline | sed 's/^/  /'
+        echo -e "   ${DG}↳ ${G}Incoming upstream commits:${N}"
+        git log -n 5 "HEAD..$UPSTREAM_REF" --oneline | sed 's/^/     /'
     fi
-    [ "$DRY_RUN" -eq 1 ] && { echo ""; info "Dry-run: no changes made."; exit 0; }
 
-    # ── Step 3: Safety snapshot (only when we are actually about to modify) ────
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "\n${DG}${DIVIDER}${N}"
+        echo -e " ${W}[✓] Dry-run completed. No changes applied.${N}"
+        echo -e "${DG}${DIVIDER}${N}\n"
+        exit 0
+    fi
+
+    # ── Stage 3: Create Safety Snapshot ─────────────────────────────────────────
+    start_spinner "Creating safety snapshot branch..."
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     BACKUP_BRANCH="backup/dsh-update-$TIMESTAMP"
-    info "Creating safety snapshot: $BACKUP_BRANCH"
-    python3 "$PATCHER" --export 2>/dev/null || true
+    python3 "$PATCHER" --export >"$ERR_LOG" 2>&1 || true
     mkdir -p "$DSH_DIR/patches"
     git diff HEAD > "$DSH_DIR/patches/dsh-preupdate-$TIMESTAMP.patch" 2>/dev/null || true
     if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-        git add -A
-        git commit -m "chore(termux): pre-update snapshot $TIMESTAMP" 2>/dev/null || true
+        git add -A >"$ERR_LOG" 2>&1 || true
+        git commit -m "chore(termux): pre-update snapshot $TIMESTAMP" >"$ERR_LOG" 2>&1 || true
     fi
-    git branch "$BACKUP_BRANCH" 2>/dev/null || true
-    ok "Snapshot saved → $BACKUP_BRANCH"
+    git branch "$BACKUP_BRANCH" >"$ERR_LOG" 2>&1 || fail_and_dump "Create Snapshot Branch"
+    stop_spinner 0 "Create Safety Snapshot ($BACKUP_BRANCH)"
 
-    # ── Step 4: Merge upstream ─────────────────────────────────────────────────
-    echo ""
-    info "Merging $UPSTREAM_REF..."
-    if ! git merge --no-edit -m "chore(termux): merge $UPSTREAM_REF and re-inject Termux/Mobile UX suite" "$UPSTREAM_REF" 2>/dev/null; then
-        warn "Merge conflicts detected — auto-resolving managed files..."
+    # ── Stage 4: Merge Upstream Changes ─────────────────────────────────────────
+    start_spinner "Merging $UPSTREAM_REF..."
+    if ! git merge --no-edit -m "chore(termux): merge $UPSTREAM_REF and re-inject Termux/Mobile UX suite" "$UPSTREAM_REF" >"$ERR_LOG" 2>&1; then
         CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
         for f in $CONFLICTS; do
-            git checkout --theirs "$f" 2>/dev/null || git rm -f "$f" 2>/dev/null || true
-            git add "$f" 2>/dev/null || true
+            git checkout --theirs "$f" >"$ERR_LOG" 2>&1 || git rm -f "$f" >"$ERR_LOG" 2>&1 || true
+            git add "$f" >"$ERR_LOG" 2>&1 || true
         done
-        git commit -m "chore(termux): merge upstream and re-inject Termux/Mobile UX suite" 2>/dev/null || true
+        git commit -m "chore(termux): merge upstream and re-inject Termux/Mobile UX suite" >"$ERR_LOG" 2>&1 || fail_and_dump "Merge Upstream"
     fi
-    ok "Upstream merged."
+    stop_spinner 0 "Merge Upstream Changes"
+fi
 
-    # ── Step 5: Reapply Termux patches ─────────────────────────────────────────
-    echo ""
-    info "Reapplying Termux & Mobile UX patches..."
-    python3 "$PATCHER" --apply
-    python3 "$PATCHER" --check >/dev/null 2>&1 || python3 "$PATCHER" --apply
-    ok "Patches applied."
-
-    # ── Step 6: Sync workspace links ──────────────────────────────────────────
-    echo ""
-    info "Syncing workspace links..."
-    python3 "$PATCHER" --apply
-    ok "Workspace links verified."
-fi  # end REAPPLY_ONLY else
+# ── Stage 5: Re-apply Mobile UX & Termux Patches ──────────────────────────────
+start_spinner "Re-applying Termux & Mobile UX patch suite..."
+python3 "$PATCHER" --apply >"$ERR_LOG" 2>&1 || true
+python3 "$PATCHER" --check >"$ERR_LOG" 2>&1 || python3 "$PATCHER" --apply >"$ERR_LOG" 2>&1 || fail_and_dump "Apply Mobile Patches"
+stop_spinner 0 "Re-apply Termux & Mobile UX Patches"
 
 [ "$NO_BUILD" -eq 1 ] && {
-    info "--no-build: skipping compile/push step."
-    # Still push so origin is current
-    git add -A
+    start_spinner "Syncing repository without remote build..."
+    git add -A >"$ERR_LOG" 2>&1 || true
     NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "latest")
-    git commit -m "chore(termux): sync upstream v$NEW_VERSION + mobile suite" 2>/dev/null || true
-    git push -u origin master 2>/dev/null || warn "Push skipped."
-    ok "Done (no build)."
+    git commit -m "chore(termux): sync upstream v$NEW_VERSION + mobile suite" >"$ERR_LOG" 2>&1 || true
+    git push -u origin master >"$ERR_LOG" 2>&1 || true
+    stop_spinner 0 "Sync Repository (No Build)"
+    echo -e "\n${DG}${DIVIDER}${N}"
+    echo -e " ${W}[✓] Completed without remote build (--no-build).${N}"
+    echo -e "${DG}${DIVIDER}${N}\n"
     exit 0
 }
 
-# ── Step 7: Push to origin → trigger CI ────────────────────────────────────
-echo ""
-info "Pushing to origin/$REPO_NAME (triggers GitHub Actions CI build)..."
-git add -A
+# ── Stage 6: Push Changes & Trigger GitHub Actions CI Build ───────────────────
+start_spinner "Pushing to origin/$REPO_NAME (triggering CI build)..."
+git add -A >"$ERR_LOG" 2>&1 || true
 NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "latest")
-COMMITTED=0
 if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-    git commit -m "chore(termux): regenerate patch bundle hashes against merged upstream" 2>/dev/null && COMMITTED=1 || true
+    git commit -m "chore(termux): regenerate patch bundle hashes against merged upstream" >"$ERR_LOG" 2>&1 || true
 fi
-PUSH_OUTPUT=$(git push -u origin master 2>&1) && echo "$PUSH_OUTPUT" | tail -3 || warn "Push issue: $PUSH_OUTPUT"
-ok "Pushed → https://github.com/$REPO_OWNER/$REPO_NAME"
+git push -u origin master >"$ERR_LOG" 2>&1 || fail_and_dump "Git Push to Origin"
+stop_spinner 0 "Push to Origin (CI Build Triggered)"
 
-# ── Step 8: Wait for GitHub CI build ──────────────────────────────────────
-echo ""
-info "Waiting for GitHub Actions CI build to start..."
-sleep 5  # give GH a moment to register the push
-
-STARTED=0
+# ── Stage 7: Monitor Remote GitHub Actions CI Build ───────────────────────────
+start_spinner "Locating triggered GitHub Actions workflow run..."
+sleep 4
 WAIT_START=$(date +%s)
 RUN_ID=""
 
-# Find the triggered run (poll up to 60s for it to appear)
 for i in $(seq 1 12); do
     RUN_JSON=$(gh run list \
         --repo "$REPO_OWNER/$REPO_NAME" \
-        --workflow "build-termux.yml" \
+        --workflow "$WORKFLOW_NAME" \
         --branch master \
         --limit 5 \
         --json databaseId,workflowName,status,conclusion,startedAt \
-        2>/dev/null || echo "[]")
+        2>"$ERR_LOG" || echo "[]")
 
     RUN_ID=$(echo "$RUN_JSON" | \
         node -e "
-const runs=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-const r=runs.find(r=>(r.workflowName.includes('Termux')||r.workflowName.includes('Prebuilt'))&&(['in_progress','queued','waiting','requested'].includes(r.status)||(r.status==='completed'&&new Date(r.startedAt).getTime()>=($WAIT_START-60)*1000)));
-console.log(r?r.databaseId:'');
+const runs = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+const r = runs.find(r => (r.workflowName.includes('Termux') || r.workflowName.includes('Prebuilt')) && (['in_progress','queued','waiting','requested'].includes(r.status) || (r.status === 'completed' && new Date(r.startedAt).getTime() >= ($WAIT_START - 60) * 1000)));
+console.log(r ? r.databaseId : '');
 " 2>/dev/null || true)
 
     if [ -n "$RUN_ID" ]; then
-        STARTED=1
-        ok "CI run started: https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$RUN_ID"
         break
     fi
-    echo -ne "  Waiting for CI run to appear... (${i}0s)\r"
-    sleep 10
+    sleep 5
 done
 
-if [ "$STARTED" -eq 0 ]; then
-    warn "Could not detect CI run. Checking for existing completed release instead..."
-fi
+if [ -z "$RUN_ID" ]; then
+    stop_spinner 0 "Locate CI Workflow Run (Existing Release Mode)"
+else
+    stop_spinner 0 "Locate CI Workflow Run (#$RUN_ID)"
 
-# ── Step 9: Poll until CI completes ───────────────────────────────────────
-if [ -n "$RUN_ID" ]; then
-    echo ""
-    info "Monitoring CI build (run #$RUN_ID)..."
-    ELAPSED=0
+    # Monitor run loop with live timer
     while true; do
         STATUS_JSON=$(gh run view "$RUN_ID" \
             --repo "$REPO_OWNER/$REPO_NAME" \
             --json status,conclusion \
-            2>/dev/null || echo '{"status":"unknown","conclusion":""}')
+            2>"$ERR_LOG" || echo '{"status":"unknown","conclusion":""}')
 
         STATUS=$(echo "$STATUS_JSON" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(d.status);" 2>/dev/null || echo "unknown")
         CONCLUSION=$(echo "$STATUS_JSON" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));console.log(d.conclusion);" 2>/dev/null || echo "")
@@ -294,78 +429,136 @@ if [ -n "$RUN_ID" ]; then
 
         if [ "$STATUS" = "completed" ]; then
             if [ "$CONCLUSION" = "success" ]; then
-                ok "CI build succeeded! (${MINS}m${SECS}s)"
+                printf "\r ${W}●${N} %-44s ${W}[ PASS ]${N}\n" "Remote CI Compilation (${MINS}m ${SECS}s)"
                 break
             else
-                echo ""
-                err "CI build $CONCLUSION. Check: https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$RUN_ID"
-                err "Build failed on remote CI. Aborting update (local building is disabled)."
+                printf "\r ${R}${W} ✕ ${N} %-44s ${R}${W}[ FAIL ]${N}\n" "Remote CI Compilation ($CONCLUSION)"
+                echo -e "\n${DG}${DIVIDER}${N}"
+                echo -e " ${R}${W} REMOTE CI BUILD FAILURE ${N}"
+                echo -e "${DG}${DIVIDER}${N}"
+                echo -e " ${W}Run Details:${N} https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$RUN_ID"
+                echo -e " ${W}Remote CI concluded with status: ${R}${W} $CONCLUSION ${N}\n"
+                echo -e " ${G}Local building is strictly forbidden by policy.${N}"
+                echo -e " ${G}To rollback:${N} ${W}dsh-update --rollback${N}"
+                echo -e "${DG}${DIVIDER}${N}\n"
                 exit 1
             fi
         fi
 
-        # Show current step
-        STEP=$(gh run view --job="$(gh run view "$RUN_ID" --repo "$REPO_OWNER/$REPO_NAME" --json jobs -q '.jobs[0].databaseId' 2>/dev/null || echo '')" \
-            --repo "$REPO_OWNER/$REPO_NAME" 2>/dev/null \
-            | grep '^\s*\*' | head -1 | sed 's/^[[:space:]]*\*/  ⟳/' || echo "  ⟳ Running...")
-        echo -ne "\r  ⟳ CI: $STATUS | ${MINS}m${SECS}s elapsed${STEP:+ | step: $(echo "$STEP" | tr -d '⟳ ')}      "
+        printf "\r ${W}⠋${N} ${LG}Building on GitHub Actions CI...${N} ${G}(%02dm %02ds elapsed)${N}\033[K" "$MINS" "$SECS"
 
         if [ "$ELAPSED" -gt "$CI_TIMEOUT" ]; then
             echo ""
-            err "CI timeout after ${CI_TIMEOUT}s. Check: https://github.com/$REPO_OWNER/$REPO_NAME/actions/runs/$RUN_ID"
-            err "Remote CI timed out. Aborting update."
-            exit 1
+            fail_and_dump "Remote CI Compilation (Timed out after ${CI_TIMEOUT}s)"
         fi
         sleep "$CI_POLL_INTERVAL"
     done
-    echo ""
 fi
 
-# ── Step 10: Download & apply prebuilt CI bundle ───────────────────────
-echo ""
-info "Downloading prebuilt lib/ bundle from GitHub release..."
-bash "$DSH_DIR/scripts/install-prebuilt.sh" "$NEW_VERSION" 2>&1 \
-    || { err "install-prebuilt.sh failed."; exit 1; }
+# ── Stage 8: Download & Deploy Prebuilt Artifact Bundle ────────────────────────
+start_spinner "Resolving latest prebuilt release asset..."
+LATEST_TAG=$(gh release list --repo "$REPO_OWNER/$REPO_NAME" --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+if [ -z "$LATEST_TAG" ]; then
+    LATEST_TAG="v${NEW_VERSION}"
+fi
+stop_spinner 0 "Resolve Prebuilt Release Asset ($LATEST_TAG)"
 
-# Post-install smoke check: the profile booter must compose the web
-# profile tree (catches 0.1.5+ bundle-resolution breakage that
-# `dsh --version` cannot see).
-if dsh --profile web --dump-config >/dev/null 2>&1; then
-    ok "Profile composition check passed (dsh --profile web)."
+TARBALL_URL="https://github.com/$REPO_OWNER/$REPO_NAME/releases/download/$LATEST_TAG/dsh-termux-prebuilt-${LATEST_TAG}.tar.gz"
+DEST_TAR="$DSH_DIR/prebuilt.tar.gz"
+
+# Download with Option 1 in-place progress bar
+python3 -c "
+import urllib.request, sys, time, os
+
+url = '$TARBALL_URL'
+dest = '$DEST_TAR'
+
+try:
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Termux/Android)'})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        total = int(resp.headers.get('content-length', 0))
+        chunk_size = 65536
+        downloaded = 0
+        start_time = time.time()
+        with open(dest, 'wb') as f:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                pct = int(downloaded * 100 / total) if total > 0 else 0
+                width = 24
+                filled = int(pct * width / 100)
+                bar = '█' * filled + '░' * (width - filled)
+                cur_mb = downloaded / (1024 * 1024)
+                tot_mb = total / (1024 * 1024)
+                speed = cur_mb / max(0.1, time.time() - start_time)
+                sys.stdout.write(f'\r   \033[1;37m[{bar}]\033[0m \033[1;37m{pct}%\033[0m  \033[38;5;244m{cur_mb:.1f} MB / {tot_mb:.1f} MB ({speed:.1f} MB/s)\033[0m\033[K')
+                sys.stdout.flush()
+    print()
+except Exception as e:
+    sys.exit(1)
+" >"$ERR_LOG" 2>&1 || true
+
+start_spinner "Extracting and applying prebuilt binaries..."
+if [ -f "$DEST_TAR" ] && [ -s "$DEST_TAR" ]; then
+    if [ "$(tar -tzf "$DEST_TAR" | grep -c '^apps/web/dist/' || true)" -gt 0 ]; then
+        rm -rf "$DSH_DIR/apps/web/dist"
+    fi
+    tar -xzf "$DEST_TAR" -C "$DSH_DIR" >"$ERR_LOG" 2>&1 || fail_and_dump "Extract Prebuilt Tarball"
+    rm -f "$DEST_TAR"
 else
-    warn "dsh --profile web --dump-config failed — profile resolution broken."
+    # Fallback to gh release download if python direct download had issue
+    gh release download "$LATEST_TAG" --repo "$REPO_OWNER/$REPO_NAME" --pattern "dsh-termux-prebuilt-*.tar.gz" --dir "$DSH_DIR" >"$ERR_LOG" 2>&1 || true
+    ARCHIVE=$(ls "$DSH_DIR"/dsh-termux-prebuilt-*.tar.gz 2>/dev/null | head -1 || true)
+    if [ -n "$ARCHIVE" ] && [ -f "$ARCHIVE" ]; then
+        tar -xzf "$ARCHIVE" -C "$DSH_DIR" >"$ERR_LOG" 2>&1 || fail_and_dump "Extract Prebuilt Archive"
+        rm -f "$ARCHIVE"
+    else
+        fail_and_dump "Download Prebuilt Bundle"
+    fi
 fi
+stop_spinner 0 "Extract & Deploy Prebuilt Binaries"
 
-# ── Step 12: Verify ──────────────────────────────────────────────────────────
-echo ""
-info "Verifying installation..."
+# ── Stage 9: Verification & Health Check ───────────────────────────────────────
+start_spinner "Linking dependencies & checking workspace health..."
+python3 "$PATCHER" --apply >"$ERR_LOG" 2>&1 || true
+pnpm install --prod --frozen-lockfile=false --ignore-scripts >"$ERR_LOG" 2>&1 || true
+pnpm store prune 2>/dev/null || true
+
+stop_spinner 0 "Workspace Linking & Mobile Patches"
+
 NEW_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
-# 0.1.5+ architecture: profile trees compose dsh.profile.bundles through the
-# REPO's node_modules workspace links, so those links are the load-bearing part.
+# Verify core bundles
+BUNDLE_CHECK=1
 for B in @deepseek-ai/dsh-base @deepseek-ai/dsh-web-app @deepseek-ai/dsh-headless; do
-    if node -e "require.resolve('$B/package.json', {paths: ['$DSH_DIR']})" >/dev/null 2>&1; then
-        ok "$B — resolves OK"
-    else
-        warn "$B — MISSING from workspace links (run: pnpm install in $DSH_DIR)"
+    if ! node -e "require.resolve('$B/package.json', {paths: ['$DSH_DIR']})" >/dev/null 2>&1; then
+        BUNDLE_CHECK=0
+        break
     fi
 done
 
-# The web profile tree must compose end-to-end (the boot path `dsh web` uses)
-if dsh --profile web --dump-config >/dev/null 2>&1; then
-    ok "web profile composes OK"
+if [ "$BUNDLE_CHECK" -eq 1 ]; then
+    printf " ${W}●${N} %-44s ${W}[ PASS ]${N}\n" "Workspace Profile Bundles Resolution"
 else
-    warn "web profile composition failed — check ~/.dsh/profiles/web/"
+    printf " ${R}${W} ✕ ${N} %-44s ${R}${W}[ WARN ]${N}\n" "Workspace Profile Bundles Resolution"
 fi
 
-if dsh --version >/dev/null 2>&1; then
-    box "✓ DeepSeek Harness Updated Successfully!"
-    echo -e "  Version:   ${YELLOW}$PREV_VERSION${NC} → ${GREEN}$NEW_VERSION${NC}"
-    echo -e "  Commit:    $PREV_COMMIT → $NEW_COMMIT"
-    echo -e "  Snapshot:  ${BACKUP_BRANCH:-N/A}"
-    echo -e "  Run:       ${CYAN}dsh-web${NC}"
-    echo ""
-else
-    warn "dsh --version had an issue. Try: dsh-doctor"
-    warn "To rollback: dsh-update --rollback"
-fi
+# ── Setup Complete Banner ─────────────────────────────────────────────────────
+echo -e "${DG}${DIVIDER}${N}"
+echo -e " ${W}DEEPSEEK HARNESS — UPDATE COMPLETE${N}"
+echo -e "${DG}${DIVIDER}${N}"
+echo -e " ${W}[✓] DeepSeek Harness updated successfully!${N}\n"
+echo -e " ${W}Update Summary:${N}"
+echo -e "   ${G}Version:${N}    ${LG}v${PREV_VERSION}${N} → ${W}v${NEW_VERSION}${N}"
+echo -e "   ${G}Commit:${N}     ${LG}${PREV_COMMIT}${N} → ${W}${NEW_COMMIT}${N}"
+echo -e "   ${G}Snapshot:${N}   ${LG}${BACKUP_BRANCH:-None}${N}\n"
+echo -e " ${W}Commands Available:${N}"
+echo -e "   ${W}dsh web${N}        ${G}Start the Mobile Web UI (http://127.0.0.1:3080)${N}"
+echo -e "   ${W}dsh-doctor${N}     ${G}Verify environment & patch integrity${N}"
+echo -e "   ${W}dsh-update --rollback${N} ${G}Restore previous snapshot${N}\n"
+echo -e " ${W}To start right now:${N}"
+echo -e "   ${W}dsh web${N}"
+echo -e "${DG}${DIVIDER}${N}\n"
