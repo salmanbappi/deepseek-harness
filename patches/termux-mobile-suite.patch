@@ -209,6 +209,20 @@ index 468ec82e24..59e8f866e8 100644
      defaultResolve(
        specifier: string,
        context: { parentURL?: string; conditions?: readonly string[] },
+diff --git a/packages/boot/app-boot/src/profile-resolution/worker-bootstrap.ts b/packages/boot/app-boot/src/profile-resolution/worker-bootstrap.ts
+index f19b5a281b..d3c6a794ec 100644
+--- a/packages/boot/app-boot/src/profile-resolution/worker-bootstrap.ts
++++ b/packages/boot/app-boot/src/profile-resolution/worker-bootstrap.ts
+@@ -9,4 +9,8 @@ const registration = getEnvironmentData(
+ ) as {
+   resolution: RuntimeResolution
+ } | undefined
+-if (registration !== undefined) installRuntimeInterception(registration.resolution)
++try {
++  if (registration !== undefined) installRuntimeInterception(registration.resolution)
++} catch {
++  // Gracefully fallback when worker environment lacks internal loaders
++}
 diff --git a/packages/boot/app-boot/src/profile.ts b/packages/boot/app-boot/src/profile.ts
 index 32719f2484..343b22b0e4 100644
 --- a/packages/boot/app-boot/src/profile.ts
@@ -2205,6 +2219,19 @@ index 3a556a982e..b2a1300f21 100644
  
  html,
  body,
+diff --git a/packages/experimental/inspector/src/host/bridge/controller.ts b/packages/experimental/inspector/src/host/bridge/controller.ts
+index 486ce2a1d7..095a903aac 100644
+--- a/packages/experimental/inspector/src/host/bridge/controller.ts
++++ b/packages/experimental/inspector/src/host/bridge/controller.ts
+@@ -293,7 +293,7 @@ function spawnWorker(boot: InspectorWorkerBoot<MessagePort>): Worker {
+   const options: WorkerOptions = {
+     workerData: boot,
+     transferList: [boot.hostSourcePort],
+-    execArgv: [],
++    execArgv: (process.execArgv || []).filter(arg => arg === '--expose-internals' || arg.startsWith('--max-old-space-size')),
+   }
+   if (!import.meta.url.endsWith('.ts')) {
+     return new Worker(new URL('./worker.js', import.meta.url), options)
 diff --git a/packages/experimental/speech-to-text-sensevoice/src/runtime.ts b/packages/experimental/speech-to-text-sensevoice/src/runtime.ts
 index 67da743073..5a69e3a7ad 100644
 --- a/packages/experimental/speech-to-text-sensevoice/src/runtime.ts

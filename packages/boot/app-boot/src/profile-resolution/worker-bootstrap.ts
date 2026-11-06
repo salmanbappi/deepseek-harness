@@ -9,4 +9,8 @@ const registration = getEnvironmentData(
 ) as {
   resolution: RuntimeResolution
 } | undefined
-if (registration !== undefined) installRuntimeInterception(registration.resolution)
+try {
+  if (registration !== undefined) installRuntimeInterception(registration.resolution)
+} catch {
+  // Gracefully fallback when worker environment lacks internal loaders
+}

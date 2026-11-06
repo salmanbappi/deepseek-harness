@@ -293,7 +293,7 @@ function spawnWorker(boot: InspectorWorkerBoot<MessagePort>): Worker {
   const options: WorkerOptions = {
     workerData: boot,
     transferList: [boot.hostSourcePort],
-    execArgv: [],
+    execArgv: (process.execArgv || []).filter(arg => arg === '--expose-internals' || arg.startsWith('--max-old-space-size')),
   }
   if (!import.meta.url.endsWith('.ts')) {
     return new Worker(new URL('./worker.js', import.meta.url), options)
