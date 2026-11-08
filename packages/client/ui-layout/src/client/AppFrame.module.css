@@ -488,11 +488,6 @@
     transform: scale(0.94);
   }
 
-  /* Prevent header content in center column from colliding with the floating mobile menu button */
-  .frame[data-sidebar-collapsed] .centerCol :global(header):not([data-plugin-header-part]) {
-    padding-left: 50px !important;
-  }
-
   .handle {
     display: none !important;
   }

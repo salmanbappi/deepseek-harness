@@ -1294,10 +1294,10 @@ index 9f8ed1d7b1..009df95bd2 100644
        caseName: 'edit omits old_string', name: 'edit',
        args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index fa1065dc56..fdf8a0e4a7 100644
+index fa1065dc56..ff5d2847ea 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -386,3 +386,119 @@
+@@ -386,3 +386,114 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -1401,11 +1401,6 @@ index fa1065dc56..fdf8a0e4a7 100644
 +    background: var(--dsw-alias-interactive-bg-hover);
 +    color: var(--dsw-alias-label-primary);
 +    transform: scale(0.94);
-+  }
-+
-+  /* Prevent header content in center column from colliding with the floating mobile menu button */
-+  .frame[data-sidebar-collapsed] .centerCol :global(header) {
-+    padding-left: 50px !important;
 +  }
 +
 +  .handle {
@@ -1561,6 +1556,65 @@ index e3d9b76252..991d645f04 100644
 +    padding-right: 12px;
 +  }
 +}
+diff --git a/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css b/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css
+index 1b6e2b58e3..7271565600 100644
+--- a/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css
++++ b/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css
+@@ -15,7 +15,7 @@
+ 
+   display: flex;
+   flex-direction: column;
+-  align-items: center;
++  align-items: flex-start;
+   box-sizing: border-box;
+   height: 100%;
+   /* Inline inset only: the 28px top inset belongs to the head row
+@@ -65,7 +65,7 @@
+   margin-inline: calc(-1 * var(--plugin-page-inset));
+   display: flex;
+   flex-direction: column;
+-  align-items: center;
++  align-items: flex-start;
+   gap: 32px;
+   box-sizing: border-box;
+   padding: 0 var(--plugin-page-inset) 48px;
+@@ -186,7 +186,7 @@
+ 
+ .pageIntro {
+   display: flex;
+-  align-items: center;
++  align-items: flex-start;
+   gap: 4px;
+   margin: 4px 0 0;
+   font-size: 13px;
+@@ -206,8 +206,8 @@
+   display: flex;
+   flex: 0 1 auto;
+   flex-wrap: wrap;
+-  align-items: center;
+-  justify-content: flex-end;
++  align-items: flex-start;
++  justify-content: flex-start;
+   gap: 8px 16px;
+   min-width: 0;
+   white-space: nowrap;
+@@ -256,14 +256,14 @@
+ 
+ .failure {
+   display: flex;
+-  align-items: center;
++  align-items: flex-start;
+   gap: 10px;
+   color: var(--dsw-alias-state-error-primary);
+ }
+ 
+ .statusWithDot {
+   display: inline-flex;
+-  align-items: center;
++  align-items: flex-start;
+   gap: 6px;
+ }
+ 
 diff --git a/packages/client/ui-primitives/src/Modal.module.css b/packages/client/ui-primitives/src/Modal.module.css
 index d1a67e6a61..01ccbc5713 100644
 --- a/packages/client/ui-primitives/src/Modal.module.css
