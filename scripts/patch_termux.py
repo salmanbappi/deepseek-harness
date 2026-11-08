@@ -657,17 +657,30 @@ def patch_node_addon_require_builtin():
         try:
             with open(app_boot_lib, "r", encoding="utf-8") as f:
                 content = f.read()
-            old = 'const addon = createRequire(import.meta.url)("node-addon-require-builtin");'
-            if old in content:
-                patched = content.replace(
-                    old,
-                    'let requireInternal;\n\ttry {\n\t\tconst addon = createRequire(import.meta.url)("node-addon-require-builtin");\n\t\trequireInternal = (moduleId) => addon.requireBuiltin(moduleId);\n\t} catch {\n\t\trequireInternal = (moduleId) => createRequire(import.meta.url)(moduleId);\n\t}',
-                    1
+            if "/* @termux-purejs-resolver */" not in content:
+                old = 'const addon = createRequire(import.meta.url)("node-addon-require-builtin");'
+                replacement = (
+                    '/* @termux-purejs-resolver */\n'
+                    '\tconst req = createRequire(import.meta.url);\n'
+                    '\tlet addon;\n'
+                    '\ttry {\n'
+                    '\t\taddon = req("node-addon-require-builtin");\n'
+                    '\t} catch {}\n'
+                    '\tconst requireInternal = (moduleId) => {\n'
+                    '\t\tif (addon && typeof addon.requireBuiltin === "function") {\n'
+                    '\t\t\ttry {\n'
+                    '\t\t\t\treturn addon.requireBuiltin(moduleId);\n'
+                    '\t\t\t} catch {}\n'
+                    '\t\t}\n'
+                    '\t\treturn req(moduleId);\n'
+                    '\t};'
                 )
-                patched = patched.replace('addon.requireBuiltin(', 'requireInternal(')
-                with open(app_boot_lib, "w", encoding="utf-8") as f:
-                    f.write(patched)
-                print("  [+] Patched app-boot lib/index.js pure JS resolver fallback.")
+                if old in content:
+                    patched = content.replace(old, replacement, 1)
+                    patched = patched.replace('addon.requireBuiltin(', 'requireInternal(')
+                    with open(app_boot_lib, "w", encoding="utf-8") as f:
+                        f.write(patched)
+                    print("  [+] Patched app-boot lib/index.js pure JS resolver fallback.")
         except Exception as e:
             print(f"  [!] Notice patching {app_boot_lib}: {e}")
 
