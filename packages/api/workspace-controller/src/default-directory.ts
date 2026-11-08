@@ -60,6 +60,9 @@ export async function defaultWorkspaceDirectory(
           + '[Environment+SpecialFolderOption]::DoNotVerify)',
         ], signal, 'hidden'))
         break
+      case 'android':
+        stdout = paths.join(internals.home ?? homedir(), 'storage', 'shared', 'documents')
+        break
       case 'linux':
         ({ stdout } = await run('xdg-user-dir', ['DOCUMENTS'], signal, 'hidden'))
         break

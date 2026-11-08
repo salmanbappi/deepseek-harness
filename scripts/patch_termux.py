@@ -1789,6 +1789,72 @@ export interface FsEditOp {
     return True
 
 
+def patch_workspace_default_directory():
+    """Patches defaultWorkspaceDirectory to support Android Termux without throwing missing Documents error."""
+    targets = [
+        os.path.join(REPO_DIR, "packages", "api", "workspace-controller", "src", "default-directory.ts"),
+        os.path.join(REPO_DIR, "packages", "api", "workspace-controller", "lib", "index.js"),
+    ]
+    patched = 0
+    for path in targets:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        if "case 'android':" in c or 'case "android":' in c:
+            continue
+        if "case 'linux':" in c:
+            anchor = "case 'linux':"
+            rep = "case 'android':\n        stdout = paths.join(internals.home ?? homedir(), 'storage', 'shared', 'documents')\n        break\n      case 'linux':"
+            c = c.replace(anchor, rep, 1)
+            patched += 1
+        elif 'case "linux":' in c:
+            anchor = 'case "linux":'
+            rep = 'case "android":\n\t\t\tstdout = paths.join(internals.home ?? homedir(), "storage", "shared", "documents");\n\t\t\tbreak;\n\t\tcase "linux":'
+            c = c.replace(anchor, rep, 1)
+            patched += 1
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(c)
+    if patched > 0:
+        print(f"  [+] Patched defaultWorkspaceDirectory for Android ({patched} files).")
+    return True
+
+
+def patch_subprocess_android():
+    """Ensures process group liveness and activity checks recognize platform === 'android'."""
+    targets = [
+        os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "spawn.ts"),
+        os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "terminal.ts"),
+    ]
+    lib_dir = os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "lib")
+    if os.path.exists(lib_dir):
+        for f in os.listdir(lib_dir):
+            if f.endswith(".js"):
+                targets.append(os.path.join(lib_dir, f))
+    patched = 0
+    for path in targets:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        orig = c
+        if "platform === 'linux' && linuxGroupHasLiveMembers(pid)" in c:
+            c = c.replace("platform === 'linux' && linuxGroupHasLiveMembers(pid)", "(platform === 'linux' || platform === 'android') && linuxGroupHasLiveMembers(pid)")
+        if 'platform === "linux" && linuxGroupHasLiveMembers(pid)' in c:
+            c = c.replace('platform === "linux" && linuxGroupHasLiveMembers(pid)', '(platform === "linux" || platform === "android") && linuxGroupHasLiveMembers(pid)')
+        if "this.platform === 'linux' && observed.complete === true" in c:
+            c = c.replace("this.platform === 'linux' && observed.complete === true", "(this.platform === 'linux' || this.platform === 'android') && observed.complete === true")
+        if 'this.platform === "linux" && observed.complete === true' in c:
+            c = c.replace('this.platform === "linux" && observed.complete === true', '(this.platform === "linux" || this.platform === "android") && observed.complete === true')
+        if c != orig:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(c)
+            patched += 1
+    if patched > 0:
+        print(f"  [+] Patched subprocess-local Android process group checks ({patched} files).")
+    return True
+
+
 def apply_git_patch():
     """Attempts git apply using the master patch bundle."""
     target_patch = PATCH_FILE if os.path.exists(PATCH_FILE) else LEGACY_PATCH_FILE
@@ -1994,8 +2060,24 @@ def check_status():
         boot_ok = boot_ok and "requireInternal" in c
     print(f"[*] App-Boot Pure JS Resolver Fallback:{'[PASS]' if boot_ok else '[FAIL]'}")
 
+    # 14. Workspace Default Directory (Android documents fallback)
+    ws_src = os.path.join(REPO_DIR, "packages", "api", "workspace-controller", "src", "default-directory.ts")
+    ws_ok = False
+    if os.path.exists(ws_src):
+        with open(ws_src, "r", encoding="utf-8") as f:
+            ws_ok = "case 'android':" in f.read()
+    print(f"[*] Android Workspace Default Dir:     {'[PASS]' if ws_ok else '[FAIL]'}")
+
+    # 15. Subprocess Process Group Liveness
+    sub_src = os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "spawn.ts")
+    sub_ok = False
+    if os.path.exists(sub_src):
+        with open(sub_src, "r", encoding="utf-8") as f:
+            sub_ok = "platform === 'android'" in f.read()
+    print(f"[*] Subprocess Group Liveness Check:   {'[PASS]' if sub_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok and boot_ok
+    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok and boot_ok and ws_ok and sub_ok
     return all_ok
 
 
@@ -2029,6 +2111,24 @@ def ensure_workspace_symlinks():
                     pass
     if count > 0:
         print(f"  [+] Linked {count} new workspace package(s) in node_modules/@deepseek-ai.")
+
+    # Hoist native addons to root node_modules
+    pnpm_dir = os.path.join(REPO_DIR, "node_modules", ".pnpm")
+    root_nm = os.path.join(REPO_DIR, "node_modules")
+    if os.path.exists(pnpm_dir):
+        try:
+            for entry in os.listdir(pnpm_dir):
+                if entry.startswith("sharp@") and not os.path.exists(os.path.join(root_nm, "sharp")):
+                    sharp_target = os.path.join(".pnpm", entry, "node_modules", "sharp")
+                    os.symlink(sharp_target, os.path.join(root_nm, "sharp"))
+                    print("  [+] Hoisted sharp to root node_modules.")
+                if entry.startswith("node-pty@") and not os.path.exists(os.path.join(root_nm, "node-pty")):
+                    pty_target = os.path.join(".pnpm", entry, "node_modules", "node-pty")
+                    os.symlink(pty_target, os.path.join(root_nm, "node-pty"))
+                    print("  [+] Hoisted node-pty to root node_modules.")
+        except Exception:
+            pass
+
     return True
 
 
@@ -2047,6 +2147,18 @@ def apply_all():
     patch_koffi()
     patch_node_addon_require_builtin()
     patch_node_pty()
+    patch_fs_ext()
+    patch_ripgrep()
+    patch_settings_mobile()
+    patch_llm_pi_ai_gateway()
+    patch_user_questions_mobile()
+    patch_trajectory_mobile()
+    patch_conversation_mobile()
+    patch_speech_to_text()
+    patch_bundle_layer_cache()
+    patch_fs_batch_edits()
+    patch_workspace_default_directory()
+    patch_subprocess_android()
     patch_fs_ext()
     patch_ripgrep()
     patch_settings_mobile()
