@@ -158,6 +158,29 @@ type HeldLock =
   | { readonly kind: 'win32'; readonly handle: number }
   | { readonly kind: 'marker'; readonly path: string; readonly handle: FileHandle }
 
+/**
+ * Sessions this process already holds a write claim for. Android has no
+ * `@deepseek-ai/node-addon-system/flock` build, so the kernel arbiter upstream
+ * relies on is unavailable there; a process-local set keeps the one property a
+ * phone still needs — a second write handle for a session already open here.
+ * Cross-process exclusion is unaffected on every other platform, which keeps
+ * the native path.
+ */
+const androidInProcessClaims = new Set<string>()
+
+/** Whether this process may take the session's write claim on Android. */
+function claimInProcess(dir: string): boolean {
+  const key = join(dir, LEASE_FILENAME)
+  if (androidInProcessClaims.has(key)) return false
+  androidInProcessClaims.add(key)
+  return true
+}
+
+/** Whether this process runs on Android, where the native flock addon is unavailable. */
+function isAndroidRuntime(): boolean {
+  return process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)
+}
+
 /** Whether a flock failure means another descriptor holds the lock. */
 function isLockContention(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
@@ -172,7 +195,7 @@ function isLockContention(error: unknown): boolean {
 export class SessionWriteLease {
   private released = false
 
-  private constructor(private readonly held: HeldLock) {}
+  private constructor(private readonly held: HeldLock, private readonly dir: string) {}
 
   /**
    * Acquire the session directory's kernel write lock.
@@ -196,7 +219,7 @@ export class SessionWriteLease {
         if ((error as NodeJS.ErrnoException | null)?.code === 'EBUSY') throw new SessionAlreadyOwnedError(id)
         throw error
       }
-      return new SessionWriteLease({ kind: 'win32', handle })
+      return new SessionWriteLease({ kind: 'win32', handle }, dir)
     }
     /* v8 ignore stop */
     if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id))
@@ -206,7 +229,11 @@ export class SessionWriteLease {
       const handle = await open(path, 'w')
       try {
         try {
-          await tryLockExclusive(handle.fd)
+          if (isAndroidRuntime()) {
+            if (!claimInProcess(dir)) throw new SessionAlreadyOwnedError(id)
+          } else {
+            await tryLockExclusive(handle.fd)
+          }
         } catch (error: unknown) {
           if (isLockContention(error)) throw new SessionAlreadyOwnedError(id)
           throw error
@@ -217,7 +244,7 @@ export class SessionWriteLease {
           throw error
         })
         if (current !== undefined && current.ino === held.ino && current.dev === held.dev) {
-          return new SessionWriteLease({ kind: 'posix', handle })
+          return new SessionWriteLease({ kind: 'posix', handle }, dir)
         }
       } catch (error: unknown) {
         await handle.close()
@@ -237,6 +264,7 @@ export class SessionWriteLease {
    * the stable inode later lockers verify against. Idempotent.
    */
   async release(): Promise<void> {
+    if (isAndroidRuntime()) androidInProcessClaims.delete(join(this.dir, LEASE_FILENAME))
     if (this.released) return
     this.released = true
     /* v8 ignore start -- native Windows coverage exercises this platform branch; Linux covers the POSIX peer */

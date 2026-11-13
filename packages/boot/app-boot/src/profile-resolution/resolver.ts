@@ -732,6 +732,7 @@ class ResolutionRouter {
 
 function internalModules(): InternalModules {
   const require = createRequire(import.meta.url)
+  /* @termux-purejs-resolver */
   let requireInternal: (moduleId: string) => unknown
   try {
     const addon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }

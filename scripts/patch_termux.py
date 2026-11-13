@@ -5,11 +5,11 @@ Maintains and applies:
 1. fs.link -> fs.rename fallback for Android filesystems (EACCES, EPERM, EXDEV, ENOSYS)
 2. Local authority auth bypass for mobile web UI (127.0.0.1, localhost, ::1, 0.0.0.0)
 3. Responsive Mobile UI/UX layouts, drawer, touch optimizations, and backdrops
-4. package.json --expose-internals runtime flag and @img/sharp-wasm32
+4. package.json --expose-internals runtime flag
 5. Koffi Android fallback stubs in node_modules
-6. node-pty arm64 native binary recompilation
-7. @vscode/ripgrep android-arm64 shim linking Termux's ripgrep (glob and grep tools)
-8. fs-ext android-arm64 addon for the session write lease (cached, else compiled)
+6. node-pty native binary recompilation for this device architecture
+7. @vscode/ripgrep android shim linking Termux's ripgrep (glob and grep tools)
+8. fs-ext android addon for the session write lease (cached, else compiled)
 """
 
 import os
@@ -22,10 +22,23 @@ REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATCH_DIR = os.path.join(REPO_DIR, "patches")
 PATCH_FILE = os.path.join(PATCH_DIR, "termux-mobile-suite.patch")
 LEGACY_PATCH_FILE = os.path.join(PATCH_DIR, "termux-environment.patch")
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dsh_arch import running_target, target_for  # noqa: E402
+
+# The prebuilds directory name node-pty and the other prebuild-aware addons
+# search is `<platform>-<process.arch>`. It was previously the literal
+# "android-arm64", which no 32-bit device matches and which every arm64 device
+# matched while holding a 32-bit binary. Derived from the running Node instead.
+TARGET = running_target()
+PREBUILD_DIR = TARGET.prebuild_dir
 # Where install-pty-prebuild.sh keeps the CI-built pty.node. pnpm re-extracts
 # node-pty on every install, so the binary has to be restored from outside the
 # workspace rather than rebuilt on the phone.
-NATIVE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "native", "android-arm64")
+NATIVE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "native", TARGET.cache_dir_name)
+
+# Marks the app-boot resolver fallback so a rerun recognizes its own output.
+TERMUX_RESOLVER_MARKER = "@termux-purejs-resolver"
 
 
 def ensure_patch_dir():
@@ -207,6 +220,100 @@ def patch_session_persistence():
     return True
 
 
+def patch_session_lease():
+    """Replaces the kernel flock lease with an in-process claim on Android.
+
+    Upstream locks a session directory through `tryLockExclusive` from
+    `@deepseek-ai/node-addon-system/flock`, a native addon. Android has no build
+    of that addon, so the import fails and every session dies at its first
+    write. The kernel arbiter exists to keep two *processes* from appending to
+    one log; on a phone a single `dsh` process owns every session, so an
+    in-process claim preserves the property that actually matters — two write
+    handles for one session in this process cannot coexist — without the addon.
+    Windows keeps its named-semaphore path untouched.
+    """
+    path = os.path.join(REPO_DIR, "packages", "session", "session-persistence-jsonl", "src", "lease.ts")
+    if not os.path.exists(path):
+        return False
+    with open(path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    if "androidInProcessClaims" in c:
+        return True
+    if "await tryLockExclusive(handle.fd)" not in c:
+        # Either upstream already removed the native flock (nothing to do) or the
+        # lock moved; distinguishing those needs a human, so say which one.
+        if "tryLockExclusive" in c:
+            print("  [!] session lease: tryLockExclusive call shape changed — reapply by hand against lease.ts")
+            return False
+        return True
+
+    claim_block = """
+/**
+ * Sessions this process already holds a write claim for. Android has no
+ * `@deepseek-ai/node-addon-system/flock` build, so the kernel arbiter upstream
+ * relies on is unavailable there; a process-local set keeps the one property a
+ * phone still needs — a second write handle for a session already open here.
+ * Cross-process exclusion is unaffected on every other platform, which keeps
+ * the native path.
+ */
+const androidInProcessClaims = new Set<string>()
+
+/** Whether this process may take the session's write claim on Android. */
+function claimInProcess(dir: string): boolean {
+  const key = join(dir, LEASE_FILENAME)
+  if (androidInProcessClaims.has(key)) return false
+  androidInProcessClaims.add(key)
+  return true
+}
+
+"""
+    # Anchor on the flock JSDoc so this lands with its peers instead of splitting
+    # the LEASE_FILENAME doc block from the constant it documents.
+    flock_doc = "/** Whether a flock failure means another descriptor holds the lock. */"
+    c = c.replace(flock_doc, claim_block.lstrip("\n") + flock_doc, 1)
+
+    helper = """
+/** Whether this process runs on Android, where the native flock addon is unavailable. */
+function isAndroidRuntime(): boolean {
+  return process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)
+}
+
+"""
+    c = c.replace("/** Whether a flock failure means another descriptor holds the lock. */", helper.lstrip("\n") + "/** Whether a flock failure means another descriptor holds the lock. */", 1)
+
+    # Take the in-process claim and skip the native call when it is the arbiter.
+    c = c.replace(
+        "        try {\n          await tryLockExclusive(handle.fd)\n        } catch (error: unknown) {",
+        "        try {\n"
+        "          if (isAndroidRuntime()) {\n"
+        "            if (!claimInProcess(dir)) throw new SessionAlreadyOwnedError(id)\n"
+        "          } else {\n"
+        "            await tryLockExclusive(handle.fd)\n"
+        "          }\n"
+        "        } catch (error: unknown) {",
+        1,
+    )
+
+    # The lease records its directory so release can free the claim; upstream's
+    # constructor is private and takes only the held lock, so widen both.
+    c = c.replace("  private constructor(private readonly held: HeldLock) {}",
+                  "  private constructor(private readonly held: HeldLock, private readonly dir: string) {}", 1)
+    c = c.replace("      return new SessionWriteLease({ kind: 'win32', handle })",
+                  "      return new SessionWriteLease({ kind: 'win32', handle }, dir)", 1)
+    c = c.replace("          return new SessionWriteLease({ kind: 'posix', handle })",
+                  "          return new SessionWriteLease({ kind: 'posix', handle }, dir)", 1)
+
+    # Release frees the claim so a later handle for the same session can open.
+    claims_release = "    if (isAndroidRuntime()) androidInProcessClaims.delete(join(this.dir, LEASE_FILENAME))\n"
+    c = re.sub(r"(  async release\(\): Promise<void> \{\n)", r"\1" + claims_release, c, count=1)
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(c)
+    print("  [+] Patched session lease for Android (in-process write claim).")
+    return True
+
+
 def patch_fs_local():
     """Patches packages/fs/fs-local/src/fsio.ts for Android link fallback in writeFileAtomic."""
     path = os.path.join(REPO_DIR, "packages", "fs", "fs-local", "src", "fsio.ts")
@@ -216,41 +323,46 @@ def patch_fs_local():
         c = f.read()
 
     modified = False
-    if "isAndroid" not in c or "isUnsupportedLinkErr" not in c:
+    if "isAndroid" not in c or "isUnsupportedLinkError" not in c:
         pat = re.compile(
             r"(\s*if \((?:options\.createIfAbsent|createIfAbsent !== undefined)\) \{\s*try \{\s*await linkFile\(tempPath, absolutePath\)\s*\} catch \(error: unknown\) \{)(.*?)(\s*\}\s*\} else if \(platform === 'win32')",
             re.DOTALL
         )
         repl = r"""\1
-        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
-        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
-          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
+        // Android filesystems commonly mount user storage on a filesystem where
+        // link(2) is unavailable or denied (sdcardfs, FUSE-backed external
+        // storage). Neither EACCES nor EPERM there means the destination is
+        // occupied, so the hard-link no-replace primitive cannot be used and the
+        // create falls back to rename after an explicit lstat of the target.
+        const isAndroid = platform === 'android' || Boolean(process.env.TERMUX_VERSION)
+        const isUnsupportedLinkError = error instanceof Error && 'code' in error && (
+          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' ||
+          error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
         )
 
-        if (isAndroid && isUnsupportedLinkErr) {
-          const targetDisplayPath = typeof displayPath !== 'undefined' ? displayPath : createIfAbsent?.displayPath
+        if (isAndroid && isUnsupportedLinkError) {
           let existing: BigIntStats | undefined
           try {
             existing = await inspectPublicationTarget(absolutePath)
           } catch (metadataError: unknown) {
             if (!isENOENT(metadataError) && !isENOTDIR(metadataError)) {
-              throw new FsError(`cannot write "${targetDisplayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
+              throw new FsError(`cannot write "${displayPath}": ${errorMessage(metadataError)}`, 'FS_IO_ERROR', { cause: metadataError })
             }
           }
 
           if (existing !== undefined) {
             if (!existing.isFile()) {
-              throw new FsError(`cannot write "${targetDisplayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
+              throw new FsError(`cannot write "${displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE', { cause: error })
             }
             throw new FsError(
-              `cannot overwrite existing "${targetDisplayPath}" without reading it first`,
+              `cannot overwrite existing "${displayPath}" without reading it first`,
               'FS_NOT_OBSERVED',
               { cause: error },
             )
           }
           await rename(tempPath, absolutePath)
         } else {
-          await throwGuardedCreateFailure(error, absolutePath, typeof displayPath !== 'undefined' ? displayPath : createIfAbsent.displayPath, inspectPublicationTarget)
+          await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget)
         }\3"""
         c = pat.sub(repl, c, count=1)
         modified = True
@@ -263,41 +375,86 @@ def patch_fs_local():
 
 
 def patch_browser_auth():
-    """Patches packages/client/connection/src/browser-auth.ts for local mobile web access."""
-    path = os.path.join(REPO_DIR, "packages", "client", "connection", "src", "browser-auth.ts")
-    if not os.path.exists(path):
-        return False
-    with open(path, "r", encoding="utf-8") as f:
-        c = f.read()
+    """Patches the browser-trust fence for local mobile web access.
 
-    modified = False
-    if "isLocalAuthority" not in c:
-        target = "  /**\n   * Verify the authority-bound browser cookie on a Host request."
-        method_code = """  private isLocalAuthority(authority: string): boolean {
+    Upstream moved this decision twice. It began as a `browser-auth.ts` cookie
+    check, which this patcher rewrote in place. Upstream then split it into
+    `loopback-hostname.ts` (the predicate) and `api-request-trust.ts` (the
+    fence), so the old path no longer exists and the old rewrite has nothing to
+    match. The fence now lives in `isTrustedApiRequest`, which already admits
+    loopback but not `0.0.0.0` — the address the phone's Web UI binds and the
+    one a browser on the device actually connects to. Widening the predicate is
+    the whole port; the fence itself is upstream's and stays.
+    """
+    connection = os.path.join(REPO_DIR, "packages", "client", "connection", "src")
+    loopback = os.path.join(connection, "loopback-hostname.ts")
+    legacy = os.path.join(connection, "browser-auth.ts")
+
+    # Current upstream layout: teach the loopback predicate the Android bind
+    # address. Guarded on the patched form so a second run is a no-op.
+    if os.path.exists(loopback):
+        with open(loopback, "r", encoding="utf-8") as f:
+            c = f.read()
+        if "ANDROID_BIND_ADDRESS" in c:
+            return True
+        marker = """export function isLoopbackHostname(hostname: string): boolean {"""
+        if marker not in c:
+            print("  [!] browser auth: isLoopbackHostname anchor did not match — reapply by hand against loopback-hostname.ts")
+            return False
+        patched = marker + """
+  // Termux serves the Web UI on 0.0.0.0, so a browser on the device reaches the
+  // Host through that literal rather than through 127.0.0.1. Upstream's fence
+  // treats it as an untrusted authority and answers 401 to every request, which
+  // makes the mobile Web UI unusable. Named so the Android-specific widening is
+  // visible at the call site rather than buried in the comparison below.
+  if (hostname === ANDROID_BIND_ADDRESS) return true"""
+        c = c.replace(marker, patched, 1)
+        if "const ANDROID_BIND_ADDRESS = '0.0.0.0'" not in c:
+            c = c.replace(
+                "export function isLoopbackHostname",
+                "const ANDROID_BIND_ADDRESS = '0.0.0.0'\n\nexport function isLoopbackHostname",
+                1,
+            )
+        with open(loopback, "w", encoding="utf-8") as f:
+            f.write(c)
+        print("  [+] Patched the loopback predicate for the Android bind address.")
+        return True
+
+    # Older upstream layout, kept so the patcher still works on a tree that has
+    # not taken the split yet.
+    if os.path.exists(legacy):
+        with open(legacy, "r", encoding="utf-8") as f:
+            c = f.read()
+        modified = False
+        if "isLocalAuthority" not in c:
+            target = "  /**\n   * Verify the authority-bound browser cookie on a Host request."
+            method_code = """  private isLocalAuthority(authority: string): boolean {
     const host = authority.split(':')[0]
     return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '0.0.0.0'
   }
 
   /**
    * Verify the authority-bound browser cookie on a Host request."""
-        if target in c:
-            c = c.replace(target, method_code)
-            modified = True
+            if target in c:
+                c = c.replace(target, method_code)
+                modified = True
 
-        if "if (authority !== undefined && this.isLocalAuthority(authority)) return true" not in c:
-            c = re.sub(
-                r"if \(this\.isAuthenticated\(req(?:,\s*secure)?\)\) return true\s*\n\s*this\.writeUnauthorized\(req, res\)",
-                "if (this.isAuthenticated(req, secure)) return true\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    this.writeUnauthorized(req, res)",
-                c
-            )
-            modified = True
+            if "if (authority !== undefined && this.isLocalAuthority(authority)) return true" not in c:
+                c = re.sub(
+                    r"if \(this\.isAuthenticated\(req(?:,\s*secure)?\)\) return true\s*\n\s*this\.writeUnauthorized\(req, res\)",
+                    "if (this.isAuthenticated(req, secure)) return true\n    if (authority !== undefined && this.isLocalAuthority(authority)) return true\n    this.writeUnauthorized(req, res)",
+                    c
+                )
+                modified = True
 
+        if modified:
+            with open(legacy, "w", encoding="utf-8") as f:
+                f.write(c)
+            print("  [+] Patched browser authentication for local mobile access.")
+        return True
 
-    if modified:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(c)
-        print("  [+] Patched browser authentication for local mobile access.")
-    return True
+    print("  [!] browser auth: neither loopback-hostname.ts nor browser-auth.ts exists — the fence moved again; update patch_browser_auth().")
+    return False
 
 
 def patch_package_json():
@@ -313,18 +470,10 @@ def patch_package_json():
         c = c.replace('"dsh": "node --import tsx/esm apps/cli/src/bin.ts"', '"dsh": "node --expose-internals --import tsx/esm apps/cli/src/bin.ts"')
         modified = True
 
-    if '"@img/sharp-wasm32"' not in c:
-        c = re.sub(
-            r'("devDependencies":\s*\{)',
-            r'"dependencies": {\n    "@img/sharp-wasm32": "^0.35.4"\n  },\n  \1',
-            c
-        )
-        modified = True
-
     if modified:
         with open(path, "w", encoding="utf-8") as f:
             f.write(c)
-        print("  [+] Patched package.json (--expose-internals, sharp-wasm32).")
+        print("  [+] Patched package.json (--expose-internals).")
     return True
 
 
@@ -524,36 +673,60 @@ def patch_app_frame():
         print("  [!] AppFrame.tsx anchors did not match — mobile drawer NOT applied. File may have changed upstream; update patch_app_frame().")
 
 
+
+
 def patch_model_select():
-    """Patches ModelSelect component for mobile pointerdown & dropdown sheet."""
+    """Detaches the model dropdown's root onBlur, which closes it mid-tap on touch.
+
+    On a touch screen the blur fires before the tap on an option lands, and
+    relatedTarget is unreliable there, so the menu closed before the selection
+    registered. The dropdown does not depend on onBlur to close: closeOutside
+    already listens for pointerdown and mousedown on the document, which covers
+    an outside tap for touch and pointer alike.
+
+    Upstream previously attached closeOutside through mousedown alone; it now
+    registers pointerdown itself, so the older event-type rewrite is gone.
+    """
     tsx_path = os.path.join(REPO_DIR, "packages", "client", "ui-model-selection", "src", "client", "ModelSelect.tsx")
-    if os.path.exists(tsx_path):
-        with open(tsx_path, "r", encoding="utf-8") as f:
-            c = f.read()
-        modified = False
-        if "pointerdown" not in c:
-            c = c.replace(
-                "const closeOutside = (event: MouseEvent): void => {",
-                "const closeOutside = (event: PointerEvent | MouseEvent): void => {"
-            )
-            c = c.replace(
-                "document.addEventListener('mousedown', closeOutside)",
-                "document.addEventListener('pointerdown', closeOutside)"
-            )
-            c = c.replace(
-                "return () => { document.removeEventListener('mousedown', closeOutside) }",
-                "return () => { document.removeEventListener('pointerdown', closeOutside) }"
-            )
-            modified = True
-        if "onBlur={onBlur}" in c:
-            c = c.replace(" onBlur={onBlur}", "")
-            if "void onBlur" not in c and "const onBlur" in c:
-                c = c.replace("    close()\n  }", "    close()\n  }\n  void onBlur")
-            modified = True
-        if modified:
-            with open(tsx_path, "w", encoding="utf-8") as f:
-                f.write(c)
-            print("  [+] Patched ModelSelect.tsx touch interactions.")
+    if not os.path.exists(tsx_path):
+        return False
+
+    with open(tsx_path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    if "void onBlur" in c and "onBlur={onBlur}" not in c:
+        return True
+
+    modified = False
+    if "onBlur={onBlur}" in c:
+        c = c.replace("\n      onBlur={onBlur}", "", 1)
+        modified = True
+
+    # Mark the handler as deliberately unused, and say why next to it. Anchoring
+    # on the closing brace of onBlur itself keeps this from landing on some
+    # other function that also ends in `close()\n  }`.
+    anchor = """    )) return
+    close()
+  }
+"""
+    if "void onBlur" not in c and anchor in c:
+        c = c.replace(anchor, anchor + """  // Deliberately detached from the root element: on a touch screen the blur
+  // fires before the tap on an option, and relatedTarget is unreliable there,
+  // so the menu closed before the selection landed. closeOutside already closes
+  // on an outside tap through pointerdown and mousedown, for touch and pointer
+  // alike, which is the path the dropdown relies on.
+  void onBlur
+""", 1)
+        modified = True
+
+    if not modified:
+        print("  [!] ModelSelect.tsx: onBlur anchor did not match — mobile dropdown fix NOT applied")
+        return False
+
+    with open(tsx_path, "w", encoding="utf-8") as f:
+        f.write(c)
+    print("  [+] Patched ModelSelect.tsx (detached the root onBlur for touch).")
+    return True
 
 
 def patch_koffi():
@@ -684,6 +857,48 @@ def patch_node_addon_require_builtin():
         except Exception as e:
             print(f"  [!] Notice patching {app_boot_lib}: {e}")
 
+    # 2. Patch the TypeScript source. Upstream moved this resolver out of the
+    # built lib/index.js and into src/profile-resolution/resolver.ts, where it
+    # reaches Node internals only through the native
+    # node-addon-require-builtin addon. Android has no build of that addon, so
+    # requireBuiltin is unavailable and every profile resolution fails.
+    # `createRequire` reaches the same internals on Node, which is what
+    # --expose-internals exists for.
+    resolver_src = os.path.join(
+        REPO_DIR, "packages", "boot", "app-boot", "src", "profile-resolution", "resolver.ts"
+    )
+    if os.path.exists(resolver_src):
+        try:
+            with open(resolver_src, "r", encoding="utf-8") as f:
+                content = f.read()
+            if TERMUX_RESOLVER_MARKER not in content:
+                old = (
+                    "  const require = createRequire(import.meta.url)\n"
+                    "  const addon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }\n"
+                )
+                replacement = (
+                    "  const require = createRequire(import.meta.url)\n"
+                    f"  /* {TERMUX_RESOLVER_MARKER} */\n"
+                    "  const nativeAddon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }\n"
+                    "  const addon = {\n"
+                    "    requireBuiltin(moduleId: string): unknown {\n"
+                    "      try {\n"
+                    "        return nativeAddon.requireBuiltin(moduleId)\n"
+                    "      } catch {\n"
+                    "        return require(moduleId)\n"
+                    "      }\n"
+                    "    },\n"
+                    "  }\n"
+                )
+                if old in content:
+                    with open(resolver_src, "w", encoding="utf-8") as f:
+                        f.write(content.replace(old, replacement, 1))
+                    print("  [+] Patched app-boot resolver.ts pure JS resolver fallback.")
+                else:
+                    print("  [!] app-boot resolver: internalModules() anchor did not match — reapply by hand against resolver.ts")
+        except Exception as e:
+            print(f"  [!] Notice patching {resolver_src}: {e}")
+
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
     if not os.path.exists(node_modules):
         return
@@ -722,7 +937,7 @@ def patch_node_addon_require_builtin():
 
 
 def patch_node_pty():
-    """Ensures node-pty has an android-arm64 native binary: cached CI build first, local compile second."""
+    """Ensures node-pty has a native binary for this device: cached CI build first, local compile second."""
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
     if not os.path.exists(node_modules):
         return
@@ -730,7 +945,7 @@ def patch_node_pty():
     for root, dirs, files in os.walk(node_modules):
         if "node-pty" in root and "binding.gyp" in files:
             pty_bin = os.path.join(root, "build", "Release", "pty.node")
-            prebuild_dir = os.path.join(root, "prebuilds", "android-arm64")
+            prebuild_dir = os.path.join(root, "prebuilds", PREBUILD_DIR)
             prebuild_bin = os.path.join(prebuild_dir, "pty.node")
             if os.path.exists(prebuild_bin):
                 continue
@@ -738,11 +953,11 @@ def patch_node_pty():
                 try:
                     os.makedirs(prebuild_dir, exist_ok=True)
                     subprocess.run(["cp", "-f", cached_bin, prebuild_bin], check=True)
-                    print("  [+] Restored android-arm64 pty.node from ~/.dsh/native cache.")
+                    print(f"  [+] Restored {PREBUILD_DIR} pty.node from ~/.dsh/native cache.")
                     continue
                 except Exception as e:
                     print(f"  [!] pty.node restore notice: {e}")
-            print("  [*] Building native node-pty for android-arm64...")
+            print(f"  [*] Building native node-pty for {PREBUILD_DIR}...")
             try:
                 subprocess.run(["npx", "node-gyp", "rebuild"], cwd=root, check=True, capture_output=True)
                 os.makedirs(prebuild_dir, exist_ok=True)
@@ -750,14 +965,14 @@ def patch_node_pty():
                     subprocess.run(["cp", "-f", pty_bin, prebuild_bin], check=True)
                     os.makedirs(NATIVE_CACHE_DIR, exist_ok=True)
                     subprocess.run(["cp", "-f", pty_bin, cached_bin], check=True)
-                    print("  [+] Compiled & installed android-arm64 pty.node (cached for next update).")
+                    print(f"  [+] Compiled & installed {PREBUILD_DIR} pty.node (cached for next update).")
             except Exception as e:
                 print(f"  [!] node-pty compile notice: {e}")
                 print("      Fix: bash scripts/install-pty-prebuild.sh  (fetches the CI-built binary)")
 
 
 def patch_fs_ext():
-    """Ensures fs-ext has its android-arm64 addon: cached build first, local compile second.
+    """Ensures fs-ext has its native addon for this device: cached build first, local compile second.
 
     Upstream 0.1.3 took fs-ext for the cross-process write lease. It builds from
     source in an install script, which every Termux install skips with
@@ -778,24 +993,24 @@ def patch_fs_ext():
             try:
                 os.makedirs(os.path.dirname(built), exist_ok=True)
                 subprocess.run(["cp", "-f", cached, built], check=True)
-                print("  [+] Restored android-arm64 fs_ext.node from ~/.dsh/native cache.")
+                print(f"  [+] Restored {PREBUILD_DIR} fs_ext.node from ~/.dsh/native cache.")
                 continue
             except Exception as e:
                 print(f"  [!] fs_ext.node restore notice: {e}")
-        print("  [*] Building fs-ext for android-arm64...")
+        print(f"  [*] Building fs-ext for {PREBUILD_DIR}...")
         try:
             subprocess.run(["npx", "node-gyp", "rebuild"], cwd=pkg, check=True, capture_output=True)
             if os.path.exists(built):
                 os.makedirs(NATIVE_CACHE_DIR, exist_ok=True)
                 subprocess.run(["cp", "-f", built, cached], check=True)
-                print("  [+] Compiled & cached android-arm64 fs_ext.node.")
+                print(f"  [+] Compiled & cached {PREBUILD_DIR} fs_ext.node.")
         except Exception as e:
             print(f"  [!] fs-ext compile notice: {e}")
             print("      The session write lease needs it: cd into the package and run `npx node-gyp rebuild`")
 
 
 def patch_ripgrep():
-    """Links Termux's ripgrep in as @vscode/ripgrep-android-arm64, which npm does not publish."""
+    """Links Termux's ripgrep in as @vscode/ripgrep-android-<arch>, which npm does not publish."""
     node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
     if not os.path.exists(node_modules):
         return
@@ -804,13 +1019,16 @@ def patch_ripgrep():
     if not os.path.exists(system_rg):
         print("  [!] ripgrep missing — the glob and grep tools need it: pkg install ripgrep")
         return
+    # @vscode/ripgrep resolves `@vscode/ripgrep-${process.platform}-${process.arch}`,
+    # so the shim must carry this device's arch or the resolver never looks at it.
+    shim_name = f"@vscode/ripgrep-android-{TARGET.node_arch}"
     manifest = (
         '{\n'
-        '  "name": "@vscode/ripgrep-android-arm64",\n'
+        f'  "name": "{shim_name}",\n'
         '  "version": "1.18.0",\n'
         '  "description": "Termux shim: npm publishes no Android platform package, so bin/rg links to the system ripgrep.",\n'
         '  "os": ["android"],\n'
-        '  "cpu": ["arm64"]\n'
+        f'  "cpu": ["{TARGET.node_arch}"]\n'
         '}\n'
     )
     count = 0
@@ -818,7 +1036,7 @@ def patch_ripgrep():
         # Only the dispatcher package; the platform packages share its prefix.
         if not entry.startswith("@vscode+ripgrep@"):
             continue
-        shim = os.path.join(node_modules, entry, "node_modules", "@vscode", "ripgrep-android-arm64")
+        shim = os.path.join(node_modules, entry, "node_modules", "@vscode", f"ripgrep-android-{TARGET.node_arch}")
         binary = os.path.join(shim, "bin", "rg")
         if os.path.islink(binary) or os.path.exists(binary):
             continue
@@ -835,21 +1053,22 @@ def patch_ripgrep():
 
 
 def patch_speech_to_text():
-    """Patches SenseVoice speech-to-text runtime for android-arm64 and installs native sherpa addon."""
+    """Patches SenseVoice speech-to-text runtime for this device arch and installs the native sherpa addon."""
     # 1. Source TS runtime
     src_runtime = os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice", "src", "runtime.ts")
     if os.path.exists(src_runtime):
         try:
             with open(src_runtime, "r", encoding="utf-8") as f:
                 c = f.read()
-            if "android-arm64" not in c and "supported = [" in c:
+            speech_arch = f"android-{TARGET.node_arch}"
+            if speech_arch not in c and "supported = [" in c:
                 c = c.replace(
                     "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']",
-                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64', 'android-arm64']",
+                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64', '" + speech_arch + "']",
                 )
                 with open(src_runtime, "w", encoding="utf-8") as f:
                     f.write(c)
-                print("  [+] Patched SenseVoice runtime.ts for android-arm64.")
+                print(f"  [+] Patched SenseVoice runtime.ts for {speech_arch}.")
         except Exception as e:
             print(f"  [!] SenseVoice runtime.ts patch notice: {e}")
 
@@ -859,14 +1078,15 @@ def patch_speech_to_text():
         try:
             with open(lib_index, "r", encoding="utf-8") as f:
                 c = f.read()
-            if "android-arm64" not in c:
+            speech_arch = f"android-{TARGET.node_arch}"
+            if speech_arch not in c:
                 old_list = '"win32-x64"\n\t].includes'
-                new_list = '"win32-x64",\n\t\t"android-arm64"\n\t].includes'
+                new_list = '"win32-x64",\n\t\t"' + speech_arch + '"\n\t].includes'
                 if old_list in c:
                     c = c.replace(old_list, new_list, 1)
                     with open(lib_index, "w", encoding="utf-8") as f:
                         f.write(c)
-                    print("  [+] Patched compiled SenseVoice lib/index.js for android-arm64.")
+                    print(f"  [+] Patched compiled SenseVoice lib/index.js for {speech_arch}.")
         except Exception as e:
             print(f"  [!] SenseVoice lib/index.js patch notice: {e}")
 
@@ -875,17 +1095,18 @@ def patch_speech_to_text():
         try:
             with open(lib_types_runtime, "r", encoding="utf-8") as f:
                 c = f.read()
-            if "android-arm64" not in c and "supported = [" in c:
+            speech_arch = f"android-{TARGET.node_arch}"
+            if speech_arch not in c and "supported = [" in c:
                 c = c.replace(
                     "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64']",
-                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64', 'android-arm64']",
+                    "supported = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-x64', '" + speech_arch + "']",
                 )
                 with open(lib_types_runtime, "w", encoding="utf-8") as f:
                     f.write(c)
         except Exception:
             pass
 
-    # 3. Native addon: restore from cache ~/.dsh/native/android-arm64/sherpa
+    # 3. Native addon: restore from the per-arch native cache.
     sherpa_cache = os.path.join(NATIVE_CACHE_DIR, "sherpa")
     cached_node = os.path.join(sherpa_cache, "sherpa-onnx.node")
     if not os.path.exists(cached_node):
@@ -902,7 +1123,7 @@ def patch_speech_to_text():
     node_modules = os.path.join(REPO_DIR, "node_modules")
     manifest = (
         '{\n'
-        '  "name": "sherpa-onnx-android-arm64",\n'
+        f'  "name": "sherpa-onnx-android-{TARGET.node_arch}",\n'
         '  "version": "1.13.8",\n'
         '  "description": "Prebuilt native binaries for sherpa-onnx on Android arm64",\n'
         '  "main": "sherpa-onnx.node",\n'
@@ -911,16 +1132,16 @@ def patch_speech_to_text():
         '}\n'
     )
 
-    targets = [os.path.join(node_modules, "sherpa-onnx-android-arm64")]
+    targets = [os.path.join(node_modules, f"sherpa-onnx-android-{TARGET.node_arch}")]
     pnpm_dir = os.path.join(node_modules, ".pnpm")
     sherpa_node_dirs = []
     if os.path.exists(pnpm_dir):
         for root, dirs, files in os.walk(pnpm_dir):
             if os.path.basename(root) == "sherpa-onnx-node":
                 sherpa_node_dirs.append(root)
-                targets.append(os.path.join(root, "node_modules", "sherpa-onnx-android-arm64"))
+                targets.append(os.path.join(root, "node_modules", f"sherpa-onnx-android-{TARGET.node_arch}"))
             elif "sherpa-onnx-node" in root and root.endswith("node_modules"):
-                targets.append(os.path.join(root, "sherpa-onnx-android-arm64"))
+                targets.append(os.path.join(root, f"sherpa-onnx-android-{TARGET.node_arch}"))
 
     count = 0
     for target in set(targets):
@@ -947,7 +1168,7 @@ def patch_speech_to_text():
                 pass
 
     if count > 0:
-        print(f"  [+] Restored sherpa-onnx-android-arm64 into {count} location(s).")
+        print(f"  [+] Restored sherpa-onnx-android-{TARGET.node_arch} into {count} location(s).")
 
 
 
@@ -994,6 +1215,7 @@ def patch_settings_mobile():
     panel_tail = "      </div>\n    </div>\n  )\n}\n"
 
     has_portal = "createPortal" in tsx
+    applied = []
 
     for marker, upstream, patched, label in (
         ("from 'react-dom'", react_import, react_import + "import { createPortal } from 'react-dom'\n", "react-dom import"),
@@ -1692,100 +1914,61 @@ def patch_bundle_layer_cache():
     return False
 
 
-def patch_fs_batch_edits():
-    """Patches packages/fs/fs-local and packages/fs/fs to retain batch edit operations."""
-    # 1. packages/fs/fs/src/index.ts
-    idx_path = os.path.join(REPO_DIR, "packages", "fs", "fs", "src", "index.ts")
-    if os.path.exists(idx_path):
-        with open(idx_path, "r", encoding="utf-8") as f:
-            idx_c = f.read()
-        if "FsEditOp" not in idx_c and "export type {" in idx_c:
-            idx_c = idx_c.replace("export type {", "export type {\n  FsEditOp,", 1)
-            with open(idx_path, "w", encoding="utf-8") as f:
-                f.write(idx_c)
 
-    # 2. packages/fs/fs/src/types.ts
-    types_path = os.path.join(REPO_DIR, "packages", "fs", "fs", "src", "types.ts")
-    if os.path.exists(types_path):
-        with open(types_path, "r", encoding="utf-8") as f:
-            types_c = f.read()
-        types_mod = False
-        if "export interface FsEditOp" not in types_c:
-            op_def = """/** An individual literal-replacement edit operation in a batch. */
-export interface FsEditOp {
-  oldString: string
-  newString: string
-  replaceAll?: boolean
-}
 
-"""
-            anchor = "export interface FsEditRequest {"
-            if anchor in types_c:
-                types_c = types_c.replace(anchor, op_def + anchor, 1)
-                types_mod = True
-        if "edits?: FsEditOp[]" not in types_c:
-            types_c = types_c.replace(
-                "oldString: string",
-                "oldString?: string",
-                1
-            )
-            types_c = types_c.replace(
-                "newString: string",
-                "newString?: string\n  edits?: FsEditOp[]",
-                1
-            )
-            types_mod = True
-        if types_mod:
-            with open(types_path, "w", encoding="utf-8") as f:
-                f.write(types_c)
+def patch_android_sandbox_default():
+    """Defaults the sandbox permission mode to danger-full-access on Android.
 
-    # 3. packages/fs/fs-local/src/index.ts
-    local_path = os.path.join(REPO_DIR, "packages", "fs", "fs-local", "src", "index.ts")
-    if os.path.exists(local_path):
-        with open(local_path, "r", encoding="utf-8") as f:
-            loc_c = f.read()
-        if "edit.edits" not in loc_c:
-            old_edit = """      const edited = applyLiteralEdit(original.content, edit.oldString, edit.newString, edit.replaceAll, target.displayPath)
-      const content = restoreLineEndings(edited.content, original.lineEndings)
-      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
+    PLATFORM_CHAINS in dsh-sandbox-local lists linux, darwin, and win32 only, so
+    Android — which reports `process.platform === 'android'`, not `'linux'` —
+    walks an empty runner chain and resolves to `unavailable`. With the default
+    `workspace-write` mode every command is then refused, and the harness fails
+    closed on the first tool call. Android offers no confinement runner to fall
+    back to, so the confined default is meaningless there and the unconfined
+    mode is the only usable one.
 
-      const after = await probe(target.targetKey)
-      return {
-        targetKey: target.targetKey,
-        // The LF-normalized before/after text (the applied-hunk diff basis);
-        // line-ending restoration is a storage detail the diff ignores.
-        before: original.content,
-        after: edited.content,
-      }"""
-            new_edit = """      let current = original.content
-      if (Array.isArray(edit.edits) && edit.edits.length > 0) {
-        for (const op of edit.edits) {
-          const res = applyLiteralEdit(current, op.oldString, op.newString, op.replaceAll ?? false, target.displayPath)
-          current = res.content
-        }
-      } else if (edit.oldString !== undefined && edit.newString !== undefined) {
-        const res = applyLiteralEdit(current, edit.oldString, edit.newString, edit.replaceAll ?? false, target.displayPath)
-        current = res.content
-      } else {
-        throw new FsError('Either (oldString and newString) or edits must be provided', 'FS_EDIT_NOT_FOUND')
-      }
-      const content = restoreLineEndings(current, original.lineEndings)
-      await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
+    An explicit DSH_PERMISSION_MODE still wins, so a user who wants the sandbox
+    asked for can still select it.
+    """
+    path = os.path.join(REPO_DIR, "packages", "bundle", "base", "cordis.patch.yml")
+    if not os.path.exists(path):
+        return False
 
-      const after = await probe(target.targetKey)
-      return {
-        targetKey: target.targetKey,
-        // The LF-normalized before/after text (the applied-hunk diff basis);
-        // line-ending restoration is a storage detail the diff ignores.
-        before: original.content,
-        after: current,
-      }"""
-            if old_edit in loc_c:
-                loc_c = loc_c.replace(old_edit, new_edit, 1)
-                with open(local_path, "w", encoding="utf-8") as f:
-                    f.write(loc_c)
-                print("  [+] Patched fs-local batch edits support.")
-                return True
+    with open(path, "r", encoding="utf-8") as f:
+        c = f.read()
+
+    original = "mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'"
+    replacement = (
+        "mode: !!js process.env.DSH_PERMISSION_MODE ?? "
+        "(process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
+    )
+    if replacement in c:
+        return True
+    if original not in c:
+        print("  [!] Android sandbox default: sandbox-policy mode anchor not found")
+        return False
+
+    c = c.replace(original, replacement, 1)
+
+    # The user-approval policy derives from the same default. Without this the
+    # unconfined Android default would still prompt for every command.
+    approval_original = (
+        "policy: !!js \"(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === "
+        "'danger-full-access' ? 'never' : 'ask'\""
+    )
+    approval_replacement = (
+        "policy: !!js \"(process.env.DSH_PERMISSION_MODE ?? "
+        "(process.platform === 'android' ? 'danger-full-access' : 'workspace-write')) "
+        "=== 'danger-full-access' ? 'never' : 'ask'\""
+    )
+    if approval_original in c:
+        c = c.replace(approval_original, approval_replacement, 1)
+    else:
+        print("  [!] Android sandbox default: user-approval policy anchor not found")
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(c)
+    print("  [+] Patched cordis.patch.yml (Android sandbox defaults to unconfined).")
     return True
 
 
@@ -1821,10 +2004,20 @@ def patch_workspace_default_directory():
 
 
 def patch_subprocess_android():
-    """Ensures process group liveness and activity checks recognize platform === 'android'."""
+    """Makes subprocess process-group handling work on Android.
+
+    Two upstream assumptions break here. The liveness probe runs the Linux
+    process-group inspector behind an explicit platform gate
+    (`platform === 'linux'`), and the inspector factory rejects Android
+    outright — `createProcessInspector` throws for anything outside
+    linux/darwin/win32. Android is Linux: it has /proc and the same process
+    table, so the Linux inspector is the right implementation and the gate is
+    what needs widening.
+    """
     targets = [
         os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "spawn.ts"),
         os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "terminal.ts"),
+        os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "process-inspector.ts"),
     ]
     lib_dir = os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "lib")
     if os.path.exists(lib_dir):
@@ -1846,6 +2039,25 @@ def patch_subprocess_android():
             c = c.replace("this.platform === 'linux' && observed.complete === true", "(this.platform === 'linux' || this.platform === 'android') && observed.complete === true")
         if 'this.platform === "linux" && observed.complete === true' in c:
             c = c.replace('this.platform === "linux" && observed.complete === true', '(this.platform === "linux" || this.platform === "android") && observed.complete === true')
+        # Current upstream: the gate moved onto the helper call inside alive().
+        if "directSettled && platform === 'linux'" in c:
+            c = c.replace("directSettled && platform === 'linux'", "directSettled && (platform === 'linux' || platform === 'android')")
+        if 'directSettled && platform === "linux"' in c:
+            c = c.replace('directSettled && platform === "linux"', 'directSettled && (platform === "linux" || platform === "android")')
+        # The inspector factory rejects Android outright, which fails at plugin
+        # load. Android is Linux and has the same process table.
+        if "if (platform === 'linux') return new LinuxProcessInspector(arch, internals)" in c:
+            c = c.replace(
+                "if (platform === 'linux') return new LinuxProcessInspector(arch, internals)",
+                "// Android is Linux: same /proc, same process table, same syscall numbers.\n"
+                "  if (platform === 'linux' || platform === 'android') return new LinuxProcessInspector(arch, internals)",
+            )
+        if 'if (platform === "linux") return new LinuxProcessInspector(arch, internals)' in c:
+            c = c.replace(
+                'if (platform === "linux") return new LinuxProcessInspector(arch, internals)',
+                '// Android is Linux: same /proc, same process table, same syscall numbers.\n'
+                '  if (platform === "linux" || platform === "android") return new LinuxProcessInspector(arch, internals)',
+            )
         if c != orig:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(c)
@@ -1943,13 +2155,18 @@ def check_status():
         sess_ok = "EACCES" in c and "rename" in c
     print(f"[*] Android Session Persistence:       {'[PASS]' if sess_ok else '[FAIL]'}")
 
-    # 3. Browser Auth bypass
-    auth_path = os.path.join(REPO_DIR, "packages", "client", "connection", "src", "browser-auth.ts")
+    # 3. Phone web access: the loopback predicate must admit the bind address.
+    #    Accept either upstream layout, since the fence moved from a
+    #    browser-auth.ts cookie check to loopback-hostname.ts.
+    connection = os.path.join(REPO_DIR, "packages", "client", "connection", "src")
     auth_ok = False
-    if os.path.exists(auth_path):
-        with open(auth_path, "r", encoding="utf-8") as f:
-            c = f.read()
-        auth_ok = "isLocalAuthority" in c
+    for name, marker in (("loopback-hostname.ts", "ANDROID_BIND_ADDRESS"), ("browser-auth.ts", "isLocalAuthority")):
+        auth_path = os.path.join(connection, name)
+        if os.path.exists(auth_path):
+            with open(auth_path, "r", encoding="utf-8") as f:
+                auth_ok = marker in f.read()
+            if auth_ok:
+                break
     print(f"[*] Local Mobile Auth Bypass:          {'[PASS]' if auth_ok else '[FAIL]'}")
 
     # 4. Mobile Drawer UI
@@ -1961,14 +2178,16 @@ def check_status():
         frame_ok = ("onSidebarColClick" in c or "isMobile" in c) and ("drawerMask" in c or "mobileBackdrop" in c)
     print(f"[*] Responsive Mobile Drawer & UI:     {'[PASS]' if frame_ok else '[FAIL]'}")
 
-    # 5. Model Selection Touch Fix
+    # 5. Model dropdown onBlur detachment. Upstream carries onBlur on the root
+    #    element, so testing for "onBlur" alone would pass unpatched; require
+    #    the detached form instead.
     ms_path = os.path.join(REPO_DIR, "packages", "client", "ui-model-selection", "src", "client", "ModelSelect.tsx")
     ms_ok = False
     if os.path.exists(ms_path):
         with open(ms_path, "r", encoding="utf-8") as f:
             c = f.read()
-        ms_ok = "pointerdown" in c
-    print(f"[*] Touch & Dropdown Handling:         {'[PASS]' if ms_ok else '[FAIL]'}")
+        ms_ok = "void onBlur" in c and "onBlur={onBlur}" not in c
+    print(f"[*] Mobile Model Dropdown Blur:        {'[PASS]' if ms_ok else '[FAIL]'}")
 
     # 6. fs-local writeFileAtomic link fallback
     fs_path = os.path.join(REPO_DIR, "packages", "fs", "fs-local", "src", "fsio.ts")
@@ -1985,20 +2204,24 @@ def check_status():
     if os.path.exists(pkg_path):
         with open(pkg_path, "r", encoding="utf-8") as f:
             c = f.read()
-        pkg_ok = "--expose-internals" in c and "sharp-wasm32" in c
-    print(f"[*] Runtime Engine Flags & Wasm:       {'[PASS]' if pkg_ok else '[FAIL]'}")
+        pkg_ok = "--expose-internals" in c
+    print(f"[*] Runtime Engine Flags:              {'[PASS]' if pkg_ok else '[FAIL]'}")
 
-    # 8. Android session lease (flock fallback): 0.1.5's write lease takes a
-    #    kernel flock through a native addon that throws on android — the
-    #    marker-lease fallback in lease.ts is what makes session resume work
-    #    on Termux at all. If a merge drops it, EVERY session dies with
-    #    "flock is not supported on android-arm64" — so verify loudly.
+    # 8. Android session lease (flock fallback). The write lease must not depend
+    #    on the kernel flock the native addon provides, because Android has no
+    #    build of that addon — if this is missing, EVERY session dies at its
+    #    first write, so verify loudly. Two shapes count as satisfied: the
+    #    in-process claim this suite installs, and the marker lease the older
+    #    upstream line shipped. A tree is only broken when it has neither.
     lease_path = os.path.join(REPO_DIR, "packages", "session", "session-persistence-jsonl", "src", "lease.ts")
     lease_ok = False
     if os.path.exists(lease_path):
         with open(lease_path, "r", encoding="utf-8") as f:
             c = f.read()
-        lease_ok = "useMarkerLease" in c and "ERR_FLOCK_UNSUPPORTED_PLATFORM" in c and "acquireMarker" in c
+        lease_ok = (
+            ("androidInProcessClaims" in c and "claimInProcess" in c and "isAndroidRuntime" in c)
+            or ("useMarkerLease" in c and "acquireMarker" in c)
+        )
     print(f"[*] Android Session Lease (no flock):  {'[PASS]' if lease_ok else '[FAIL]'}")
 
     # 9. Mobile User Questions UI
@@ -2016,10 +2239,13 @@ def check_status():
     if os.path.exists(traj_path):
         with open(traj_path, "r", encoding="utf-8") as f:
             c = f.read()
+        # Assert the properties this patcher writes, by the names it writes them
+        # under. Pinning numeric values here meant the check failed whenever
+        # upstream renumbered a z-index, which says nothing about the port.
         traj_ok = (
             "isolation: isolate" in c
-            and "z-index: 20" in c
             and "white-space: normal" in c
+            and "overflow-wrap: anywhere" in c
             and "--dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2)" in c
             and ".detailBodySummary > .overview" in c
         )
@@ -2031,7 +2257,7 @@ def check_status():
     if os.path.exists(speech_path):
         with open(speech_path, "r", encoding="utf-8") as f:
             c = f.read()
-        speech_ok = "android-arm64" in c
+        speech_ok = f"android-{TARGET.node_arch}" in c
     print(f"[*] Local Speech (SenseVoice Android): {'[PASS]' if speech_ok else '[FAIL]'}")
 
     # 12. Mobile Settings Sheet & Back Button
@@ -2046,18 +2272,25 @@ def check_status():
         set_ok = "mobileHeader" in t and "mobileClose" in t and ".mobileHeader" in s and ".mobileClose" in s
     print(f"[*] Mobile Settings & Close Button:    {'[PASS]' if set_ok else '[FAIL]'}")
 
-    # 13. App-Boot Pure JS Resolver Fallback
+    # 13. App-Boot Pure JS Resolver Fallback. The resolver must not depend on the
+    #     native node-addon-require-builtin addon, which has no Android build.
+    #     Two shapes count: the wrapper this suite installs, and the older
+    #     requireInternal fallback the previous upstream line carried.
     boot_lib = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "index.js")
     boot_src = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "src", "profile-resolution", "resolver.ts")
     boot_ok = False
     if os.path.exists(boot_src):
         with open(boot_src, "r", encoding="utf-8") as f:
-            c = f.read()
-        boot_ok = "requireInternal" in c
-    if os.path.exists(boot_lib):
+            source = f.read()
+        boot_ok = TERMUX_RESOLVER_MARKER in source or "requireInternal" in source
+    else:
+        # No source resolver: an older upstream shape the lib/ patch covers, or
+        # a stripped tree. Neither is a failure on its own.
+        boot_ok = True
+    if boot_ok and os.path.exists(boot_lib):
         with open(boot_lib, "r", encoding="utf-8") as f:
-            c = f.read()
-        boot_ok = boot_ok and "requireInternal" in c
+            built = f.read()
+        boot_ok = TERMUX_RESOLVER_MARKER in built or "requireInternal" in built
     print(f"[*] App-Boot Pure JS Resolver Fallback:{'[PASS]' if boot_ok else '[FAIL]'}")
 
     # 14. Workspace Default Directory (Android documents fallback)
@@ -2068,16 +2301,50 @@ def check_status():
             ws_ok = "case 'android':" in f.read()
     print(f"[*] Android Workspace Default Dir:     {'[PASS]' if ws_ok else '[FAIL]'}")
 
-    # 15. Subprocess Process Group Liveness
-    sub_src = os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src", "spawn.ts")
+    # 15. Subprocess Process Group Liveness. Both halves matter: the liveness
+    #     gate must recognize android, and the inspector factory must not reject
+    #     it at plugin load.
+    sub_dir = os.path.join(REPO_DIR, "packages", "subprocess", "subprocess-local", "src")
+    sub_spawn = os.path.join(sub_dir, "spawn.ts")
+    sub_inspector = os.path.join(sub_dir, "process-inspector.ts")
     sub_ok = False
-    if os.path.exists(sub_src):
-        with open(sub_src, "r", encoding="utf-8") as f:
+    if os.path.exists(sub_spawn):
+        with open(sub_spawn, "r", encoding="utf-8") as f:
+            sub_ok = "platform === 'android'" in f.read()
+    if sub_ok and os.path.exists(sub_inspector):
+        with open(sub_inspector, "r", encoding="utf-8") as f:
             sub_ok = "platform === 'android'" in f.read()
     print(f"[*] Subprocess Group Liveness Check:   {'[PASS]' if sub_ok else '[FAIL]'}")
 
+    # 16. Android sandbox default. Android walks an empty PLATFORM_CHAINS entry,
+    #     so a confined default refuses every command. Both the mode and the
+    #     approval policy derived from it must know about android.
+    sandbox_path = os.path.join(REPO_DIR, "packages", "bundle", "base", "cordis.patch.yml")
+    sandbox_ok = False
+    if os.path.exists(sandbox_path):
+        with open(sandbox_path, "r", encoding="utf-8") as f:
+            c = f.read()
+        sandbox_ok = "process.platform === 'android' ? 'danger-full-access'" in c
+    print(f"[*] Android Sandbox Default:           {'[PASS]' if sandbox_ok else '[FAIL]'}")
+
     print("==================================================")
-    all_ok = att_ok and sess_ok and auth_ok and frame_ok and ms_ok and fs_ok and pkg_ok and lease_ok and qc_ok and traj_ok and speech_ok and set_ok and boot_ok and ws_ok and sub_ok
+    results = [
+        ("attachment-store", att_ok), ("session-persistence", sess_ok),
+        ("browser-auth", auth_ok), ("app-frame", frame_ok),
+        ("model-select", ms_ok), ("fs-local", fs_ok), ("package-json", pkg_ok),
+        ("session-lease", lease_ok), ("user-questions-mobile", qc_ok),
+        ("trajectory-mobile", traj_ok), ("speech-to-text", speech_ok),
+        ("settings-mobile", set_ok), ("node-addon-require-builtin", boot_ok),
+        ("workspace-default-directory", ws_ok), ("subprocess-android", sub_ok),
+        ("android-sandbox-default", sandbox_ok),
+    ]
+    verified = {name for name, _ok in results}
+    unverified = [name for name, _fn, has in patcher_suite() if not has and name not in verified]
+    if unverified:
+        # Naming these keeps a patcher without an invariant visible instead of
+        # letting the suite report all-green on a tree where it silently failed.
+        print(f"[i] No external invariant: {', '.join(unverified)}")
+    all_ok = all(ok for _name, ok in results)
     return all_ok
 
 
@@ -2132,45 +2399,55 @@ def ensure_workspace_symlinks():
     return True
 
 
+def patcher_suite():
+    """The ordered patch functions this suite applies exactly once each.
+
+    Returns:
+        `(name, function, has_invariant)` triples in apply order. `has_invariant`
+        records whether `check_status` can verify the patch from outside.
+    """
+    return [
+        ("attachment-store", patch_attachment_store, True),
+        ("session-persistence", patch_session_persistence, True),
+        ("session-lease", patch_session_lease, True),
+        ("fs-local", patch_fs_local, True),
+        ("browser-auth", patch_browser_auth, True),
+        ("package-json", patch_package_json, True),
+        ("app-frame", patch_app_frame, True),
+        ("model-select", patch_model_select, True),
+        ("koffi", patch_koffi, False),
+        ("node-addon-require-builtin", patch_node_addon_require_builtin, False),
+        ("node-pty", patch_node_pty, False),
+        ("fs-ext", patch_fs_ext, False),
+        ("ripgrep", patch_ripgrep, False),
+        ("settings-mobile", patch_settings_mobile, True),
+        ("llm-pi-ai-gateway", patch_llm_pi_ai_gateway, False),
+        ("user-questions-mobile", patch_user_questions_mobile, True),
+        ("trajectory-mobile", patch_trajectory_mobile, True),
+        ("conversation-mobile", patch_conversation_mobile, False),
+        ("speech-to-text", patch_speech_to_text, True),
+        ("bundle-layer-cache", patch_bundle_layer_cache, False),
+        ("workspace-default-directory", patch_workspace_default_directory, True),
+        ("android-sandbox-default", patch_android_sandbox_default, True),
+        ("subprocess-android", patch_subprocess_android, True),
+    ]
+
+
 def apply_all():
     print("[*] Applying DeepSeek Harness Termux & Mobile Environment Suite...")
-    apply_git_patch()
-    
+    if not apply_git_patch():
+        # The bundle is optional: the per-file patchers below are authoritative.
+        # Reporting it keeps a stale bundle visible instead of silent.
+        print("  [i] Patch bundle did not apply; per-file patchers carry the change.")
     ensure_workspace_symlinks()
-    patch_attachment_store()
-    patch_session_persistence()
-    patch_fs_local()
-    patch_browser_auth()
-    patch_package_json()
-    patch_app_frame()
-    patch_model_select()
-    patch_koffi()
-    patch_node_addon_require_builtin()
-    patch_node_pty()
-    patch_fs_ext()
-    patch_ripgrep()
-    patch_settings_mobile()
-    patch_llm_pi_ai_gateway()
-    patch_user_questions_mobile()
-    patch_trajectory_mobile()
-    patch_conversation_mobile()
-    patch_speech_to_text()
-    patch_bundle_layer_cache()
-    patch_fs_batch_edits()
-    patch_workspace_default_directory()
-    patch_subprocess_android()
-    patch_fs_ext()
-    patch_ripgrep()
-    patch_settings_mobile()
-    patch_llm_pi_ai_gateway()
-    patch_user_questions_mobile()
-    patch_trajectory_mobile()
-    patch_conversation_mobile()
-    patch_speech_to_text()
-    patch_bundle_layer_cache()
-    patch_fs_batch_edits()
-    
-    print("[+] All Termux & Mobile UX patches verified and active.")
+    for name, apply_patch, _has_invariant in patcher_suite():
+        try:
+            apply_patch()
+        except Exception as exc:
+            # One failing patcher must not strand the remaining patches, but it
+            # must not disappear either — name it and keep going.
+            print(f"  [!] Patcher {name} failed: {exc}")
+    print(f"[+] Applied {len(patcher_suite())} Termux & Mobile patches.")
     export_patch()
 
 

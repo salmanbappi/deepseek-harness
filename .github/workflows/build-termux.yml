@@ -1,3 +1,4 @@
+# Trigger registration: see FORK.md for the upstream sync procedure.
 name: Build & Release Termux Prebuilt Bundle
 
 on:
@@ -115,16 +116,28 @@ jobs:
 
           # Build the tar: lib/ dirs + browser bundle + root config files
           # (no node_modules, no .git)
-          tar -czf "$ARCHIVE" \
-            --exclude='*.ts' \
-            --exclude='*.tsx' \
-            --exclude='*.map' \
-            $LIB_DIRS \
-            apps/web/dist \
-            package.json \
-            pnpm-workspace.yaml \
-            pnpm-lock.yaml \
-            .npmrc
+          #
+          # The file list is selected with find rather than tar --exclude.
+          # `--exclude='*.ts'` also matches `*.d.ts`, which would strip the
+          # declaration files sitting beside their .js in every lib/ dir, and
+          # tar has no way to re-include them: a later --exclude cannot undo an
+          # earlier one. The installer extracts this archive into the live tree,
+          # so a missing .d.ts leaves the installed packages untyped. Select
+          # exactly what ships instead.
+          #
+          # lib/ drops .map (build artifacts for debugging the library), while
+          # apps/web/dist keeps them: install-prebuilt.sh extracts that
+          # directory wholesale and serves it as the browser client, where
+          # source maps are part of a normal Vite build.
+          { find $LIB_DIRS -type f \
+              ! -name '*.tsx' ! -name '*.map' ! -name '*.ts' \
+            ; find $LIB_DIRS -type f -name '*.d.ts' \
+            ; find apps/web/dist -type f \
+            ; printf '%s\n' package.json pnpm-workspace.yaml pnpm-lock.yaml \
+            ; } | sort -u > "$ARCHIVE.list"
+
+          echo "Archive entries: $(wc -l < "$ARCHIVE.list")"
+          tar -czf "$ARCHIVE" -T "$ARCHIVE.list"
 
           echo ""
           echo "Archive: $ARCHIVE  ($(du -sh "$ARCHIVE" | cut -f1))"

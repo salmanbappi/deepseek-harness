@@ -1,13 +1,15 @@
-name: node-pty prebuild (Termux android-arm64)
+# Trigger registration: see FORK.md for the upstream sync procedure.
+name: node-pty prebuild (Termux, all Android ABIs)
 
 # The Termux prebuilt-bundle workflow only ships compiled lib/ TypeScript, so a
-# `pnpm install --force` on the phone leaves node-pty with no android-arm64
-# binary and dsh dies at plugin load with:
+# `pnpm install` on the phone leaves node-pty with no Android binary and dsh
+# dies at plugin load with:
 #   Failed to load native module: pty.node, checked: build/Release, build/Debug,
-#   prebuilds/android-arm64
-# This workflow compiles that binary against bionic/aarch64 two independent
-# ways, load-tests them inside a real Termux aarch64 userland, and publishes the
-# winner as an artifact.
+#   prebuilds/android-<arch>
+# node-pty resolves `prebuilds/${process.platform}-${process.arch}`, so every
+# Android arch that can run Termux needs its own artifact. This workflow builds
+# arm64-v8a, armeabi-v7a, and x86_64 against bionic, and load-tests arm64 in a
+# real Termux userland.
 
 on:
   workflow_dispatch:
@@ -41,8 +43,32 @@ env:
 
 jobs:
   ndk:
-    name: NDK cross-compile (x64 host to aarch64/bionic)
+    name: NDK cross-compile (${{ matrix.abi }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # node_arch is the value Node reports as process.arch on the device;
+          # prebuild_dir is the directory node-pty searches.
+          - abi: arm64-v8a
+            node_arch: arm64
+            clang_triple: aarch64-linux-android
+            node_gyp_arch: arm64
+            elf_class: "ELF64"
+            elf_machine: AArch64
+          - abi: armeabi-v7a
+            node_arch: arm
+            clang_triple: armv7a-linux-androideabi
+            node_gyp_arch: arm
+            elf_class: "ELF32"
+            elf_machine: ARM
+          - abi: x86_64
+            node_arch: x64
+            clang_triple: x86_64-linux-android
+            node_gyp_arch: x64
+            elf_class: "ELF64"
+            elf_machine: X86-64
     steps:
       - uses: actions/setup-node@v4
         with:
@@ -64,8 +90,8 @@ jobs:
           NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-}}"
           [ -n "$NDK" ] && [ -d "$NDK" ] || { echo "::error::Android NDK not found on runner"; exit 1; }
           TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          export CC="$TC/aarch64-linux-android${ANDROID_API}-clang"
-          export CXX="$TC/aarch64-linux-android${ANDROID_API}-clang++"
+          export CC="$TC/${{ matrix.clang_triple }}${ANDROID_API}-clang"
+          export CXX="$TC/${{ matrix.clang_triple }}${ANDROID_API}-clang++"
           export LINK="$CXX"
           export AR="$TC/llvm-ar" NM="$TC/llvm-nm" RANLIB="$TC/llvm-ranlib" STRIP="$TC/llvm-strip"
           # bionic keeps forkpty()/openpty() in libc and ships no libutil. Termux
@@ -73,16 +99,27 @@ jobs:
           # empty archive is enough to make the flag resolve against the NDK sysroot.
           mkdir -p stub && "$AR" crs stub/libutil.a
           export LDFLAGS="-L$PWD/stub"
-          npx --yes node-gyp@11 rebuild --arch=arm64 --target="$NODE_TARGET" --verbose
+          npx --yes node-gyp@11 rebuild --arch=${{ matrix.node_gyp_arch }} --target="$NODE_TARGET" --verbose
           test -f build/Release/pty.node
 
-      - name: Verify ELF targets bionic/aarch64
+      - name: Verify ELF targets bionic/${{ matrix.abi }}
         working-directory: work/package
         run: |
           set -euo pipefail
           file build/Release/pty.node
           readelf -h build/Release/pty.node | grep -E 'Class|Machine|Type'
           readelf -d build/Release/pty.node | grep -E 'NEEDED|SONAME' || true
+          # The previous version of this step only printed Class and Machine, so
+          # a wrong-architecture binary passed and was published under a correct
+          # directory name. Assert both fields for the matrix entry.
+          CLASS=$(readelf -h build/Release/pty.node | awk -F: '/Class:/{gsub(/ /,"",$2); print $2}')
+          MACHINE=$(readelf -h build/Release/pty.node | awk -F: '/Machine:/{gsub(/^ +| +$/,"",$2); print $2}')
+          [ "$CLASS" = "${{ matrix.elf_class }}" ] || {
+            echo "::error::ELF class $CLASS, expected ${{ matrix.elf_class }} for ${{ matrix.abi }}"; exit 1; }
+          case "$MACHINE" in
+            *"${{ matrix.elf_machine }}"*) ;;
+            *) echo "::error::ELF machine '$MACHINE', expected ${{ matrix.elf_machine }} for ${{ matrix.abi }}"; exit 1 ;;
+          esac
           if readelf -W --dyn-syms build/Release/pty.node | grep -q 'GLIBC_'; then
             echo "::error::binary imports glibc symbols; it cannot load under bionic"
             exit 1
@@ -91,13 +128,14 @@ jobs:
       - name: Stage artifact
         run: |
           set -euo pipefail
-          mkdir -p out/prebuilds/android-arm64
-          cp work/package/build/Release/pty.node out/prebuilds/android-arm64/pty.node
-          cd out && sha256sum prebuilds/android-arm64/pty.node | tee pty.node.sha256
+          DIR="android-${{ matrix.node_arch }}"
+          mkdir -p "out/prebuilds/$DIR"
+          cp work/package/build/Release/pty.node "out/prebuilds/$DIR/pty.node"
+          cd out && sha256sum "prebuilds/$DIR/pty.node" | tee pty.node.sha256
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pty-android-arm64-ndk
+          name: pty-android-${{ matrix.node_arch }}-ndk
           path: out
           retention-days: 90
           if-no-files-found: error
@@ -106,6 +144,9 @@ jobs:
     name: Termux aarch64 build + load test
     runs-on: ubuntu-24.04-arm
     needs: [ndk]
+    # Only arm64 has a Termux docker image to load-test in. arm and x64 ship on
+    # the NDK build plus the ELF assertion above.
+    # Runs after the matrix legs; it loads the arm64 NDK artifact by name.
     if: ${{ !cancelled() }}
     # A cross-check, not a gate: the NDK binary still publishes if this fails.
     continue-on-error: true
@@ -206,28 +247,36 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          pattern: pty-android-arm64-*
+          pattern: pty-android-*
           path: dl
 
       - name: Pick the best binary and write a manifest
         run: |
           set -euo pipefail
-          T=dl/pty-android-arm64-termux/prebuilds/android-arm64/pty.node
-          N=dl/pty-android-arm64-ndk/prebuilds/android-arm64/pty.node
-          if [ -f "$T" ]; then
-            SRC="$T"; ORIGIN=termux-docker-aarch64-native
-          elif [ -f "$N" ]; then
-            SRC="$N"; ORIGIN=android-ndk-cross-compile
-          else
-            echo "::error::no build job produced a pty.node"; exit 1
-          fi
-          mkdir -p out/prebuilds/android-arm64
-          cp "$SRC" out/prebuilds/android-arm64/pty.node
-          SHA=$(sha256sum out/prebuilds/android-arm64/pty.node | cut -d' ' -f1)
-          echo "$SHA  prebuilds/android-arm64/pty.node" > out/pty.node.sha256
-          cat > out/manifest.json <<JSON
+          set +e
+          PRODUCED=0
+          # One artifact per ABI; the arm64 one may also carry the Termux-tested
+          # build, which is preferred over the NDK cross-compile.
+          for ARCH in arm64 arm x64; do
+            DIR="android-$ARCH"
+            T="dl/pty-$DIR-termux/prebuilds/$DIR/pty.node"
+            N="dl/pty-$DIR-ndk/prebuilds/$DIR/pty.node"
+            if [ -f "$T" ]; then
+              SRC="$T"; ORIGIN=termux-docker-native
+            elif [ -f "$N" ]; then
+              SRC="$N"; ORIGIN=android-ndk-cross-compile
+            else
+              echo "::warning::no artifact for $DIR; that device arch will have no prebuilt pty"
+              continue
+            fi
+            mkdir -p "out/prebuilds/$DIR"
+            cp "$SRC" "out/prebuilds/$DIR/pty.node"
+            SHA=$(sha256sum "out/prebuilds/$DIR/pty.node" | cut -d' ' -f1)
+            echo "$SHA  prebuilds/$DIR/pty.node" >> out/pty.node.sha256
+            cat > "out/manifest-$DIR.json" <<JSON
           {
-            "platform": "android-arm64",
+            "platform": "$DIR",
+            "node_arch": "$ARCH",
             "node_pty_version": "${NODE_PTY_VERSION}",
             "node_target": "${NODE_TARGET}",
             "min_android_api": ${ANDROID_API},
@@ -237,8 +286,14 @@ jobs:
             "sha256": "${SHA}"
           }
           JSON
+            PRODUCED=$((PRODUCED+1))
+          done
+          [ "$PRODUCED" -gt 0 ] || { echo "::error::no build job produced a pty.node"; exit 1; }
+          # Keep manifest.json for arm64 so existing installers keep working.
+          [ -f out/manifest-android-arm64.json ] && cp out/manifest-android-arm64.json out/manifest.json
+          true
           {
-            echo "### node-pty prebuild — android-arm64"
+            echo "### node-pty prebuild — all Android ABIs"
             echo
             echo "| field | value |"
             echo "| --- | --- |"
@@ -255,7 +310,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: pty-android-arm64
+          name: pty-android-all
           path: out
           retention-days: 90
           if-no-files-found: error

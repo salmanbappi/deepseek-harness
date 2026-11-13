@@ -222,9 +222,6 @@
     "verify-provider-data": "tsx packages/llm/llm-pi-ai/scripts/gen-provider-data.ts --check",
     "verify-product-use": "tsx scripts/verify-product-use.ts"
   },
-  "dependencies": {
-    "@img/sharp-wasm32": "^0.35.4"
-  },
   "devDependencies": {
     "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",
     "@deepseek-ai/dsh-hooks-codex": "workspace:*",

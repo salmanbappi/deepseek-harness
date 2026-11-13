@@ -666,12 +666,18 @@ export async function writeFileAtomic(
       try {
         await linkFile(tempPath, absolutePath)
       } catch (error: unknown) {
-        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
-        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
-          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
+        // Android filesystems commonly mount user storage on a filesystem where
+        // link(2) is unavailable or denied (sdcardfs, FUSE-backed external
+        // storage). Neither EACCES nor EPERM there means the destination is
+        // occupied, so the hard-link no-replace primitive cannot be used and the
+        // create falls back to rename after an explicit lstat of the target.
+        const isAndroid = platform === 'android' || Boolean(process.env.TERMUX_VERSION)
+        const isUnsupportedLinkError = error instanceof Error && 'code' in error && (
+          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' ||
+          error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
         )
 
-        if (isAndroid && isUnsupportedLinkErr) {
+        if (isAndroid && isUnsupportedLinkError) {
           let existing: BigIntStats | undefined
           try {
             existing = await inspectPublicationTarget(absolutePath)

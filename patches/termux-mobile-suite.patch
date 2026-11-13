@@ -18,7 +18,7 @@ index ff3ca620b7..1458e23d10 100644
    <body>
      <div id="root"></div>
 diff --git a/package.json b/package.json
-index c4f130943d..0112815822 100644
+index c4f130943d..d237f56ee2 100644
 --- a/package.json
 +++ b/package.json
 @@ -208,7 +208,7 @@
@@ -30,16 +30,6 @@ index c4f130943d..0112815822 100644
      "demo:ptc": "node scripts/demo-ptc.mjs",
      "demo:inspector": "node --import tsx/esm apps/cli/src/bin.ts web --patch ./packages/experimental/inspector/cordis.source.patch.yml",
      "mock:llm": "node --import tsx packages/test-support/llm-mock-server/src/bin.ts",
-@@ -222,6 +222,9 @@
-     "verify-provider-data": "tsx packages/llm/llm-pi-ai/scripts/gen-provider-data.ts --check",
-     "verify-product-use": "tsx scripts/verify-product-use.ts"
-   },
-+  "dependencies": {
-+    "@img/sharp-wasm32": "^0.35.4"
-+  },
-   "devDependencies": {
-     "@deepseek-ai/dsh-hooks-claude-code": "workspace:*",
-     "@deepseek-ai/dsh-hooks-codex": "workspace:*",
 diff --git a/packages/api/workspace-controller/src/default-directory.ts b/packages/api/workspace-controller/src/default-directory.ts
 index b15fea8b94..8bcd57c344 100644
 --- a/packages/api/workspace-controller/src/default-directory.ts
@@ -189,15 +179,16 @@ index 6e7ff4b011..2339aa3ca3 100644
 +  })
  })
 diff --git a/packages/boot/app-boot/src/profile-resolution/resolver.ts b/packages/boot/app-boot/src/profile-resolution/resolver.ts
-index 468ec82e24..59e8f866e8 100644
+index 468ec82e24..1b0f30d062 100644
 --- a/packages/boot/app-boot/src/profile-resolution/resolver.ts
 +++ b/packages/boot/app-boot/src/profile-resolution/resolver.ts
-@@ -732,18 +732,24 @@ class ResolutionRouter {
+@@ -732,18 +732,25 @@ class ResolutionRouter {
  
  function internalModules(): InternalModules {
    const require = createRequire(import.meta.url)
 -  const addon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }
 -  const esmModule = addon.requireBuiltin('internal/modules/esm/loader') as {
++  /* @termux-purejs-resolver */
 +  let requireInternal: (moduleId: string) => unknown
 +  try {
 +    const addon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }
@@ -302,6 +293,28 @@ index 8fe686e478..0e900368d4 100644
          if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
          const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
          const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
+diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
+index d94f5cf2dd..80eb592852 100644
+--- a/packages/bundle/base/cordis.patch.yml
++++ b/packages/bundle/base/cordis.patch.yml
+@@ -243,7 +243,7 @@
+     - id: sandbox-policy
+       name: '@deepseek-ai/dsh-sandbox-policy'
+       config:
+-        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
++        mode: !!js process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')
+         workspaceRoot: !!js process.cwd()
+ 
+     - id: bash-sandbox
+@@ -259,7 +259,7 @@
+     - id: approval
+       name: '@deepseek-ai/dsh-user-approval'
+       config:
+-        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
++        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')) === 'danger-full-access' ? 'never' : 'ask'"
+ 
+     - id: permission
+       name: '@deepseek-ai/dsh-permission-presets'
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
 index 5c8594df6f..6038402071 100644
 --- a/packages/client/connection/src/browser-auth.ts
@@ -336,6 +349,26 @@ index 5c8594df6f..6038402071 100644
    /**
     * Exchange the launch token for an independent API operator; omitted interactions default to none.
     * @param req - trusted GET request on /connect with at most one interactions declaration.
+diff --git a/packages/client/connection/src/loopback-hostname.ts b/packages/client/connection/src/loopback-hostname.ts
+index fe2fe93fc9..eec998e494 100644
+--- a/packages/client/connection/src/loopback-hostname.ts
++++ b/packages/client/connection/src/loopback-hostname.ts
+@@ -9,7 +9,15 @@
+  * @param hostname - WHATWG URL hostname (IPv6 literals retain brackets).
+  * @returns true for localhost, IPv6 loopback, or any IPv4 address in 127/8.
+  */
++const ANDROID_BIND_ADDRESS = '0.0.0.0'
++
+ export function isLoopbackHostname(hostname: string): boolean {
++  // Termux serves the Web UI on 0.0.0.0, so a browser on the device reaches the
++  // Host through that literal rather than through 127.0.0.1. Upstream's fence
++  // treats it as an untrusted authority and answers 401 to every request, which
++  // makes the mobile Web UI unusable. Named so the Android-specific widening is
++  // visible at the call site rather than buried in the comparison below.
++  if (hostname === ANDROID_BIND_ADDRESS) return true
+   if (hostname === 'localhost' || hostname === '[::1]') return true
+   const parts = hostname.split('.')
+   return parts.length === 4
 diff --git a/packages/client/locale/src/client/LanguageRow.module.css b/packages/client/locale/src/client/LanguageRow.module.css
 index 794ec53652..6b3483804b 100644
 --- a/packages/client/locale/src/client/LanguageRow.module.css
@@ -2314,20 +2347,26 @@ index 67da743073..5a69e3a7ad 100644
    const lock = JSON.parse(readFileSync(new URL('../runtime/assets.json', import.meta.url), 'utf8')) as RuntimeLock
    const modelRoot = config.modelDirectory ?? join(config.dataRoot, 'models', 'sensevoice-onnx')
 diff --git a/packages/fs/fs-local/src/fsio.ts b/packages/fs/fs-local/src/fsio.ts
-index a6e3da2bba..ec6bb9c169 100644
+index a6e3da2bba..303284bf3e 100644
 --- a/packages/fs/fs-local/src/fsio.ts
 +++ b/packages/fs/fs-local/src/fsio.ts
-@@ -666,7 +666,35 @@ export async function writeFileAtomic(
+@@ -666,7 +666,41 @@ export async function writeFileAtomic(
        try {
          await linkFile(tempPath, absolutePath)
        } catch (error: unknown) {
 -        await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget)
-+        const isAndroid = (internals.platform ?? platform) === 'android' || (internals.platform === undefined && (process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)))
-+        const isUnsupportedLinkErr = error instanceof Error && 'code' in error && (
-+          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' || error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
++        // Android filesystems commonly mount user storage on a filesystem where
++        // link(2) is unavailable or denied (sdcardfs, FUSE-backed external
++        // storage). Neither EACCES nor EPERM there means the destination is
++        // occupied, so the hard-link no-replace primitive cannot be used and the
++        // create falls back to rename after an explicit lstat of the target.
++        const isAndroid = platform === 'android' || Boolean(process.env.TERMUX_VERSION)
++        const isUnsupportedLinkError = error instanceof Error && 'code' in error && (
++          error.code === 'EACCES' || error.code === 'EPERM' || error.code === 'EXDEV' ||
++          error.code === 'ENOSYS' || error.code === 'ENOTSUP' || error.code === 'EOPNOTSUPP'
 +        )
 +
-+        if (isAndroid && isUnsupportedLinkErr) {
++        if (isAndroid && isUnsupportedLinkError) {
 +          let existing: BigIntStats | undefined
 +          try {
 +            existing = await inspectPublicationTarget(absolutePath)
@@ -3087,10 +3126,10 @@ index f8351fa9ee..d4dc5eac6d 100644
        // Remove an unpublished temp on failure. After publication, defer cleanup
        // until the directory entry is durable so cleanup cannot reject a live log.
 diff --git a/packages/session/session-persistence-jsonl/src/lease.ts b/packages/session/session-persistence-jsonl/src/lease.ts
-index 59dfe27fca..7531f13284 100644
+index 59dfe27fca..8dc104b0f4 100644
 --- a/packages/session/session-persistence-jsonl/src/lease.ts
 +++ b/packages/session/session-persistence-jsonl/src/lease.ts
-@@ -28,21 +28,135 @@
+@@ -28,21 +28,158 @@
   * @module @deepseek-ai/dsh-session-persistence-jsonl/lease
   */
  
@@ -3225,18 +3264,83 @@ index 59dfe27fca..7531f13284 100644
    | { readonly kind: 'posix'; readonly handle: FileHandle }
    | { readonly kind: 'win32'; readonly handle: number }
 +  | { readonly kind: 'marker'; readonly path: string; readonly handle: FileHandle }
++
++/**
++ * Sessions this process already holds a write claim for. Android has no
++ * `@deepseek-ai/node-addon-system/flock` build, so the kernel arbiter upstream
++ * relies on is unavailable there; a process-local set keeps the one property a
++ * phone still needs — a second write handle for a session already open here.
++ * Cross-process exclusion is unaffected on every other platform, which keeps
++ * the native path.
++ */
++const androidInProcessClaims = new Set<string>()
++
++/** Whether this process may take the session's write claim on Android. */
++function claimInProcess(dir: string): boolean {
++  const key = join(dir, LEASE_FILENAME)
++  if (androidInProcessClaims.has(key)) return false
++  androidInProcessClaims.add(key)
++  return true
++}
++
++/** Whether this process runs on Android, where the native flock addon is unavailable. */
++function isAndroidRuntime(): boolean {
++  return process.platform === 'android' || Boolean(process.env.TERMUX_VERSION)
++}
  
  /** Whether a flock failure means another descriptor holds the lock. */
  function isLockContention(error: unknown): boolean {
-@@ -85,6 +199,7 @@ export class SessionWriteLease {
-       return new SessionWriteLease({ kind: 'win32', handle })
+@@ -58,7 +195,7 @@ function isLockContention(error: unknown): boolean {
+ export class SessionWriteLease {
+   private released = false
+ 
+-  private constructor(private readonly held: HeldLock) {}
++  private constructor(private readonly held: HeldLock, private readonly dir: string) {}
+ 
+   /**
+    * Acquire the session directory's kernel write lock.
+@@ -82,16 +219,21 @@ export class SessionWriteLease {
+         if ((error as NodeJS.ErrnoException | null)?.code === 'EBUSY') throw new SessionAlreadyOwnedError(id)
+         throw error
+       }
+-      return new SessionWriteLease({ kind: 'win32', handle })
++      return new SessionWriteLease({ kind: 'win32', handle }, dir)
      }
      /* v8 ignore stop */
 +    if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id))
      // Bounded retry: locking an inode a releasing creator just unlinked (or a
      // recreated path) re-opens the fresh file; steady state needs one pass.
      for (let attempt = 0; attempt < 3; attempt += 1) {
-@@ -130,6 +245,15 @@ export class SessionWriteLease {
+       const handle = await open(path, 'w')
+       try {
+         try {
+-          await tryLockExclusive(handle.fd)
++          if (isAndroidRuntime()) {
++            if (!claimInProcess(dir)) throw new SessionAlreadyOwnedError(id)
++          } else {
++            await tryLockExclusive(handle.fd)
++          }
+         } catch (error: unknown) {
+           if (isLockContention(error)) throw new SessionAlreadyOwnedError(id)
+           throw error
+@@ -102,7 +244,7 @@ export class SessionWriteLease {
+           throw error
+         })
+         if (current !== undefined && current.ino === held.ino && current.dev === held.dev) {
+-          return new SessionWriteLease({ kind: 'posix', handle })
++          return new SessionWriteLease({ kind: 'posix', handle }, dir)
+         }
+       } catch (error: unknown) {
+         await handle.close()
+@@ -122,6 +264,7 @@ export class SessionWriteLease {
+    * the stable inode later lockers verify against. Idempotent.
+    */
+   async release(): Promise<void> {
++    if (isAndroidRuntime()) androidInProcessClaims.delete(join(this.dir, LEASE_FILENAME))
+     if (this.released) return
+     this.released = true
+     /* v8 ignore start -- native Windows coverage exercises this platform branch; Linux covers the POSIX peer */
+@@ -130,6 +273,15 @@ export class SessionWriteLease {
        return
      }
      /* v8 ignore stop */

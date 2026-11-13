@@ -1,9 +1,9 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# install-pty-prebuild.sh — install the GitHub-built android-arm64 pty.node.
+# install-pty-prebuild.sh — install the GitHub-built pty.node for this device ABI.
 #
-# node-pty ships no android-arm64 binary, so every `pnpm install` on Termux
+# node-pty ships no Android binary, so every `pnpm install` on Termux
 # leaves the harness unable to load @deepseek-ai/dsh-subprocess-local. The
-# "node-pty prebuild (Termux android-arm64)" workflow compiles that binary on
+# "node-pty prebuild" workflow compiles that binary on
 # GitHub Actions; this script fetches it, installs it into every node-pty copy
 # in the tree, and caches it at ~/.dsh/native so patch_termux.py can restore it
 # after future updates without another download.
@@ -14,10 +14,17 @@
 #   bash scripts/install-pty-prebuild.sh --file pty.node # a local binary
 set -euo pipefail
 
-REPO="${DSH_REPO:-salmanbappi/deepseek-harness}"
+REPO="${DSH_REPO:-SehonYT/dsh-termux}"
 WORKFLOW="${DSH_PTY_WORKFLOW:-build-termux-pty.yml}"
 DSH_DIR="${DSH_DIR:-$HOME/deepseek-harness}"
-CACHE="$HOME/.dsh/native/android-arm64"
+# node-pty searches prebuilds/<platform>-<arch>, so this script must place the
+# binary in exactly the directory the running Node will look in. Previously
+# this was the literal android-arm64, which no 32-bit device ever matched and
+# which arm64 devices matched while holding a 32-bit binary.
+NODE_ARCH=$(node -p 'process.arch' 2>/dev/null || echo "")
+[ -n "$NODE_ARCH" ] || { echo "node is required to resolve the pty ABI" >&2; exit 1; }
+PREBUILD_DIR="android-${NODE_ARCH}"
+CACHE="$HOME/.dsh/native/$PREBUILD_DIR"
 RUN_ID=""
 LOCAL_FILE=""
 
@@ -53,30 +60,62 @@ else
     fi
     info "Downloading artifact from run $RUN_ID..."
     got=0
-    for name in pty-android-arm64 pty-android-arm64-termux pty-android-arm64-ndk; do
+    for name in "pty-$PREBUILD_DIR" "pty-$PREBUILD_DIR-termux" "pty-$PREBUILD_DIR-ndk"; do
         if gh run download "$RUN_ID" --repo "$REPO" -n "$name" -D "$WORK/dl" 2>/dev/null; then
             ok "Fetched artifact: $name"; got=1; break
         fi
     done
     [ "$got" -eq 1 ] || { err "run $RUN_ID has no pty artifact (expired, or the build failed)"; exit 1; }
-    cp "$WORK/dl/prebuilds/android-arm64/pty.node" "$WORK/pty.node"
-    if [ -f "$WORK/dl/manifest.json" ]; then
+    cp "$WORK/dl/prebuilds/$PREBUILD_DIR/pty.node" "$WORK/pty.node"
+
+    # Verify against the checksum that actually ships. Every per-ABI artifact
+    # writes pty.node.sha256 at its root; manifest.json exists only in the
+    # pty-android-all aggregate, which is not the artifact fetched above, so a
+    # check keyed on the manifest alone never ran. Accept either, preferring
+    # the per-ABI checksum, and fail loudly when a checksum is present but
+    # does not match.
+    HAVE=$(sha256sum "$WORK/pty.node" | cut -d' ' -f1)
+    WANT=""
+    if [ -f "$WORK/dl/pty.node.sha256" ]; then
+        WANT=$(cut -d' ' -f1 < "$WORK/dl/pty.node.sha256")
+    elif [ -f "$WORK/dl/manifest.json" ]; then
         WANT=$(node -p "require('$WORK/dl/manifest.json').sha256" 2>/dev/null || echo "")
-        HAVE=$(sha256sum "$WORK/pty.node" | cut -d' ' -f1)
-        if [ -n "$WANT" ] && [ "$WANT" != "$HAVE" ]; then
-            err "sha256 mismatch: manifest $WANT, download $HAVE"; exit 1
-        fi
+    fi
+    if [ -n "$WANT" ]; then
+        [ "$WANT" = "$HAVE" ] || { err "sha256 mismatch: expected $WANT, downloaded $HAVE"; exit 1; }
         ok "sha256 verified: ${HAVE:0:16}…"
+    else
+        warn "artifact carried no checksum — skipping integrity verification"
+    fi
+    if [ -f "$WORK/dl/manifest.json" ]; then
         node -e "const m=require('$WORK/dl/manifest.json'); console.log('    node-pty '+m.node_pty_version+', built by '+m.built_by)" 2>/dev/null || true
     fi
 fi
 
-# ── 2. Sanity-check the ELF ─────────────────────────────────────────────────
-DESC=$(file -b "$WORK/pty.node" 2>/dev/null || echo unknown)
-case "$DESC" in
-    *"ELF 64-bit"*"ARM aarch64"*) ok "Binary looks right: $DESC" ;;
-    *) err "not an aarch64 shared object: $DESC"; exit 1 ;;
-esac
+# ── 2. Assert the ELF matches this device ───────────────────────────────────
+# Read the header directly: `file` is not installed by install-termux.sh, so
+# matching its description silently rejected valid binaries on devices without
+# it. dsh_arch owns the class/machine table.
+ELF_HEX=$(od -An -tx1 -N20 "$WORK/pty.node" 2>/dev/null | tr -d ' \n')
+if [ -z "$ELF_HEX" ]; then
+    err "cannot read $WORK/pty.node"; exit 1
+fi
+if node -e '
+const { execFileSync } = require("node:child_process");
+const path = require("node:path");
+const hex = process.argv[1];
+const out = execFileSync("python3", ["-c",
+  "import sys; sys.path.insert(0, sys.argv[1]); import dsh_arch; print(dsh_arch.binary_matches(bytes.fromhex(sys.argv[2]), sys.argv[3]))",
+  path.dirname(process.argv[2]), hex, process.arch], { encoding: "utf8" });
+process.exit(out.trim() === "True" ? 0 : 1);
+' "$ELF_HEX" "$0"; then
+    ok "Binary matches $PREBUILD_DIR (elf $(echo "$ELF_HEX" | cut -c7-8), machine $(echo "$ELF_HEX" | cut -c37-40))"
+else
+    READABLE=$(file -b "$WORK/pty.node" 2>/dev/null || echo "ELF header $ELF_HEX")
+    err "binary does not match this device ($PREBUILD_DIR): $READABLE"
+    err "Build the $PREBUILD_DIR artifact: .github/workflows/build-termux-pty.yml"
+    exit 1
+fi
 
 # ── 3. Cache + install into every node-pty in the tree ──────────────────────
 mkdir -p "$CACHE"
@@ -88,18 +127,31 @@ mapfile -t TARGETS < <(find "$DSH_DIR/node_modules" "$HOME/.dsh" \
 [ "${#TARGETS[@]}" -gt 0 ] || { err "no node-pty package found under $DSH_DIR/node_modules"; exit 1; }
 
 for pkg in "${TARGETS[@]}"; do
-    mkdir -p "$pkg/prebuilds/android-arm64"
+    mkdir -p "$pkg/prebuilds/$PREBUILD_DIR"
     # cp -f, never in-place edit: package files are hardlinks into the pnpm store.
-    rm -f "$pkg/prebuilds/android-arm64/pty.node"
-    install -m 0644 "$WORK/pty.node" "$pkg/prebuilds/android-arm64/pty.node"
-    ok "Installed → ${pkg#$HOME/}/prebuilds/android-arm64/pty.node"
+    rm -f "$pkg/prebuilds/$PREBUILD_DIR/pty.node"
+    install -m 0644 "$WORK/pty.node" "$pkg/prebuilds/$PREBUILD_DIR/pty.node"
+    ok "Installed → ${pkg#$HOME/}/prebuilds/$PREBUILD_DIR/pty.node"
 done
 
-# ── 4. Prove it loads and can fork a pty ────────────────────────────────────
+# ── 4. Prove the installed binary loads and can fork a pty ─────────────────
+# Load the package that was actually patched: `require("node-pty")` from the
+# repo root resolves through pnpm's layout and can pick a different copy (or
+# none at all), which made this step fail after a successful install.
 info "Load test..."
-cd "$DSH_DIR"
+FIRST_PKG="${TARGETS[0]}"
+if [ ! -f "$FIRST_PKG/lib/index.js" ]; then
+    # A bare package with only a prebuilds directory (a stripped install, or a
+    # fixture) has no JavaScript entry point to spawn through. The binary is
+    # already placed; report that instead of failing on a missing entry file.
+    warn "Skipping the fork test: $FIRST_PKG/lib/index.js is absent."
+    ok "Installed $PREBUILD_DIR pty.node. Run: dsh"
+    exit 0
+fi
 node -e '
-const pty = require("node-pty");
+const path = require("node:path");
+const packageDir = process.argv[1];
+const pty = require(path.join(packageDir, "lib", "index.js"));
 const t = pty.spawn("sh", ["-c", "echo PTY_OK"], { cols: 80, rows: 24 });
 let out = "";
 t.onData(d => { out += d; });
@@ -109,5 +161,5 @@ t.onExit(({ exitCode }) => {
   process.exit(0);
 });
 setTimeout(() => { console.error("pty spawn timed out"); process.exit(1); }, 15000);
-'
-ok "node-pty works. Run: dsh-web"
+' "$FIRST_PKG"
+ok "node-pty works. Run: dsh"

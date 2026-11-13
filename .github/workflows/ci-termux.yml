@@ -1,0 +1,84 @@
+# Trigger registration: see FORK.md for the upstream sync procedure.
+name: Termux installer and patch suite
+
+# The Android adaptation layer had no automated check at all: nothing ran
+# `patch_termux.py --apply || true` in a failing position, and no test touched
+# scripts/install-*.sh. These jobs make a broken installer fail a pull request.
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/dsh_arch.py'
+      - 'scripts/patch_termux.py'
+      - 'scripts/install-*.sh'
+      - 'scripts/lib/**'
+      - '.github/workflows/build-termux-*.yml'
+      - '.github/workflows/ci-termux.yml'
+      - 'packages/sandbox/**'
+      - 'packages/bundle/base/cordis.patch.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'scripts/dsh_arch.py'
+      - 'scripts/patch_termux.py'
+      - 'scripts/install-*.sh'
+      - '.github/workflows/build-termux-*.yml'
+      - '.github/workflows/ci-termux.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  arch-and-installer:
+    name: Arch resolver, patcher suite, installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Shell syntax
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh; do bash -n "$f"; done
+
+      - name: Python syntax
+        run: python3 -m py_compile scripts/patch_termux.py scripts/dsh_arch.py
+
+      - name: Arch resolver covers every device
+        run: python3 -m unittest scripts.tests.test_dsh_arch -v
+
+      - name: Termux specs
+        run: |
+          set -euo pipefail
+          pnpm vitest run scripts/dsh_arch.spec.ts scripts/patch-termux.spec.ts scripts/install-termux.spec.ts
+
+  workflow-shape:
+    name: Build workflows declare every Android ABI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: The pty matrix builds arm64, arm32, and x64 and asserts each ELF
+        run: pnpm vitest run scripts/termux-workflows.spec.ts
