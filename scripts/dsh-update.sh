@@ -26,6 +26,8 @@ export COREPACK_ENABLE_PROJECT_SPEC=0
 export COREPACK_ENABLE_STRICT=0
 export COREPACK_ENABLE_AUTO_PIN=0
 export pnpm_config_pm_on_fail=ignore
+export PNPM_PM_ON_FAIL=ignore
+export NPM_CONFIG_PM_ON_FAIL=ignore
 export pnpm_config_manage_package_manager_versions=false
 corepack disable 2>/dev/null || true
 
@@ -124,6 +126,7 @@ DRY_RUN=0
 NO_BUILD=0
 REAPPLY_ONLY=0
 FORCE=0
+MAINTAINER_MODE=0
 ROLLBACK_TARGET=""
 TARGET_REF=""
 
@@ -133,6 +136,7 @@ while [ $# -gt 0 ]; do
         --no-build)              NO_BUILD=1; shift ;;
         --reapply-only|--reapply) REAPPLY_ONLY=1; shift ;;
         --force|-f)              FORCE=1; shift ;;
+        --maintainer|--from-upstream|--ci-build) MAINTAINER_MODE=1; shift ;;
         --ref|--tag|-r)
             shift
             TARGET_REF="${1:-}"
@@ -160,11 +164,12 @@ while [ $# -gt 0 ]; do
             banner
             echo -e " ${W}Usage:${N} dsh-update [options]\n"
             echo -e " ${W}Options:${N}"
-            echo -e "   ${W}(none)${N}             Full update: merge upstream → push → CI build → apply"
+            echo -e "   ${W}(none)${N}             Fast update: pull latest prebuilt release from repository"
+            echo -e "   ${W}--maintainer${N}       Maintainer cycle: merge upstream → push → CI build → release"
             echo -e "   ${W}--dry-run, -n${N}      Check upstream commits without modifying repository"
             echo -e "   ${W}--reapply-only${N}     Re-patch + push + wait for CI + apply (skip merge)"
             echo -e "   ${W}--no-build${N}         Merge + patch + push only (no build/apply step)"
-            echo -e "   ${W}--force, -f${N}        Force rebuild & deploy even if already up-to-date"
+            echo -e "   ${W}--force, -f${N}        Force re-download and re-deploy prebuilt bundle"
             echo -e "   ${W}--ref, -r <ref>${N}    Update to a specific Git commit, branch, or tag"
             echo -e "   ${W}--rollback [BR]${N}    Roll back repository to a safety snapshot branch"
             echo -e "   ${W}--list-backups${N}     List available snapshot branches"
@@ -239,15 +244,21 @@ if [ -n "$FREE_KB" ]; then
 fi
 
 # 4. GitHub CLI Authentication
-if ! command -v gh &>/dev/null; then
-    ERRORS+=("GitHub CLI (gh) is not installed.")
-    REMEDIES+=("Install with: pkg install gh")
-else
-    if ! gh auth status >/dev/null 2>&1; then
-        ERRORS+=("GitHub CLI is not authenticated.")
+if [ "$MAINTAINER_MODE" -eq 1 ]; then
+    if ! command -v gh &>/dev/null; then
+        ERRORS+=("GitHub CLI (gh) is not installed (required for maintainer CI builds).")
+        REMEDIES+=("Install with: pkg install gh")
+    elif ! gh auth status >/dev/null 2>&1; then
+        ERRORS+=("GitHub CLI is not authenticated (required for maintainer CI builds).")
         REMEDIES+=("Run 'gh auth login' to authenticate with your GitHub account.")
     else
+        NOTICES+=("GitHub CLI authenticated (maintainer mode).")
+    fi
+else
+    if command -v gh &>/dev/null && gh auth status >/dev/null 2>&1; then
         NOTICES+=("GitHub CLI authenticated.")
+    else
+        NOTICES+=("Public release mode active (zero-auth direct downloads).")
     fi
 fi
 
@@ -294,7 +305,108 @@ git remote | grep -q "^origin$"   || git remote add origin "https://github.com/$
 
 if [ "$REAPPLY_ONLY" -eq 1 ]; then
     stop_spinner 0 "Inspect Remotes & Upstream (Reapply Mode)"
+elif [ "$MAINTAINER_MODE" -eq 0 ]; then
+    # ── Consumer Mode: Fast Prebuilt Update from Origin ─────────────────────────
+    # Fetch origin master
+    git fetch origin master --quiet >"$ERR_LOG" 2>&1 || true
+    INCOMING_ORIGIN=$(git rev-list --count "HEAD..origin/master" 2>/dev/null || echo 0)
+
+    # Resolve latest prebuilt release tag from repository
+    LATEST_RELEASE=""
+    if command -v gh &>/dev/null && gh auth status >/dev/null 2>&1; then
+        LATEST_RELEASE=$(gh release list --repo "$REPO_OWNER/$REPO_NAME" --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+    fi
+    if [ -z "$LATEST_RELEASE" ]; then
+        LATEST_RELEASE=$(curl -fsSL --connect-timeout 6 "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest" 2>/dev/null | grep '"tag_name":' | head -1 | cut -d '"' -f 4 || echo "")
+    fi
+
+    # Check whether an update is available or forced
+    NEEDS_UPDATE=0
+    if [ -n "$TARGET_REF" ]; then
+        NEEDS_UPDATE=1
+        LATEST_RELEASE="$TARGET_REF"
+    elif [ "$FORCE" -eq 1 ] || [ "$INCOMING_ORIGIN" -gt 0 ]; then
+        NEEDS_UPDATE=1
+    elif [ -n "$LATEST_RELEASE" ] && [ "$LATEST_RELEASE" != "v${PREV_VERSION}" ]; then
+        NEEDS_UPDATE=1
+    fi
+
+    if [ "$NEEDS_UPDATE" -eq 0 ]; then
+        stop_spinner 0 "Inspect Updates (Up-to-Date)"
+        echo -e "\n${DG}${DIVIDER}${N}"
+        echo -e " ${W}DEEPSEEK HARNESS — ALREADY UP TO DATE${N}"
+        echo -e "${DG}${DIVIDER}${N}"
+        echo -e " ${W}[✓] Local workspace is fully up to date with prebuilt release (v${PREV_VERSION}).${N}\n"
+        echo -e " ${G}Options to proceed:${N}"
+        echo -e "   ${W}dsh-update --force${N}            ${G}Force re-download and deploy prebuilt bundle${N}"
+        echo -e "   ${W}dsh-update --maintainer${N}       ${G}Sync upstream & trigger remote CI build${N}"
+        echo -e "   ${W}dsh-update --reapply${N}          ${G}Re-apply mobile patch suite${N}"
+        echo -e "${DG}${DIVIDER}${N}\n"
+        exit 0
+    fi
+
+    stop_spinner 0 "Inspect Updates (${LATEST_RELEASE:-available})"
+
+    if [ "$INCOMING_ORIGIN" -gt 0 ]; then
+        echo -e "   ${DG}↳ ${G}Incoming origin/master commits: ${W}${INCOMING_ORIGIN}${N}"
+    fi
+    if [ -n "$LATEST_RELEASE" ] && [ "$LATEST_RELEASE" != "v${PREV_VERSION}" ]; then
+        echo -e "   ${DG}↳ ${G}New prebuilt version available: ${W}${LATEST_RELEASE}${N}"
+    fi
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        echo -e "\n${DG}${DIVIDER}${N}"
+        echo -e " ${W}[✓] Dry-run completed. Prebuilt ${LATEST_RELEASE:-latest} ready to install.${N}"
+        echo -e "${DG}${DIVIDER}${N}\n"
+        exit 0
+    fi
+
+    # Create safety snapshot
+    start_spinner "Creating safety snapshot branch..."
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_BRANCH="backup/dsh-update-$TIMESTAMP"
+    python3 "$PATCHER" --export >"$ERR_LOG" 2>&1 || true
+    mkdir -p "$DSH_DIR/patches"
+    git diff HEAD > "$DSH_DIR/patches/dsh-preupdate-$TIMESTAMP.patch" 2>/dev/null || true
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+        git add -A >"$ERR_LOG" 2>&1 || true
+        git commit -m "chore(termux): pre-update snapshot $TIMESTAMP" >"$ERR_LOG" 2>&1 || true
+    fi
+    git branch "$BACKUP_BRANCH" >"$ERR_LOG" 2>&1 || fail_and_dump "Create Snapshot Branch"
+    stop_spinner 0 "Create Safety Snapshot ($BACKUP_BRANCH)"
+
+    # Pull latest repo master
+    if [ "$INCOMING_ORIGIN" -gt 0 ]; then
+        start_spinner "Syncing tracking branch from origin/master..."
+        git pull --ff-only origin master >"$ERR_LOG" 2>&1 || git merge --no-edit origin/master >"$ERR_LOG" 2>&1 || true
+        stop_spinner 0 "Sync Tracking Branch (origin/master)"
+    fi
+
+    # Deploy prebuilt release bundle
+    start_spinner "Deploying prebuilt release bundle (${LATEST_RELEASE:-latest})..."
+    RELEASE_ARG="${LATEST_RELEASE#v}"
+    if ! bash "$DSH_DIR/scripts/install-prebuilt.sh" "$RELEASE_ARG" >"$ERR_LOG" 2>&1; then
+        fail_and_dump "Deploy Prebuilt Release Bundle"
+    fi
+    stop_spinner 0 "Deploy Prebuilt Release Bundle (${LATEST_RELEASE:-latest})"
+
+    NEW_VERSION=$(node -e "console.log(require('./package.json').version)" 2>/dev/null || echo "$LATEST_RELEASE")
+    NEW_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+    echo -e "\n${DG}${DIVIDER}${N}"
+    echo -e " ${W}DEEPSEEK HARNESS — UPDATE COMPLETE${N}"
+    echo -e "${DG}${DIVIDER}${N}"
+    echo -e " ${W}[✓] Successfully updated to:${N} ${W}v${NEW_VERSION}${N} ${G}(commit ${NEW_COMMIT})${N}"
+    echo -e "     ${G}Safety snapshot:${N} ${LG}${BACKUP_BRANCH}${N}\n"
+    echo -e " ${W}Commands Available:${N}"
+    echo -e "   ${W}dsh web${N}        ${G}Start the Mobile Web UI (http://127.0.0.1:3080)${N}"
+    echo -e "   ${W}dsh headless${N}   ${G}Run a task in terminal mode${N}"
+    echo -e "   ${W}dsh-doctor${N}     ${G}Verify environment & patch integrity${N}"
+    echo -e "   ${W}dsh-update --rollback${N} ${G}Restore previous snapshot${N}\n"
+    echo -e "${DG}${DIVIDER}${N}\n"
+    exit 0
 else
+    # ── Maintainer Mode: Merge Upstream & Trigger CI ────────────────────────────
     if [ -n "$TARGET_REF" ]; then
         UPSTREAM_REF="$TARGET_REF"
         git fetch upstream "$TARGET_REF" --quiet >"$ERR_LOG" 2>&1 || git fetch origin "$TARGET_REF" --quiet >"$ERR_LOG" 2>&1 || true

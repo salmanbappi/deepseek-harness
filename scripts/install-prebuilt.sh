@@ -11,9 +11,21 @@ REPO="salmanbappi/deepseek-harness"
 DSH_DIR="$HOME/deepseek-harness"
 
 if [ -n "${1:-}" ]; then
-  TAG="v$1"
+  TAG="v${1#v}"
 else
-  TAG=$(gh release list --repo "$REPO" --limit 1 --json tagName -q '.[0].tagName')
+  if command -v gh &>/dev/null && gh auth status >/dev/null 2>&1; then
+    TAG=$(gh release list --repo "$REPO" --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+  else
+    TAG=""
+  fi
+  if [ -z "$TAG" ]; then
+    TAG=$(curl -fsSL --connect-timeout 6 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null | grep '"tag_name":' | head -1 | cut -d '"' -f 4 || echo "")
+  fi
+fi
+
+if [ -z "$TAG" ]; then
+  echo "Error: Could not determine latest release tag." >&2
+  exit 1
 fi
 
 echo "=== DeepSeek Harness Termux Prebuilt Installer ==="
@@ -26,10 +38,15 @@ TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 
 echo "[1/5] Downloading prebuilt lib/ bundle..."
-gh release download "$TAG" \
-  --repo "$REPO" \
-  --pattern "dsh-termux-prebuilt-*.tar.gz" \
-  --dir "$TMPDIR_WORK"
+if command -v gh &>/dev/null && gh auth status >/dev/null 2>&1; then
+  gh release download "$TAG" \
+    --repo "$REPO" \
+    --pattern "dsh-termux-prebuilt-*.tar.gz" \
+    --dir "$TMPDIR_WORK"
+else
+  TARBALL_URL="https://github.com/$REPO/releases/download/$TAG/dsh-termux-prebuilt-${TAG}.tar.gz"
+  curl -fsSL "$TARBALL_URL" -o "$TMPDIR_WORK/dsh-termux-prebuilt-${TAG}.tar.gz"
+fi
 
 ARCHIVE=$(ls "$TMPDIR_WORK"/dsh-termux-prebuilt-*.tar.gz | head -1)
 echo "       Downloaded: $(basename "$ARCHIVE") ($(du -sh "$ARCHIVE" | cut -f1))"
