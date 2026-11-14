@@ -222,7 +222,7 @@ export class SessionWriteLease {
       return new SessionWriteLease({ kind: 'win32', handle }, dir)
     }
     /* v8 ignore stop */
-    if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id))
+    if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id), dir)
     // Bounded retry: locking an inode a releasing creator just unlinked (or a
     // recreated path) re-opens the fresh file; steady state needs one pass.
     for (let attempt = 0; attempt < 3; attempt += 1) {
