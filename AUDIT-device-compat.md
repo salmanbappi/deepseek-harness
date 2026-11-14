@@ -1,6 +1,6 @@
 # dsh-mobile — device compatibility audit
 
-Audit of `~/dsh-mobile` (`SehonYT/dsh-termux`, v0.2.2-rc.1).
+Audit of `~/dsh-mobile` (`salmanbappi/deepseek-harness`, v0.2.2-rc.1).
 Read-only findings, before any code change.
 
 ## Context

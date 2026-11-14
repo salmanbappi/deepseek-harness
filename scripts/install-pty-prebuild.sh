@@ -14,7 +14,7 @@
 #   bash scripts/install-pty-prebuild.sh --file pty.node # a local binary
 set -euo pipefail
 
-REPO="${DSH_REPO:-SehonYT/dsh-termux}"
+REPO="${DSH_REPO:-salmanbappi/deepseek-harness}"
 WORKFLOW="${DSH_PTY_WORKFLOW:-build-termux-pty.yml}"
 DSH_DIR="${DSH_DIR:-$HOME/deepseek-harness}"
 # node-pty searches prebuilds/<platform>-<arch>, so this script must place the

@@ -65,7 +65,15 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Apply Termux Patches
-        run: python3 scripts/patch_termux.py --apply || true
+        run: python3 scripts/patch_termux.py --apply
+
+      # A patcher whose anchor no longer matches prints a line and returns
+      # without failing, so --apply alone cannot tell a patched tree from one
+      # where the Android fix silently did not land. --check verifies each
+      # invariant and exits non-zero, which turns that into a failed build
+      # instead of a published bundle that boots differently.
+      - name: Verify Termux Patches Landed
+        run: python3 scripts/patch_termux.py --check
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile=false --ignore-scripts
@@ -99,7 +107,7 @@ jobs:
           echo "=== Collecting compiled lib/ dirs ==="
           # Find every compiled lib/ directory across the workspace
           # (excludes anything inside node_modules to avoid recursion)
-          LIB_DIRS=$(find apps packages vendor \
+          LIB_DIRS=$(find apps packages vendor native \
             -type d -name 'lib' \
             ! -path '*/node_modules/*' \
             ! -path '*/.git/*' \

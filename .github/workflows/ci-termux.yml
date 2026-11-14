@@ -8,10 +8,8 @@ name: Termux installer and patch suite
 on:
   pull_request:
     paths:
-      - 'scripts/dsh_arch.py'
-      - 'scripts/patch_termux.py'
-      - 'scripts/install-*.sh'
-      - 'scripts/lib/**'
+      - 'scripts/**'
+      - 'patches/**'
       - '.github/workflows/build-termux-*.yml'
       - '.github/workflows/ci-termux.yml'
       - 'packages/sandbox/**'
@@ -19,9 +17,8 @@ on:
   push:
     branches: [master]
     paths:
-      - 'scripts/dsh_arch.py'
-      - 'scripts/patch_termux.py'
-      - 'scripts/install-*.sh'
+      - 'scripts/**'
+      - 'patches/**'
       - '.github/workflows/build-termux-*.yml'
       - '.github/workflows/ci-termux.yml'
   workflow_dispatch:

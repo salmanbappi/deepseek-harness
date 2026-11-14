@@ -2,7 +2,7 @@
 
 ## Context
 
-`~/dsh-mobile` is `SehonYT/dsh-termux` (v0.2.2-rc.1),
+`~/dsh-mobile` is `salmanbappi/deepseek-harness` (v0.2.2-rc.1),
 created 2026-11-13. Goal: make it install and run on every Android device, not just aarch64
 Termux, and add the test and CI coverage that would have caught these failures.
 

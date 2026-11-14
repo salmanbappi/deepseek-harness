@@ -8,7 +8,17 @@
 set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
-export NODE_OPTIONS="--max-old-space-size=2560 ${NODE_OPTIONS:-}"
+# Size the heap to the device rather than to a desktop default. 2560 MB exceeds
+# the free memory on a 2 GB phone, where V8 will grow toward the ceiling and can
+# take the whole device down before it collects. Override with DSH_MAX_OLD_SPACE.
+_dsh_total_mb=$(awk '/MemTotal/ {printf "%d", $2/1024}' /proc/meminfo 2>/dev/null)
+case "$_dsh_total_mb" in ''|*[!0-9]*) _dsh_total_mb=2048;; esac
+if [ "$_dsh_total_mb" -ge 3500 ]; then _dsh_space=1536
+elif [ "$_dsh_total_mb" -ge 2500 ]; then _dsh_space=1024
+else _dsh_space=768
+fi
+export NODE_OPTIONS="--max-old-space-size=${DSH_MAX_OLD_SPACE:-$_dsh_space} ${NODE_OPTIONS:-}"
+unset _dsh_total_mb _dsh_space
 export PATH="$HOME/bin:$HOME/.npm-global/bin:$PATH"
 
 # Prevent Corepack and pnpm engine from downloading @pnpm/exe native binaries on Android
@@ -23,8 +33,8 @@ corepack disable 2>/dev/null || true
 DSH_DIR="$HOME/deepseek-harness"
 PATCHER="$DSH_DIR/scripts/patch_termux.py"
 UPSTREAM_REPO="https://github.com/deepseek-ai/deepseek-harness.git"
-REPO_OWNER="salmanbappi"
-REPO_NAME="deepseek-harness"
+REPO_OWNER="${DSH_REPO_OWNER:-salmanbappi}"
+REPO_NAME="${DSH_REPO_NAME:-deepseek-harness}"
 WORKFLOW_NAME="build-termux.yml"
 CI_POLL_INTERVAL=15   # seconds between status checks
 CI_TIMEOUT=1800       # 30 minutes max wait
@@ -216,7 +226,8 @@ fi
 
 # 3. Disk Space Probe (Minimum 1,200 MB free)
 STORAGE_TARGET="${PREFIX:-/data/data/com.termux/files/usr}"
-FREE_KB=$(df -k "$STORAGE_TARGET" 2>/dev/null | awk 'NR==2 {print $4}')
+FREE_KB=$(df -k "$STORAGE_TARGET" 2>/dev/null | awk 'NR==2 {print $4}' || echo "")
+case "$FREE_KB" in ''|*[!0-9]*) FREE_KB="";; esac
 if [ -n "$FREE_KB" ]; then
     FREE_MB=$(( FREE_KB / 1024 ))
     if [ "$FREE_MB" -lt 1200 ]; then
@@ -241,7 +252,8 @@ else
 fi
 
 # 5. Remote Network & API Connectivity
-GH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 6 "https://api.github.com" 2>/dev/null || echo "000")
+GH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 6 "https://api.github.com" 2>/dev/null || echo "")
+case "$GH_STATUS" in ''|*[!0-9]*) GH_STATUS=000;; esac
 if [ "$GH_STATUS" = "000" ]; then
     ERRORS+=("Cannot connect to GitHub API (network unreachable).")
     REMEDIES+=("Check internet connection, DNS configuration, or disable restrictive VPN.")
@@ -378,12 +390,24 @@ if ! git diff-index --quiet HEAD -- 2>/dev/null; then
     git commit -m "chore(termux): regenerate patch bundle hashes against merged upstream" >"$ERR_LOG" 2>&1 || true
 fi
 git push -u origin master >"$ERR_LOG" 2>&1 || fail_and_dump "Git Push to Origin"
-stop_spinner 0 "Push to Origin (CI Build Triggered)"
+stop_spinner 0 "Push to Origin"
+
+# Dispatch the build explicitly instead of relying on the workflow's `push`
+# trigger. A push event has never produced a run on this repository, so waiting
+# for one silently fell through to "Existing Release Mode" and shipped the
+# previous release. `gh workflow run` starts the run directly and returns the
+# run URL, so the run this script waits on is the one it asked for.
+start_spinner "Dispatching GitHub Actions build..."
+WAIT_START=$(date +%s)
+if ! gh workflow run "$WORKFLOW_NAME" --repo "$REPO_OWNER/$REPO_NAME" --ref master >"$ERR_LOG" 2>&1; then
+    stop_spinner 0 "Dispatch GitHub Actions Build (failed)"
+    fail_and_dump "Dispatch GitHub Actions Build"
+fi
+stop_spinner 0 "Dispatch GitHub Actions Build"
 
 # ── Stage 7: Monitor Remote GitHub Actions CI Build ───────────────────────────
-start_spinner "Locating triggered GitHub Actions workflow run..."
+start_spinner "Locating dispatched GitHub Actions workflow run..."
 sleep 4
-WAIT_START=$(date +%s)
 RUN_ID=""
 
 for i in $(seq 1 12); do
@@ -409,7 +433,10 @@ console.log(r ? r.databaseId : '');
 done
 
 if [ -z "$RUN_ID" ]; then
-    stop_spinner 0 "Locate CI Workflow Run (Existing Release Mode)"
+    # The dispatch was accepted but no run appeared. Continuing would deploy
+    # whatever release already exists, which is silently the previous version —
+    # stop and say so instead. fail_and_dump owns the spinner.
+    fail_and_dump "Locate GitHub Actions Workflow Run (dispatched $WORKFLOW_NAME but no run was found)"
 else
     stop_spinner 0 "Locate CI Workflow Run (#$RUN_ID)"
 

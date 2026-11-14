@@ -16,6 +16,7 @@ import os
 import sys
 import re
 import subprocess
+import shutil
 import argparse
 
 REPO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -39,6 +40,196 @@ NATIVE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".dsh", "native", TARGE
 
 # Marks the app-boot resolver fallback so a rerun recognizes its own output.
 TERMUX_RESOLVER_MARKER = "@termux-purejs-resolver"
+
+# Replaces app-boot's `internalModules()` in a built bundle. Kept as one literal
+# so the patched form is reviewable against the TypeScript below.
+TERMUX_INTERNAL_MODULES_JS = """function internalModules() {
+\t/* @termux-purejs-resolver */
+\tconst require = createRequire(import.meta.url);
+\tconst Module = require("node:module");
+\tconst cjs = Module;
+\tconst esmConditions = ["node", "import", "module-sync"];
+\tconst cjsConditions = new Set(["node", "require", "module-sync"]);
+\t// The loader object the runtime interception patches. `import.meta.resolve`
+\t// never consults it, so the hook registered below delegates to it and this
+\t// object stays the single seam the interception replaces.
+\tlet nativeResolve;
+\tlet inNative = false;
+\tconst esm = {
+\t\tgetOrCreateModuleJob: true,
+\t\tresolveSync(parent, request) {
+\t\t\tif (nativeResolve === void 0) return { format: formatOf(request.specifier), url: import.meta.resolve(request.specifier, parent) };
+\t\t\tinNative = true;
+\t\t\ttry {
+\t\t\t\treturn nativeResolve(request.specifier, { parentURL: parent, conditions: esmConditions });
+\t\t\t} finally {
+\t\t\t\tinNative = false;
+\t\t\t}
+\t\t}
+\t};
+\tconst esmDefaultResolve = (specifier, context) => esm.resolveSync(context.parentURL, { specifier });
+\tconst modern = "getOrCreateModuleJob" in esm;
+\tif (typeof cjs._resolveFilename !== "function" || typeof cjs._nodeModulePaths !== "function") throw new Error("profile resolution: unsupported Node module loader");
+\tif (typeof Module.registerHooks === "function") Module.registerHooks({
+\t\tresolve(specifier, context, nextResolve) {
+\t\t\tif (nativeResolve === void 0) nativeResolve = (spec, ctx) => nextResolve(spec, ctx);
+\t\t\tif (inNative) return nextResolve(specifier, context);
+\t\t\tconst parent = context.parentURL;
+\t\t\tif (parent === void 0 || !parent.startsWith("file:")) return nextResolve(specifier, context);
+\t\t\ttry {
+\t\t\t\tconst result = esm.resolveSync(parent, { specifier, attributes: context.attributes ?? {} });
+\t\t\t\tif (result !== void 0 && typeof result.url === "string") return { format: result.format, url: result.url, shortCircuit: true };
+\t\t\t} catch {}
+\t\t\treturn nextResolve(specifier, context);
+\t\t}
+\t});
+\treturn {
+\t\tesm,
+\t\tesmDefaultResolve,
+\t\tesmConditions,
+\t\tcjs,
+\t\tcjsConditions,
+\t\tmodern
+\t};
+}"""
+
+# The same replacement as TypeScript, for a tree built from source.
+TERMUX_INTERNAL_MODULES_TS = """function internalModules(): InternalModules {
+  /* @termux-purejs-resolver */
+  const require = createRequire(import.meta.url)
+  const Module = require('node:module') as CommonJsModule & {
+    registerHooks?(hooks: {
+      resolve(
+        specifier: string,
+        context: {
+          parentURL?: string
+          conditions?: readonly string[]
+          attributes?: Readonly<Record<string, string>>
+        },
+        nextResolve: (
+          specifier: string,
+          context: {
+            parentURL?: string
+            conditions?: readonly string[]
+            attributes?: Readonly<Record<string, string>>
+          },
+        ) => ResolveResult,
+      ): ResolveResult
+    }): { deregister(): void }
+  }
+  const cjs = Module
+  const esmConditions: readonly string[] = ['node', 'import', 'module-sync']
+  const cjsConditions: ReadonlySet<string> = new Set(['node', 'require', 'module-sync'])
+  let nativeResolve:
+    | ((
+        specifier: string,
+        context: { parentURL?: string; conditions?: readonly string[] },
+      ) => ResolveResult)
+    | undefined
+  let inNative = false
+  const esm = {
+    getOrCreateModuleJob: true,
+    resolveSync(
+      parent: string,
+      request: { specifier: string; attributes?: Readonly<Record<string, string>> },
+    ): ResolveResult {
+      if (nativeResolve === undefined) {
+        return { format: formatOf(request.specifier), url: import.meta.resolve(request.specifier, parent) }
+      }
+      inNative = true
+      try {
+        return nativeResolve(request.specifier, { parentURL: parent, conditions: esmConditions })
+      } finally {
+        inNative = false
+      }
+    },
+  } as unknown as ModuleLoaderV2
+  const esmDefaultResolve = (
+    specifier: string,
+    context: { parentURL?: string; conditions?: readonly string[] },
+  ): ResolveResult => esm.resolveSync(context.parentURL as string, { specifier })
+  const modern = 'getOrCreateModuleJob' in esm
+  if (typeof cjs._resolveFilename !== 'function' || typeof cjs._nodeModulePaths !== 'function') {
+    throw new Error('profile resolution: unsupported Node module loader')
+  }
+  if (typeof Module.registerHooks === 'function') {
+    Module.registerHooks({
+      resolve(specifier, context, nextResolve) {
+        if (nativeResolve === undefined) {
+          nativeResolve = (spec, ctx) => nextResolve(spec, ctx)
+        }
+        if (inNative) return nextResolve(specifier, context)
+        const parent = context.parentURL
+        if (parent === undefined || !parent.startsWith('file:')) return nextResolve(specifier, context)
+        try {
+          const result = esm.resolveSync(parent, { specifier, attributes: context.attributes ?? {} })
+          if (result !== undefined && typeof result.url === 'string') {
+            return { format: result.format, url: result.url, shortCircuit: true }
+          }
+        } catch {
+          // A resolution this hook cannot answer falls through to Node's own.
+        }
+        return nextResolve(specifier, context)
+      },
+    })
+  }
+  return {
+    esm,
+    esmDefaultResolve,
+    esmConditions,
+    cjs,
+    cjsConditions,
+    modern,
+  }
+}"""
+
+
+def replace_function_body(content, signature, replacement):
+    """Replaces one top-level function, matched by brace depth from its signature.
+
+    A patcher that anchors on the whole body breaks whenever upstream reflows it,
+    so only the signature is matched and the body extent is measured.
+    """
+    start = content.index(signature)
+    index = content.index("{", start)
+    depth = 0
+    while True:
+        char = content[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        index += 1
+    return content[:start] + replacement + content[index + 1:]
+
+
+def node_syntax_ok(source):
+    """Reports whether `source` parses as a JavaScript module.
+
+    A patcher writes text into a bundle it does not otherwise build, so nothing
+    downstream re-checks the result. A duplicate declaration introduced this way
+    only surfaces when the harness boots, as a SyntaxError naming a line in the
+    installed file. `node --check` catches it at patch time instead.
+
+    Returns:
+        True when Node parses the source, or when no `node` is available to ask
+        (an unverifiable patch is reported as acceptable, so a host without Node
+        can still apply the suite).
+    """
+    if shutil.which("node") is None:
+        return True
+    try:
+        proc = subprocess.run(
+            ["node", "--input-type=module", "--check"],
+            input=source, capture_output=True, text=True, timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return True
+    if proc.returncode != 0:
+        print(f"      {proc.stderr.strip().splitlines()[0] if proc.stderr.strip() else 'syntax error'}")
+    return proc.returncode == 0
 
 
 def ensure_patch_dir():
@@ -321,6 +512,7 @@ def patch_fs_local():
         return False
     with open(path, "r", encoding="utf-8") as f:
         c = f.read()
+    origin = c
 
     modified = False
     if "isAndroid" not in c or "isUnsupportedLinkError" not in c:
@@ -365,6 +557,12 @@ def patch_fs_local():
           await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget)
         }\3"""
         c = pat.sub(repl, c, count=1)
+        # A regex that matches nothing leaves c byte-identical. The guard above
+        # proved the marker is absent, so that means the anchor moved, not that
+        # the file was already patched.
+        if c == origin:
+            print("  [!] fs-local: writeFileAtomic link fallback anchor did not match — reapply by hand against fsio.ts")
+            return False
         modified = True
 
     if modified:
@@ -469,6 +667,11 @@ def patch_package_json():
     if '"dsh": "node --import tsx/esm apps/cli/src/bin.ts"' in c:
         c = c.replace('"dsh": "node --import tsx/esm apps/cli/src/bin.ts"', '"dsh": "node --expose-internals --import tsx/esm apps/cli/src/bin.ts"')
         modified = True
+    elif "--expose-internals" not in c:
+        # Neither the anchor nor the marker: the dsh script was rewritten
+        # upstream, so the runtime flag no longer lands.
+        print("  [!] package.json: dsh script anchor did not match — reapply by hand against package.json")
+        return False
 
     if modified:
         with open(path, "w", encoding="utf-8") as f:
@@ -669,8 +872,12 @@ def patch_app_frame():
         with open(tsx_path, "w", encoding="utf-8") as f:
             f.write(c)
         print(f"  [+] Patched AppFrame.tsx mobile responsive drawer ({', '.join(edits)}).")
-    elif "const isMobile" not in c or "mobileBackdrop" not in c:
+        return True
+    if "const isMobile" not in c or "mobileBackdrop" not in c:
         print("  [!] AppFrame.tsx anchors did not match — mobile drawer NOT applied. File may have changed upstream; update patch_app_frame().")
+        return False
+    # Anchors already present from an earlier run; nothing left to do.
+    return True
 
 
 
@@ -823,117 +1030,78 @@ def patch_koffi():
 
 
 def patch_node_addon_require_builtin():
-    """Patches node-addon-require-builtin to fallback to direct require on Android/Termux (--expose-internals)."""
-    # 1. Patch compiled app-boot/lib/index.js if present
-    app_boot_lib = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "index.js")
-    if os.path.exists(app_boot_lib):
-        try:
-            with open(app_boot_lib, "r", encoding="utf-8") as f:
-                content = f.read()
-            if "/* @termux-purejs-resolver */" not in content:
-                old = 'const addon = createRequire(import.meta.url)("node-addon-require-builtin");'
-                replacement = (
-                    '/* @termux-purejs-resolver */\n'
-                    '\tconst req = createRequire(import.meta.url);\n'
-                    '\tlet addon;\n'
-                    '\ttry {\n'
-                    '\t\taddon = req("node-addon-require-builtin");\n'
-                    '\t} catch {}\n'
-                    '\tconst requireInternal = (moduleId) => {\n'
-                    '\t\tif (addon && typeof addon.requireBuiltin === "function") {\n'
-                    '\t\t\ttry {\n'
-                    '\t\t\t\treturn addon.requireBuiltin(moduleId);\n'
-                    '\t\t\t} catch {}\n'
-                    '\t\t}\n'
-                    '\t\treturn req(moduleId);\n'
-                    '\t};'
-                )
-                if old in content:
-                    patched = content.replace(old, replacement, 1)
-                    patched = patched.replace('addon.requireBuiltin(', 'requireInternal(')
-                    with open(app_boot_lib, "w", encoding="utf-8") as f:
-                        f.write(patched)
-                    print("  [+] Patched app-boot lib/index.js pure JS resolver fallback.")
-        except Exception as e:
-            print(f"  [!] Notice patching {app_boot_lib}: {e}")
+    """Rebuilds app-boot's Node-internal loader access without the native addon.
 
-    # 2. Patch the TypeScript source. Upstream moved this resolver out of the
-    # built lib/index.js and into src/profile-resolution/resolver.ts, where it
-    # reaches Node internals only through the native
-    # node-addon-require-builtin addon. Android has no build of that addon, so
-    # requireBuiltin is unavailable and every profile resolution fails.
-    # `createRequire` reaches the same internals on Node, which is what
-    # --expose-internals exists for.
+    Upstream reaches Node's ESM and CJS internals through
+    `node-addon-require-builtin`. That package ships optional platform bindings
+    for darwin, linux, and win32 only, so on Android there is no binding, and its
+    own wrapper degrades to `require('internal/...')` — which userland can never
+    resolve. Every profile therefore failed at boot with
+    `Cannot find module 'internal/modules/esm/loader'`.
+
+    The replacement supplies the same interface from the module API Node
+    publishes. `Module` covers the CJS half directly. For the ESM half,
+    `Module.registerHooks` publishes a synchronous resolver and the loader object
+    the runtime interception patches delegates to it through the captured
+    `nextResolve`; `import.meta.resolve` is deliberately not called inside the
+    hook, because it would re-enter that same hook and spin.
+
+    Both built bundles that inline this function are rewritten, plus the
+    TypeScript source, so a tree built from source carries the change too.
+    """
+    patched = 0
+    bundles = [
+        os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "index.js"),
+        os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "worker",
+                     "profile-resolution-bootstrap.js"),
+    ]
+    for path in bundles:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        rel = os.path.relpath(path, REPO_DIR)
+        if TERMUX_RESOLVER_MARKER in c:
+            patched += 1
+            continue
+        if "function internalModules() {" not in c:
+            print(f"  [!] app-boot resolver: internalModules() not found in {rel}")
+            continue
+        c = replace_function_body(c, "function internalModules() {", TERMUX_INTERNAL_MODULES_JS)
+        # The replaced body is emitted into a bundle that upstream also defines
+        # names in. A name this template declares that upstream already has
+        # becomes a duplicate declaration, which is a parse error at boot, not a
+        # warning — `node --check` is the only cheap way to catch it here.
+        if not node_syntax_ok(c):
+            print(f"  [!] app-boot resolver: patched {rel} is not valid JavaScript; left unchanged")
+            continue
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(c)
+        patched += 1
+        print(f"  [+] Replaced internalModules() in {rel}.")
+
     resolver_src = os.path.join(
         REPO_DIR, "packages", "boot", "app-boot", "src", "profile-resolution", "resolver.ts"
     )
     if os.path.exists(resolver_src):
-        try:
-            with open(resolver_src, "r", encoding="utf-8") as f:
-                content = f.read()
-            if TERMUX_RESOLVER_MARKER not in content:
-                old = (
-                    "  const require = createRequire(import.meta.url)\n"
-                    "  const addon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }\n"
-                )
-                replacement = (
-                    "  const require = createRequire(import.meta.url)\n"
-                    f"  /* {TERMUX_RESOLVER_MARKER} */\n"
-                    "  const nativeAddon = require('node-addon-require-builtin') as { requireBuiltin(moduleId: string): unknown }\n"
-                    "  const addon = {\n"
-                    "    requireBuiltin(moduleId: string): unknown {\n"
-                    "      try {\n"
-                    "        return nativeAddon.requireBuiltin(moduleId)\n"
-                    "      } catch {\n"
-                    "        return require(moduleId)\n"
-                    "      }\n"
-                    "    },\n"
-                    "  }\n"
-                )
-                if old in content:
-                    with open(resolver_src, "w", encoding="utf-8") as f:
-                        f.write(content.replace(old, replacement, 1))
-                    print("  [+] Patched app-boot resolver.ts pure JS resolver fallback.")
-                else:
-                    print("  [!] app-boot resolver: internalModules() anchor did not match — reapply by hand against resolver.ts")
-        except Exception as e:
-            print(f"  [!] Notice patching {resolver_src}: {e}")
+        with open(resolver_src, "r", encoding="utf-8") as f:
+            c = f.read()
+        if TERMUX_RESOLVER_MARKER in c:
+            patched += 1
+        elif "function internalModules(): InternalModules {" in c:
+            c = replace_function_body(
+                c, "function internalModules(): InternalModules {", TERMUX_INTERNAL_MODULES_TS
+            )
+            with open(resolver_src, "w", encoding="utf-8") as f:
+                f.write(c)
+            patched += 1
+            print("  [+] Replaced internalModules() in src/profile-resolution/resolver.ts.")
+        else:
+            print("  [!] app-boot resolver: internalModules() not found in resolver.ts")
 
-    node_modules = os.path.join(REPO_DIR, "node_modules", ".pnpm")
-    if not os.path.exists(node_modules):
-        return
-    count = 0
-    for root, dirs, files in os.walk(node_modules):
-        if "node-addon-require-builtin" in root and "lib" in root and "index.js" in files:
-            fpath = os.path.join(root, "index.js")
-            try:
-                with open(fpath, "r", encoding="utf-8") as f:
-                    content = f.read()
-                if "pure-js-fallback" not in content and "createEntryApi" in content:
-                    patched = content.replace(
-                        "const { createEntryApi } = require('node-addon-native-custom-loader');\nconst api = createEntryApi(node_path_1.default.resolve(__dirname, '..'));",
-                        "let api;\ntry {\n    const { createEntryApi } = require('node-addon-native-custom-loader');\n    api = createEntryApi(node_path_1.default.resolve(__dirname, '..'));\n} catch (e) {}"
-                    )
-                    patched = patched.replace(
-                        "function requireBuiltin(moduleId) {\n    return api.requireBuiltin(moduleId);\n}",
-                        "function requireBuiltin(moduleId) {\n    if (api) { try { return api.requireBuiltin(moduleId); } catch {} }\n    return require(moduleId);\n}"
-                    )
-                    patched = patched.replace(
-                        "function isAllowedInternalId(moduleId) {\n    return api.isAllowedInternalId(moduleId);\n}",
-                        "function isAllowedInternalId(moduleId) {\n    if (api) { try { return api.isAllowedInternalId(moduleId); } catch {} }\n    return true;\n}"
-                    )
-                    patched = patched.replace(
-                        "function getBindingInfo() {\n    return api.getBindingInfo();\n}",
-                        "function getBindingInfo() {\n    if (api) { try { return api.getBindingInfo(); } catch {} }\n    return { name: 'require_builtin', backend: 'pure-js-fallback' };\n}"
-                    )
-                    if patched != content:
-                        with open(fpath, "w", encoding="utf-8") as f:
-                            f.write(patched)
-                        count += 1
-            except Exception as e:
-                print(f"  [!] Notice patching {fpath}: {e}")
-    if count > 0:
-        print(f"  [+] Patched node-addon-require-builtin pure JS fallback ({count} files).")
+    if patched == 0:
+        print("  [!] app-boot resolver: nothing patched; profile boot will fail on Android.")
+    return patched > 0
 
 
 def patch_node_pty():
@@ -1125,10 +1293,10 @@ def patch_speech_to_text():
         '{\n'
         f'  "name": "sherpa-onnx-android-{TARGET.node_arch}",\n'
         '  "version": "1.13.8",\n'
-        '  "description": "Prebuilt native binaries for sherpa-onnx on Android arm64",\n'
+        f'  "description": "Prebuilt native binaries for sherpa-onnx on Android {TARGET.node_arch}",\n'
         '  "main": "sherpa-onnx.node",\n'
         '  "os": ["android"],\n'
-        '  "cpu": ["arm64"]\n'
+        f'  "cpu": ["{TARGET.node_arch}"]\n'
         '}\n'
     )
 
@@ -1455,7 +1623,11 @@ function requestHeaders(headers: Readonly<Record<string, string>> | undefined): 
             changed = True
             applied.append(label)
         for marker, label in pending.items():
-            if marker not in c:
+            # A fork-only variant upstream never carries leaves its marker
+            # absent on a healthy tree, so warn only when nothing landed for
+            # this file. Warning otherwise fires on every clean run and trains
+            # the reader to ignore the channel that carries real misses.
+            if marker not in c and not applied and not changed:
                 print(f"  [!] pi-ai gateway: {label} anchor did not match — reapply by hand against {os.path.basename(path)}")
         if changed:
             with open(path, "w", encoding="utf-8") as f:
@@ -1870,7 +2042,14 @@ def patch_conversation_mobile():
             f.write(c)
         print("  [+] Patched ConversationRoot.module.css mobile header responsive clearance.")
         return True
-    return True
+    # Already carries a 768px block. That block is this patcher's only if it
+    # contains the rule this patcher writes: upstream has its own `.crumb`
+    # rule, so matching on that alone would pass on a tree where the mobile
+    # clearance never landed.
+    if "max-width: min(160px, 45vw)" in c:
+        return True
+    print("  [!] conversation-mobile: an unrelated 768px block occupies the anchor — reapply by hand against ConversationRoot.module.css")
+    return False
 
 
 def patch_bundle_layer_cache():
@@ -1881,7 +2060,9 @@ def patch_bundle_layer_cache():
     with open(path, "r", encoding="utf-8") as f:
         c = f.read()
 
-    if "bundleLayerCache" in c:
+    # Marker must be this patcher's own cache definition, not any unrelated
+    # upstream symbol that happens to share the name.
+    if "const bundleLayerCache = new Map<string, ProfileLayer>()" in c:
         return True
 
     # 1. Define bundleLayerCache before loadProfileDirectory
@@ -1898,22 +2079,140 @@ def patch_bundle_layer_cache():
       if (cachedLayer === undefined) {
         const bundleManifest = readProfileManifest(binName, packageDir)"""
 
-    if old_loop in c:
-        c = c.replace(old_loop, new_loop, 1)
-        old_push = """      layers.push({ packageName, packageDir, patchPaths, patches })"""
-        new_push = """        cachedLayer = { packageName, packageDir, patchPaths, patches }
+    old_push = """      layers.push({ packageName, packageDir, patchPaths, patches })"""
+    new_push = """        cachedLayer = { packageName, packageDir, patchPaths, patches }
         bundleLayerCache.set(packageDir, cachedLayer)
       }
       layers.push(cachedLayer)"""
-        if old_push in c:
-            c = c.replace(old_push, new_push, 1)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(c)
-            print("  [+] Patched app-boot bundleLayerCache.")
-            return True
-    return False
+
+    # Both anchors must match. Writing after only the loop had matched left a
+    # half-applied file that referenced a `cachedLayer` never assigned.
+    if old_loop not in c or old_push not in c:
+        print("  [!] app-boot bundleLayerCache: resolution loop anchors did not match — reapply by hand against profile.ts")
+        return False
+
+    c = c.replace(old_loop, new_loop, 1)
+    c = c.replace(old_push, new_push, 1)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(c)
+    print("  [+] Patched app-boot bundleLayerCache.")
+    return True
 
 
+
+
+def patch_terminal_bash_shell():
+    """Resolves the bash dialect's default shell instead of hardcoding /bin/bash.
+
+    `terminal-bash` defaults to `/bin/bash`, which does not exist on Termux: the
+    shell lives at `$PREFIX/bin/bash` and `/bin/bash` is absent. With the
+    Android-default `danger-full-access` policy no sandbox wrapper intervenes, so
+    `spawnArgv` returns that path unchanged and node-pty forks a nonexistent
+    executable. The persistent-bash tool and the sidebar terminal then fail to
+    start.
+
+    An explicit `shellPath` in the profile still wins; only the default changes.
+    """
+    replacement = """export const DEFAULT_BASH_SHELL = (() => {
+  // Android has no /bin/bash; Termux installs bash under $PREFIX/bin. Prefer the
+  // login shell when it names a bash, then the Termux path, then /bin/bash.
+  const env = typeof process === 'undefined' ? undefined : process.env
+  const candidates = [env?.SHELL, env?.PREFIX ? `${env.PREFIX}/bin/bash` : undefined, '/bin/bash']
+  for (const candidate of candidates) {
+    if (candidate !== undefined && /bash$/.test(candidate)) {
+      try {
+        if (existsSync(candidate)) return candidate
+      } catch {
+        // Unreadable candidate: fall through to the next one.
+      }
+    }
+  }
+  return '/bin/bash'
+})()"""
+
+    targets = [
+        os.path.join(REPO_DIR, "packages", "terminal", "terminal-bash", "src", "config.ts"),
+        os.path.join(REPO_DIR, "packages", "terminal", "terminal-bash", "lib", "index.js"),
+    ]
+    patched = 0
+    for path in targets:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        if "PREFIX}/bin/bash" in c:
+            patched += 1
+            continue
+        if "const DEFAULT_BASH_SHELL = " not in c:
+            print(f"  [!] terminal-bash: DEFAULT_BASH_SHELL declaration not found in {os.path.relpath(path, REPO_DIR)}")
+            continue
+        # Replace the declaration and nothing else; the surrounding module keeps
+        # its own imports. Match any modifier already in front of it so a leading
+        # `export` is not left duplicated, and either quote style, since the
+        # source file and the bundled output do not agree on one.
+        new_c = re.sub(
+            r"""(?:export\s+)?const DEFAULT_BASH_SHELL = ['"][^'"]*['"]""",
+            replacement,
+            c,
+            count=1,
+        )
+        if new_c == c:
+            print(f"  [!] terminal-bash: DEFAULT_BASH_SHELL declaration did not match in {os.path.relpath(path, REPO_DIR)}")
+            continue
+        c = new_c
+        if "existsSync" not in c.split("const DEFAULT_BASH_SHELL")[0]:
+            c = "import { existsSync } from 'node:fs'\n" + c
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(c)
+        patched += 1
+        print(f"  [+] Resolved the bash default at runtime in {os.path.relpath(path, REPO_DIR)}.")
+    return patched > 0
+
+
+def patch_hmr_android_gate():
+    """Keeps the in-process reloader off on Android.
+
+    `dsh-hmr` loads Node internals (`internal/bootstrap/realm` and friends)
+    through node-addon-require-builtin, which publishes no Android binding, so
+    on Android it can only fail after the profile has already begun loading.
+    Loading it also means every registry contribution in the profile is torn
+    down and rebuilt on reload, which most Android devices cannot afford.
+
+    The gate is an overlay `disabled:` expression rather than a code change, so
+    the anchor is the expression text. A profile may still opt in by overriding
+    the entry: the patch only changes the default.
+    """
+    rel = os.path.join("packages", "bundle", "base", "cordis.patch.yml")
+    path = os.path.join(REPO_DIR, rel)
+    if not os.path.exists(path):
+        print(f"  [!] HMR Android gate: {rel} not found")
+        return False
+    original = "disabled: !!js \"!ctx.get('profileContext')\""
+    replacement = (
+        "disabled: !!js \"process.platform === 'android' || !ctx.get('profileContext')\""
+    )
+    with open(path, "r", encoding="utf-8") as f:
+        c = f.read()
+    if replacement in c:
+        return True
+    # Several entries gate on profileContext; only the one under the hmr entry
+    # is the reloader. Anchor on the entry id so a later entry cannot be hit.
+    anchor = "    - id: hmr\n"
+    start = c.find(anchor)
+    if start < 0:
+        print("  [!] HMR Android gate: 'hmr' entry not found in the base overlay")
+        return False
+    end = c.find("\n    - id: ", start + len(anchor))
+    block = c[start : end if end > 0 else len(c)]
+    if original not in block:
+        print("  [!] HMR Android gate: disabled anchor not found under the 'hmr' entry")
+        return False
+    new_block = block.replace(original, replacement, 1)
+    c = c[:start] + new_block + (c[end:] if end > 0 else "")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(c)
+    print("  [+] Patched cordis.patch.yml (HMR stays off on Android).")
+    return True
 
 
 def patch_android_sandbox_default():
@@ -1929,29 +2228,66 @@ def patch_android_sandbox_default():
 
     An explicit DSH_PERMISSION_MODE still wins, so a user who wants the sandbox
     asked for can still select it.
+
+    Every bundle that restates the mode has to move together: a bundle whose
+    `sandbox-policy` config replaces the base row's mode reverts the Android
+    default for that profile, and the approval policy then disagrees with the
+    mode until dsh-permission-presets rejects the pair — the composed
+    `workspace-write` (from this file) with `never` (from the base policy) names
+    no preset, so the profile fails to boot.
     """
-    path = os.path.join(REPO_DIR, "packages", "bundle", "base", "cordis.patch.yml")
-    if not os.path.exists(path):
-        return False
-
-    with open(path, "r", encoding="utf-8") as f:
-        c = f.read()
-
+    # The ternary must stay a quoted scalar: Include parses entries under
+    # JSON_SCHEMA, which has no implicit-key resolution, so a bare `: ` inside a
+    # plain scalar starts a nested mapping and the overlay fails to parse. The
+    # `policy:` expression below is quoted for the same reason.
     original = "mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'"
     replacement = (
+        'mode: !!js "process.env.DSH_PERMISSION_MODE ?? '
+        "(process.platform === 'android' ? 'danger-full-access' : 'workspace-write')\""
+    )
+    # An earlier revision of this patcher emitted the ternary unquoted, which
+    # parses under no schema Include accepts. Repair that form in place so a tree
+    # patched by it is corrected instead of reported as an unrecognised anchor.
+    legacy = (
         "mode: !!js process.env.DSH_PERMISSION_MODE ?? "
         "(process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
     )
-    if replacement in c:
-        return True
-    if original not in c:
-        print("  [!] Android sandbox default: sandbox-policy mode anchor not found")
+    mode_paths = [
+        os.path.join("packages", "bundle", "base", "cordis.patch.yml"),
+        os.path.join("packages", "bundle", "headless", "cordis.patch.yml"),
+        os.path.join("packages", "experimental", "cua-mcp", "cordis.patch.yml"),
+    ]
+    patched_any = False
+    for rel in mode_paths:
+        path = os.path.join(REPO_DIR, rel)
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        if replacement in c:
+            patched_any = True
+            continue
+        if legacy in c:
+            c = c.replace(legacy, replacement)
+            print(f"  [+] Repaired unquoted Android sandbox mode in {rel}.")
+        elif original in c:
+            c = c.replace(original, replacement)
+        else:
+            print(f"  [!] Android sandbox default: mode anchor not found in {rel}")
+            continue
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(c)
+        patched_any = True
+
+    if not patched_any:
         return False
 
-    c = c.replace(original, replacement, 1)
-
-    # The user-approval policy derives from the same default. Without this the
-    # unconfined Android default would still prompt for every command.
+    # The user-approval policy derives from the same default: it must resolve to
+    # `never` exactly when the mode resolves to danger-full-access. Every bundle
+    # that restates the policy needs the same substitution, because a bundle
+    # left on the plain `?? 'workspace-write'` form resolves the mode to
+    # unconfined while still asking for approval, and dsh-permission-presets
+    # names no preset for that pair.
     approval_original = (
         "policy: !!js \"(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === "
         "'danger-full-access' ? 'never' : 'ask'\""
@@ -1961,14 +2297,35 @@ def patch_android_sandbox_default():
         "(process.platform === 'android' ? 'danger-full-access' : 'workspace-write')) "
         "=== 'danger-full-access' ? 'never' : 'ask'\""
     )
-    if approval_original in c:
-        c = c.replace(approval_original, approval_replacement, 1)
-    else:
-        print("  [!] Android sandbox default: user-approval policy anchor not found")
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(c)
-    print("  [+] Patched cordis.patch.yml (Android sandbox defaults to unconfined).")
+    patched_policy = 0
+    stale_policy = []
+    for rel in mode_paths:
+        path = os.path.join(REPO_DIR, rel)
+        with open(path, "r", encoding="utf-8") as f:
+            c = f.read()
+        # Only a bundle that restates the approval policy needs the rewrite.
+        # A bundle without the row inherits the base one, which this patcher
+        # has already fixed.
+        if "policy: !!js" not in c:
+            continue
+        if approval_original in c:
+            c = c.replace(approval_original, approval_replacement, 1)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(c)
+            patched_policy += 1
+        elif approval_replacement not in c:
+            # Restates a policy in a form neither anchor recognises: the mode
+            # and the approval policy can disagree and the profile will not boot.
+            stale_policy.append(rel)
+    if stale_policy:
+        print(
+            "  [!] Android sandbox default: unrecognised approval policy in "
+            + ", ".join(stale_policy)
+        )
+    print(
+        "  [+] Patched cordis.patch.yml (Android sandbox defaults to unconfined; "
+        f"{patched_policy} approval policy rows updated)."
+    )
     return True
 
 
@@ -2251,13 +2608,24 @@ def check_status():
         )
     print(f"[*] Mobile Trajectory Summary & View:  {'[PASS]' if traj_ok else '[FAIL]'}")
 
-    # 11. Local Speech Recognition (SenseVoice Android ARM64)
-    speech_path = os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice", "src", "runtime.ts")
+    # 11. Local Speech Recognition (SenseVoice Android)
+    #     The patcher appends `android-{TARGET.node_arch}` for the device it runs
+    #     on, so the arch differs per device and is absent on a build host. Assert
+    #     that an android entry is present at all, anywhere the patch can land.
     speech_ok = False
-    if os.path.exists(speech_path):
-        with open(speech_path, "r", encoding="utf-8") as f:
-            c = f.read()
-        speech_ok = f"android-{TARGET.node_arch}" in c
+    speech_files = [
+        os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice",
+                     "src", "runtime.ts"),
+        os.path.join(REPO_DIR, "packages", "experimental", "speech-to-text-sensevoice",
+                     "lib", "types", "runtime.js"),
+    ]
+    for path in speech_files:
+        if not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8") as f:
+            if "android-" in f.read():
+                speech_ok = True
+                break
     print(f"[*] Local Speech (SenseVoice Android): {'[PASS]' if speech_ok else '[FAIL]'}")
 
     # 12. Mobile Settings Sheet & Back Button
@@ -2279,18 +2647,29 @@ def check_status():
     boot_lib = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "lib", "index.js")
     boot_src = os.path.join(REPO_DIR, "packages", "boot", "app-boot", "src", "profile-resolution", "resolver.ts")
     boot_ok = False
-    if os.path.exists(boot_src):
+    # Reaching the marker in either file is the evidence. If neither exists the
+    # tree is stripped or never built, and reporting PASS would claim the boot
+    # path was verified when nothing was read.
+    have_src = os.path.exists(boot_src)
+    have_lib = os.path.exists(boot_lib)
+    if not have_src and not have_lib:
+        boot_ok = False
+    elif have_src:
         with open(boot_src, "r", encoding="utf-8") as f:
             source = f.read()
         boot_ok = TERMUX_RESOLVER_MARKER in source or "requireInternal" in source
     else:
-        # No source resolver: an older upstream shape the lib/ patch covers, or
-        # a stripped tree. Neither is a failure on its own.
+        # No source resolver: an older upstream shape the lib/ patch covers.
         boot_ok = True
-    if boot_ok and os.path.exists(boot_lib):
+    if boot_ok and have_lib:
         with open(boot_lib, "r", encoding="utf-8") as f:
             built = f.read()
         boot_ok = TERMUX_RESOLVER_MARKER in built or "requireInternal" in built
+        # The patched bundle must still parse. A name this suite declares that
+        # upstream also declares is a duplicate declaration, which fails only
+        # when the harness boots, so the marker alone is not enough evidence.
+        if boot_ok and TERMUX_RESOLVER_MARKER in built:
+            boot_ok = node_syntax_ok(built)
     print(f"[*] App-Boot Pure JS Resolver Fallback:{'[PASS]' if boot_ok else '[FAIL]'}")
 
     # 14. Workspace Default Directory (Android documents fallback)
@@ -2318,14 +2697,67 @@ def check_status():
 
     # 16. Android sandbox default. Android walks an empty PLATFORM_CHAINS entry,
     #     so a confined default refuses every command. Both the mode and the
-    #     approval policy derived from it must know about android.
+    #     approval policy derived from it must know about android, in every
+    #     bundle that restates either: one left on the plain default composes a
+    #     mode and a policy that name no preset, and that profile fails to boot.
     sandbox_path = os.path.join(REPO_DIR, "packages", "bundle", "base", "cordis.patch.yml")
-    sandbox_ok = False
-    if os.path.exists(sandbox_path):
-        with open(sandbox_path, "r", encoding="utf-8") as f:
+    sandbox_ok = True
+    checked_bundles = 0
+    for rel in (
+        os.path.join("packages", "bundle", "base", "cordis.patch.yml"),
+        os.path.join("packages", "bundle", "headless", "cordis.patch.yml"),
+        os.path.join("packages", "experimental", "cua-mcp", "cordis.patch.yml"),
+    ):
+        path = os.path.join(REPO_DIR, rel)
+        if not os.path.exists(path):
+            continue
+        checked_bundles += 1
+        with open(path, "r", encoding="utf-8") as f:
             c = f.read()
-        sandbox_ok = "process.platform === 'android' ? 'danger-full-access'" in c
+        # Only a bundle that states a mode or a policy needs the Android form.
+        if "mode: !!js" in c or "policy: !!js" in c:
+            if "process.platform === 'android' ? 'danger-full-access'" not in c:
+                sandbox_ok = False
+    if checked_bundles == 0:
+        sandbox_ok = False
     print(f"[*] Android Sandbox Default:           {'[PASS]' if sandbox_ok else '[FAIL]'}")
+
+    # 17. Android gates on the reload and office rows. Each is checked inside its
+    #     own entry, because several entries share the profileContext anchor and a
+    #     file-wide search would pass on any one of them.
+    def _entry_gated(rel, entry_id):
+        path = os.path.join(REPO_DIR, rel)
+        if not os.path.exists(path):
+            return False
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+        start = text.find(entry_id)
+        if start < 0:
+            return False
+        end = text.find("\n    - id: ", start + 1)
+        return "process.platform === 'android'" in text[start : end if end > 0 else len(text)]
+
+    hmr_ok = _entry_gated(
+        os.path.join("packages", "bundle", "base", "cordis.patch.yml"), "    - id: hmr\n"
+    )
+    print(f"[*] Android HMR Gate:                  {'[PASS]' if hmr_ok else '[FAIL]'}")
+
+    bash_path = os.path.join(REPO_DIR, "packages", "terminal", "terminal-bash", "src", "config.ts")
+    bash_ok = False
+    if os.path.exists(bash_path):
+        with open(bash_path, "r", encoding="utf-8") as f:
+            bash_ok = "PREFIX}/bin/bash" in f.read()
+    print(f"[*] Android Bash Shell Path:           {'[PASS]' if bash_ok else '[FAIL]'}")
+
+    client_hmr_ok = _entry_gated(
+        os.path.join("packages", "bundle", "web-app", "cordis.patch.yml"), "    - id: client-hmr"
+    )
+    print(f"[*] Android Client-HMR Gate:           {'[PASS]' if client_hmr_ok else '[FAIL]'}")
+
+    office_ok = _entry_gated(
+        os.path.join("packages", "bundle", "web-app", "cordis.patch.yml"), "    - id: office-kit"
+    )
+    print(f"[*] Android Office Kit Gate:           {'[PASS]' if office_ok else '[FAIL]'}")
 
     print("==================================================")
     results = [
@@ -2336,7 +2768,9 @@ def check_status():
         ("trajectory-mobile", traj_ok), ("speech-to-text", speech_ok),
         ("settings-mobile", set_ok), ("node-addon-require-builtin", boot_ok),
         ("workspace-default-directory", ws_ok), ("subprocess-android", sub_ok),
-        ("android-sandbox-default", sandbox_ok),
+        ("android-sandbox-default", sandbox_ok), ("hmr-android-gate", hmr_ok),
+        ("terminal-bash-shell", bash_ok), ("client-hmr-gate", client_hmr_ok),
+        ("office-kit-gate", office_ok),
     ]
     verified = {name for name, _ok in results}
     unverified = [name for name, _fn, has in patcher_suite() if not has and name not in verified]
@@ -2416,7 +2850,7 @@ def patcher_suite():
         ("app-frame", patch_app_frame, True),
         ("model-select", patch_model_select, True),
         ("koffi", patch_koffi, False),
-        ("node-addon-require-builtin", patch_node_addon_require_builtin, False),
+        ("node-addon-require-builtin", patch_node_addon_require_builtin, True),
         ("node-pty", patch_node_pty, False),
         ("fs-ext", patch_fs_ext, False),
         ("ripgrep", patch_ripgrep, False),
@@ -2427,6 +2861,8 @@ def patcher_suite():
         ("conversation-mobile", patch_conversation_mobile, False),
         ("speech-to-text", patch_speech_to_text, True),
         ("bundle-layer-cache", patch_bundle_layer_cache, False),
+        ("terminal-bash-shell", patch_terminal_bash_shell, True),
+        ("hmr-android-gate", patch_hmr_android_gate, True),
         ("workspace-default-directory", patch_workspace_default_directory, True),
         ("android-sandbox-default", patch_android_sandbox_default, True),
         ("subprocess-android", patch_subprocess_android, True),
@@ -2440,15 +2876,103 @@ def apply_all():
         # Reporting it keeps a stale bundle visible instead of silent.
         print("  [i] Patch bundle did not apply; per-file patchers carry the change.")
     ensure_workspace_symlinks()
+    # Which module files the patchers rewrite is discovered from mtimes rather
+    # than recorded at each of their write sites, so a patcher added later is
+    # covered without touching it.
+    before = _module_mtimes()
+    failed = []
     for name, apply_patch, _has_invariant in patcher_suite():
         try:
-            apply_patch()
+            # A patcher returns False when its anchor did not match, which is a
+            # silent no-op: the file is left on the upstream behavior Android
+            # cannot run. Collect it so the exit code means "the patches landed"
+            # rather than only "the tree parses".
+            if apply_patch() is False:
+                failed.append(name)
         except Exception as exc:
             # One failing patcher must not strand the remaining patches, but it
             # must not disappear either — name it and keep going.
             print(f"  [!] Patcher {name} failed: {exc}")
+            failed.append(name)
+    after = _module_mtimes()
+    global _TOUCHED_MODULES
+    _TOUCHED_MODULES = {
+        path for path, mtime in after.items() if before.get(path) != mtime
+    }
+    syntax_ok = verify_patched_syntax()
+    if failed:
+        print(f"[!] {len(failed)} patcher(s) did not land: {', '.join(failed)}")
     print(f"[+] Applied {len(patcher_suite())} Termux & Mobile patches.")
     export_patch()
+    # A patched module that does not parse is a boot failure on the device, so
+    # this must fail the run rather than warn: in CI an exit code is the only
+    # signal a workflow can act on. Same for a patcher that matched nothing.
+    return syntax_ok and not failed
+
+
+_TOUCHED_MODULES = set()
+
+
+def _module_mtimes():
+    """Maps every workspace module file under a `lib/` dir to its mtime.
+
+    Scoped to `lib/` because that is what a profile loads at runtime; `src/`
+    files are compiled by the build that follows, which is its own gate.
+    """
+    found = {}
+    for root, dirs, files in os.walk(REPO_DIR):
+        dirs[:] = [d for d in dirs if d not in ("node_modules", ".git", "dist")]
+        if f"{os.sep}lib" not in root:
+            continue
+        for name in files:
+            if name.endswith((".js", ".mjs")):
+                path = os.path.join(root, name)
+                try:
+                    found[path] = os.stat(path).st_mtime_ns
+                except OSError:
+                    pass
+    return found
+
+
+def verify_patched_syntax():
+    """Parses the module files this run actually rewrote.
+
+    Patchers write into files nobody rebuilds, so a patch that produces invalid
+    source is only discovered when the harness boots on the device. A patcher
+    adding a name upstream also declares is the realistic way this happens: it
+    is a duplicate declaration, and it is a parse error rather than a warning.
+
+    Only files a patcher touched in this run are checked. Walking every `lib/`
+    file would mean parsing thousands of unmodified files at ~1.5s each, which
+    is minutes of work on a phone for no coverage.
+    """
+    if shutil.which("node") is None:
+        return True
+    touched = sorted(_TOUCHED_MODULES)
+    if not touched:
+        return True
+
+    bad = []
+    for path in touched:
+        if not path.endswith((".js", ".mjs")):
+            # A .ts source is not parseable by `node`; the build that compiles it
+            # is the gate, and it runs after this.
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                source = f.read()
+        except OSError:
+            continue
+        if not node_syntax_ok(source):
+            bad.append(os.path.relpath(path, REPO_DIR))
+    if bad:
+        print("  [!] These patched files do not parse as JavaScript:")
+        for rel in sorted(bad):
+            print(f"        {rel}")
+    else:
+        print(f"  [+] {len(touched)} patched module(s) parse.")
+    return not bad
+
 
 
 def main():
@@ -2464,7 +2988,7 @@ def main():
     elif args.export:
         export_patch()
     else:
-        apply_all()
+        sys.exit(0 if apply_all() else 2)
 
 
 if __name__ == "__main__":
