@@ -221,6 +221,7 @@
     # client-side package, which a host-side bundle cannot import.
     - id: client-hmr
       name: '@deepseek-ai/dsh-client-hmr'
+      disabled: !!js process.platform === 'android'
 
     # ── browser plugin roster (dsh.client rows; node halves are layer-2 hosts) ──
 

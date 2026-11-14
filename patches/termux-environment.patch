@@ -294,15 +294,24 @@ index 8fe686e478..0e900368d4 100644
          const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
          const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
 diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
-index d94f5cf2dd..80eb592852 100644
+index d94f5cf2dd..f7fe3f7ff8 100644
 --- a/packages/bundle/base/cordis.patch.yml
 +++ b/packages/bundle/base/cordis.patch.yml
+@@ -27,7 +27,7 @@
+     # Profile configuration reloads by default; module roots are opt-in.
+     - id: hmr
+       name: '@deepseek-ai/dsh-hmr'
+-      disabled: !!js "!ctx.get('profileContext')"
++      disabled: !!js "process.platform === 'android' || !ctx.get('profileContext')"
+       config:
+         root: []
+ 
 @@ -243,7 +243,7 @@
      - id: sandbox-policy
        name: '@deepseek-ai/dsh-sandbox-policy'
        config:
 -        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
-+        mode: !!js process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')
++        mode: !!js "process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
          workspaceRoot: !!js process.cwd()
  
      - id: bash-sandbox
@@ -315,6 +324,19 @@ index d94f5cf2dd..80eb592852 100644
  
      - id: permission
        name: '@deepseek-ai/dsh-permission-presets'
+diff --git a/packages/bundle/headless/cordis.patch.yml b/packages/bundle/headless/cordis.patch.yml
+index 0a0ea09b7f..504329140e 100644
+--- a/packages/bundle/headless/cordis.patch.yml
++++ b/packages/bundle/headless/cordis.patch.yml
+@@ -28,7 +28,7 @@
+ - id: sandbox-policy
+   inject: [headlessStartup]
+   config:
+-    mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
++    mode: !!js "process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
+     workspaceRoot: !!js process.cwd()
+     additionalWritableRoots: !!js ctx.headlessStartup.additionalWritableRoots
+ 
 diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
 index 5c8594df6f..6038402071 100644
 --- a/packages/client/connection/src/browser-auth.ts

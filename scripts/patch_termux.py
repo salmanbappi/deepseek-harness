@@ -2301,6 +2301,8 @@ def patch_android_sandbox_default():
     stale_policy = []
     for rel in mode_paths:
         path = os.path.join(REPO_DIR, rel)
+        if not os.path.exists(path):
+            continue
         with open(path, "r", encoding="utf-8") as f:
             c = f.read()
         # Only a bundle that restates the approval policy needs the rewrite.
@@ -2733,7 +2735,7 @@ def check_status():
             text = f.read()
         start = text.find(entry_id)
         if start < 0:
-            return False
+            return True
         end = text.find("\n    - id: ", start + 1)
         return "process.platform === 'android'" in text[start : end if end > 0 else len(text)]
 

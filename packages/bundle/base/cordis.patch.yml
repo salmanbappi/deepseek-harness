@@ -27,7 +27,7 @@
     # Profile configuration reloads by default; module roots are opt-in.
     - id: hmr
       name: '@deepseek-ai/dsh-hmr'
-      disabled: !!js "!ctx.get('profileContext')"
+      disabled: !!js "process.platform === 'android' || !ctx.get('profileContext')"
       config:
         root: []
 
@@ -243,7 +243,7 @@
     - id: sandbox-policy
       name: '@deepseek-ai/dsh-sandbox-policy'
       config:
-        mode: !!js process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')
+        mode: !!js "process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
         workspaceRoot: !!js process.cwd()
 
     - id: bash-sandbox
