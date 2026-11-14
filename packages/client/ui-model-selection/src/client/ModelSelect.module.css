@@ -142,6 +142,10 @@
   }
 }
 
+.settingsMenu {
+  width: min(240px, calc(100vw - 24px));
+}
+
 .status,
 .empty {
   padding: 8px;

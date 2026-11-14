@@ -102,7 +102,7 @@
 .table {
   --trajectory-turn-accent: color-mix(
     in srgb,
-    var(--dsw-static-blue-500) 22%,
+    var(--dsw-alias-trajectory-accent) 22%,
     var(--dsw-alias-bg-layer-1)
   );
 
@@ -442,7 +442,7 @@
 .turnLabelActive {
   color: color-mix(
     in srgb,
-    var(--dsw-static-blue-500) 55%,
+    var(--dsw-alias-trajectory-accent) 55%,
     var(--dsw-alias-label-tertiary)
   );
   background: var(--trajectory-turn-accent);

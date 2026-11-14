@@ -2,7 +2,7 @@
 
 import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
 import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
-import { DeepSeekFileId } from './file-id.ts'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
 import { messagesApiRoot, MESSAGES_FILES_BETA } from './messages-api.ts'
 
@@ -108,7 +108,7 @@ function parseFileObject(value: unknown, operation: string): DeepSeekFileObject 
     throw invalidResponse(operation)
   }
   return {
-    id: DeepSeekFileId(wire.id),
+    id: brandString<DeepSeekFileIdType>(wire.id),
     bytes: wire.size_bytes,
     createdAt,
     filename: wire.filename,
@@ -234,8 +234,8 @@ export class DeepSeekFilesClient {
     }
     return {
       data: wire.data.map(item => parseFileObject(item, 'list')),
-      ...typeof firstId === 'string' ? { firstId: DeepSeekFileId(firstId) } : {},
-      ...typeof lastId === 'string' ? { lastId: DeepSeekFileId(lastId) } : {},
+      ...typeof firstId === 'string' ? { firstId: brandString<DeepSeekFileIdType>(firstId) } : {},
+      ...typeof lastId === 'string' ? { lastId: brandString<DeepSeekFileIdType>(lastId) } : {},
       hasMore: wire.has_more,
     }
   }
