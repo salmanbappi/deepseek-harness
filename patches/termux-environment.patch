@@ -2506,6 +2506,19 @@ index ecc8b182e5..fbf03f175b 100644
  }
  
  /** Outcome of a literal edit. */
+diff --git a/packages/fs/fs/tests/service.spec.ts b/packages/fs/fs/tests/service.spec.ts
+index a17a1b6c14..55a5b725bb 100644
+--- a/packages/fs/fs/tests/service.spec.ts
++++ b/packages/fs/fs/tests/service.spec.ts
+@@ -84,7 +84,7 @@ class FakeFileSystem extends FileSystem {
+   }
+   override async editText(target: FsTarget, edit: FsEditRequest): Promise<FsEditOutcome> {
+     const content = this.files.get(target.targetKey) ?? ''
+-    const after = content.split(edit.oldString).join(edit.newString)
++    const after = content.split(edit.oldString ?? '').join(edit.newString ?? '')
+     this.files.set(target.targetKey, after)
+     return { version: brandString<FsVersion>('v3'), before: content, after }
+   }
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
 index f7482e8145..e70b3b100b 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
@@ -2827,7 +2840,7 @@ index c682bba792..4344cb5588 100644
    defaults: RequestDefaults
    /** Default per-request output cap; explicit request values win. */
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index c887a044b2..08283405d9 100644
+index c887a044b2..76859849d5 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
 @@ -206,6 +206,24 @@ describe('DeepSeekFilesClient', () => {
@@ -2849,7 +2862,7 @@ index c887a044b2..08283405d9 100644
 +      fetch: fetchImpl,
 +    })
 +
-+    await expect(client.retrieve(DeepSeekFileId('file-api-one'))).resolves.toMatchObject({ id: 'file-api-one' })
++    await expect(client.retrieve(brandString<DeepSeekFileId>('file-api-one'))).resolves.toMatchObject({ id: 'file-api-one' })
 +  })
 +
    it('validates list, retrieve, and delete responses', async () => {
