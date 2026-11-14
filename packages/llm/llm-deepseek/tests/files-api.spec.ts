@@ -221,7 +221,7 @@ describe('DeepSeekFilesClient', () => {
       fetch: fetchImpl,
     })
 
-    await expect(client.retrieve(DeepSeekFileId('file-api-one'))).resolves.toMatchObject({ id: 'file-api-one' })
+    await expect(client.retrieve(brandString<DeepSeekFileId>('file-api-one'))).resolves.toMatchObject({ id: 'file-api-one' })
   })
 
   it('validates list, retrieve, and delete responses', async () => {

@@ -84,7 +84,7 @@ class FakeFileSystem extends FileSystem {
   }
   override async editText(target: FsTarget, edit: FsEditRequest): Promise<FsEditOutcome> {
     const content = this.files.get(target.targetKey) ?? ''
-    const after = content.split(edit.oldString).join(edit.newString)
+    const after = content.split(edit.oldString ?? '').join(edit.newString ?? '')
     this.files.set(target.targetKey, after)
     return { version: brandString<FsVersion>('v3'), before: content, after }
   }
