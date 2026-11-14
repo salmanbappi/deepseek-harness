@@ -18,10 +18,10 @@ index ff3ca620b7..1458e23d10 100644
    <body>
      <div id="root"></div>
 diff --git a/package.json b/package.json
-index c4f130943d..d237f56ee2 100644
+index cce2a50477..e8228b5a74 100644
 --- a/package.json
 +++ b/package.json
-@@ -208,7 +208,7 @@
+@@ -210,7 +210,7 @@
      "release:pack": "tsx scripts/release/pack.ts",
      "release:verify-packed-install": "tsx scripts/release/verify-packed-install.ts",
      "release:publish": "tsx scripts/release/publish.ts",
@@ -45,7 +45,7 @@ index b15fea8b94..8bcd57c344 100644
          ({ stdout } = await run('xdg-user-dir', ['DOCUMENTS'], signal, 'hidden'))
          break
 diff --git a/packages/attachment/attachment-local/src/store.ts b/packages/attachment/attachment-local/src/store.ts
-index 88ab2c9d27..a002ccd8a3 100644
+index 5e935f6b46..1f580595f9 100644
 --- a/packages/attachment/attachment-local/src/store.ts
 +++ b/packages/attachment/attachment-local/src/store.ts
 @@ -2,7 +2,7 @@
@@ -55,9 +55,9 @@ index 88ab2c9d27..a002ccd8a3 100644
 -import { chmod, link, mkdir, open, readFile, unlink } from 'node:fs/promises'
 +import { chmod, link, mkdir, open, readFile, rename, symlink, unlink } from 'node:fs/promises'
  import { dirname, join, parse, resolve } from 'node:path'
- import {
-   AttachmentError,
-@@ -133,7 +133,17 @@ async function syncDirectory(path: string): Promise<void> {
+ import { AttachmentError } from '@deepseek-ai/dsh-attachment'
+ import type { AttachmentId } from '@deepseek-ai/dsh-attachment/types'
+@@ -132,7 +132,17 @@ async function syncDirectory(path: string): Promise<void> {
    /* v8 ignore next -- Windows cannot open directory handles; NTFS metadata journaling owns entry durability there. */
    if (process.platform === 'win32') return
    /* v8 ignore start -- Windows cannot exercise directory fsync; POSIX behavior tests enforce this peer. */
@@ -76,7 +76,7 @@ index 88ab2c9d27..a002ccd8a3 100644
    try {
      await handle.sync()
    } finally {
-@@ -282,10 +292,17 @@ export async function publishImmutableAlias(
+@@ -281,10 +291,17 @@ export async function publishImmutableAlias(
      try {
        await link(source, target)
      } catch (error) {
@@ -98,7 +98,7 @@ index 88ab2c9d27..a002ccd8a3 100644
        }
      }
      await chmod(target, 0o400)
-@@ -355,18 +372,26 @@ async function publishStagedObject(
+@@ -354,18 +371,26 @@ async function publishStagedObject(
    const parent = dirname(target)
    try {
      await ensureDurableDirectory(parent, staged.boundary)
@@ -276,25 +276,8 @@ index 32719f2484..343b22b0e4 100644
      } catch (error) {
        skippedBundles.push({ packageName, reason: String(error) })
      }
-diff --git a/packages/boot/config-editor/src/index.ts b/packages/boot/config-editor/src/index.ts
-index 8fe686e478..0e900368d4 100644
---- a/packages/boot/config-editor/src/index.ts
-+++ b/packages/boot/config-editor/src/index.ts
-@@ -93,7 +93,11 @@ export class ConfigEditor extends Service {
-       await withFileLock(join(this.ownerContext.profileContext.dir, 'package.json'), async () => {
-         if (!this.entries().includes(entry) || entry.fiber === undefined) throw new Error('Configuration entry is no longer available')
-         const beforePatches = readProfilePatches('dsh', this.ownerContext.profileContext)
--        await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
-+        const includeEntry = [...this.ownerContext.loader.entries()].find(e => e.parent.tree.ctx.fiber.entry?.id === 'include' || e.id === 'include')
-+        const currentPatches = (includeEntry?.options.config as { patches?: PatchOptions[] } | undefined)?.patches
-+        if (!isDeepStrictEqual(beforePatches, currentPatches)) {
-+          await reconcileProfilePatches(this.ownerContext.root, beforePatches, 'dsh')
-+        }
-         if (!this.entries().includes(entry)) throw new Error('Configuration entry changed during reload')
-         const current = structuredClone((entry.options.config ?? {}) as Record<string, unknown>)
-         const inherited = this.inherited(entry, loadProfileDirectory('dsh', this.ownerContext.profileContext.dir, this.ownerContext.profileContext.installAnchor))
 diff --git a/packages/bundle/base/cordis.patch.yml b/packages/bundle/base/cordis.patch.yml
-index d94f5cf2dd..f7fe3f7ff8 100644
+index 18286618f9..706d2b1ddd 100644
 --- a/packages/bundle/base/cordis.patch.yml
 +++ b/packages/bundle/base/cordis.patch.yml
 @@ -27,7 +27,7 @@
@@ -337,40 +320,26 @@ index 0a0ea09b7f..504329140e 100644
      workspaceRoot: !!js process.cwd()
      additionalWritableRoots: !!js ctx.headlessStartup.additionalWritableRoots
  
-diff --git a/packages/client/connection/src/browser-auth.ts b/packages/client/connection/src/browser-auth.ts
-index 5c8594df6f..6038402071 100644
---- a/packages/client/connection/src/browser-auth.ts
-+++ b/packages/client/connection/src/browser-auth.ts
-@@ -264,10 +264,10 @@ export class BrowserAuth {
-     /* v8 ignore next -- node:http always supplies url on server requests. */
-     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
-     const tokens = url.searchParams.getAll(TOKEN_QUERY)
-+    const authority = requestAudience(req.headers, secure)
-     if (tokens.length > 0) {
--      const authority = requestAudience(req.headers, secure)
-       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
--        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
-+        && authority !== undefined && (tokenMatches(tokens.join(''), this.launchToken) || this.isLocalAuthority(authority))) {
-         const issuedAt = Date.now()
-         const expiresAt = issuedAt + this.maxAgeMilliseconds
-         const value = encodeCookie({
-@@ -300,10 +300,16 @@ export class BrowserAuth {
-       return false
-     }
-     if (this.isAuthenticated(req, secure)) return true
-+    if (authority !== undefined && this.isLocalAuthority(authority)) return true
-     this.writeUnauthorized(req, res)
-     return false
-   }
+diff --git a/packages/bundle/web-app/cordis.patch.yml b/packages/bundle/web-app/cordis.patch.yml
+index 7e6b973a9e..596c870a59 100644
+--- a/packages/bundle/web-app/cordis.patch.yml
++++ b/packages/bundle/web-app/cordis.patch.yml
+@@ -220,6 +220,7 @@
+     # client-side package, which a host-side bundle cannot import.
+     - id: client-hmr
+       name: '@deepseek-ai/dsh-client-hmr'
++      disabled: !!js process.platform === 'android'
  
-+  private isLocalAuthority(authority: string): boolean {
-+    const host = authority.split(':')[0]
-+    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '0.0.0.0'
-+  }
-+
-   /**
-    * Exchange the launch token for an independent API operator; omitted interactions default to none.
-    * @param req - trusted GET request on /connect with at most one interactions declaration.
+     # ── browser plugin roster (dsh.client rows; node halves are layer-2 hosts) ──
+ 
+@@ -297,6 +298,7 @@
+ 
+     - id: office-kit
+       name: '@deepseek-ai/dsh-office-kit'
++      disabled: !!js process.platform === 'android'
+       config:
+         outputDirectory: !!js dshHomePath('office-kit', 'outputs')
+ 
 diff --git a/packages/client/connection/src/loopback-hostname.ts b/packages/client/connection/src/loopback-hostname.ts
 index fe2fe93fc9..eec998e494 100644
 --- a/packages/client/connection/src/loopback-hostname.ts
@@ -435,10 +404,10 @@ index 49d8f12300..c23199e83b 100644
          <span className={css.activityIcon} data-step-process-icon>{PROCESS_ICONS[activity]}</span>
          <span className={css.chevron} data-step-process-chevron>
 diff --git a/packages/client/ui-chat/src/client/chat/ChatView.tsx b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-index e265ab635f..93b2712e21 100644
+index c9143248a1..9c3af6e51f 100644
 --- a/packages/client/ui-chat/src/client/chat/ChatView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/ChatView.tsx
-@@ -274,6 +274,7 @@ export function ChatView({
+@@ -303,6 +303,7 @@ export function ChatView({
            <button
              type="button"
              className={css.toBottom}
@@ -583,27 +552,11 @@ index bfa386d31c..a8e20d19cb 100644
 +  }
 +}
 +
-diff --git a/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts b/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-index 7924a33e3f..7a80d8f41a 100644
---- a/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-+++ b/packages/client/ui-chat/src/client/chat/use-chat-scroll.ts
-@@ -114,7 +114,10 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
-         reading.onScrollEnd(outer)
-         navigation.readerSettled()
-       },
--      interact: () => { navigation.cancel() },
-+      interact: () => {
-+        navigation.cancel()
-+        reading.pauseFollowing()
-+      },
-       intent: () => { cancelPendingFollow(); reading.interruptFollow() },
-       resize: () => {
-         if (!content.current.opened) return
 diff --git a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-index b0dbf7528a..3fb93572f2 100644
+index afc071ae22..375fe89cff 100644
 --- a/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
 +++ b/packages/client/ui-chat/src/client/chat/use-chat-viewport.ts
-@@ -628,7 +628,7 @@ export class ChatViewport {
+@@ -656,7 +656,7 @@ export class ChatViewport {
      if (metrics === null) return null
      return {
        metrics,
@@ -612,7 +565,7 @@ index b0dbf7528a..3fb93572f2 100644
      }
    }
  
-@@ -921,7 +921,7 @@ export class ChatViewport {
+@@ -1078,7 +1078,7 @@ export class ChatViewport {
  
    private readonly onScroll = (event: Event): void => {
      if (this.elements === null || event.target !== this.elements.scroller) return
@@ -621,7 +574,7 @@ index b0dbf7528a..3fb93572f2 100644
      this.invalidate()
      if (this.paging !== null) {
        this.events?.resize()
-@@ -940,12 +940,22 @@ export class ChatViewport {
+@@ -1099,12 +1099,22 @@ export class ChatViewport {
  
    private readonly onIntent = (event: Event): void => {
      if (event.type === 'keydown' || event.type === 'pointerdown') {
@@ -649,10 +602,10 @@ index b0dbf7528a..3fb93572f2 100644
    }
  }
 diff --git a/packages/client/ui-chat/tests/chat-viewport.client.spec.ts b/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
-index def772efb8..f1b8bd6689 100644
+index e3ed867df9..dbab9a3f10 100644
 --- a/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
 +++ b/packages/client/ui-chat/tests/chat-viewport.client.spec.ts
-@@ -560,3 +560,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
+@@ -719,3 +719,25 @@ it('releases a removed paging row without navigating to unrelated content', () =
    expect(h.viewport.preserving).toBe(false)
    expect(h.scroller.scrollTop).toBe(80)
  })
@@ -1307,10 +1260,10 @@ index d51b54edc4..e0d55233c0 100644
      && args.old_string.length > 0
      && typeof args.new_string === 'string'
 diff --git a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-index 9f8ed1d7b1..009df95bd2 100644
+index b9a141b1b7..9bbf8887cb 100644
 --- a/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
 +++ b/packages/client/ui-deliverables/tests/deliverables.client.spec.tsx
-@@ -314,27 +314,32 @@ describe('produced-file Turn data', () => {
+@@ -348,27 +348,32 @@ describe('produced-file Turn data', () => {
          replace_all: false,
        }),
        result(5, 'edit'),
@@ -1351,7 +1304,7 @@ index 9f8ed1d7b1..009df95bd2 100644
        'notes/new.md',
        'notes/existing.md',
        'notes/deleted-text.md',
-@@ -345,6 +350,10 @@ describe('produced-file Turn data', () => {
+@@ -379,6 +384,10 @@ describe('produced-file Turn data', () => {
    it.each([
      { caseName: 'write omits content', name: 'write', args: { file_path: 'write.txt' } },
      { caseName: 'write has non-string content', name: 'write', args: { file_path: 'write.txt', content: 1 } },
@@ -1363,10 +1316,10 @@ index 9f8ed1d7b1..009df95bd2 100644
        caseName: 'edit omits old_string', name: 'edit',
        args: { file_path: 'edit.txt', new_string: 'new' },
 diff --git a/packages/client/ui-layout/src/client/AppFrame.module.css b/packages/client/ui-layout/src/client/AppFrame.module.css
-index fa1065dc56..ff5d2847ea 100644
+index dd4a89c814..5523602e59 100644
 --- a/packages/client/ui-layout/src/client/AppFrame.module.css
 +++ b/packages/client/ui-layout/src/client/AppFrame.module.css
-@@ -386,3 +386,114 @@
+@@ -370,3 +370,114 @@
  .overlayLayer > * {
    pointer-events: auto;
  }
@@ -1543,7 +1496,7 @@ index 23e71c9c03..b82303ec6b 100644
        </div>
        <>
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.module.css b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
-index 9ef7fc2e80..3dec2f155c 100644
+index 69d3f1d35c..e5569c484c 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.module.css
 @@ -129,6 +129,19 @@
@@ -1563,14 +1516,14 @@ index 9ef7fc2e80..3dec2f155c 100644
 +  }
 +}
 +
- .status,
- .empty {
-   padding: 8px;
+ .settingsMenu {
+   width: min(240px, calc(100vw - 24px));
+ }
 diff --git a/packages/client/ui-model-selection/src/client/ModelSelect.tsx b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-index 3eea3e37ad..f6a761680c 100644
+index 6cd67bdcc4..68b4e6a1a0 100644
 --- a/packages/client/ui-model-selection/src/client/ModelSelect.tsx
 +++ b/packages/client/ui-model-selection/src/client/ModelSelect.tsx
-@@ -157,14 +157,18 @@ export function ModelSelect(
+@@ -172,7 +172,7 @@ export function ModelSelect(
  
    useEffect(() => {
      if (!open) return
@@ -1579,19 +1532,7 @@ index 3eea3e37ad..f6a761680c 100644
        // The portaled card is outside the trigger subtree; check both.
        if (rootRef.current?.contains(event.target as Node) === true) return
        if (menuRef.current?.contains(event.target as Node) === true) return
-       setOpen(false)
-     }
-+    document.addEventListener('pointerdown', closeOutside)
-     document.addEventListener('mousedown', closeOutside)
--    return () => { document.removeEventListener('mousedown', closeOutside) }
-+    return () => {
-+      document.removeEventListener('pointerdown', closeOutside)
-+      document.removeEventListener('mousedown', closeOutside)
-+    }
-   }, [open])
- 
-   useLayoutEffect(() => {
-@@ -345,6 +349,7 @@ export function ModelSelect(
+@@ -390,6 +390,7 @@ export function ModelSelect(
      )) return
      close()
    }
@@ -1599,7 +1540,7 @@ index 3eea3e37ad..f6a761680c 100644
  
    const settleSelection = (result: Awaited<ReturnType<ModelSelectInjected['select']>>): void => {
      if (result === undefined) return
-@@ -435,7 +440,6 @@ export function ModelSelect(
+@@ -480,7 +481,6 @@ export function ModelSelect(
        ref={rootRef}
        className={css.root}
        onKeyDown={onRootKeyDown}
@@ -1626,10 +1567,10 @@ index e3d9b76252..991d645f04 100644
 +  }
 +}
 diff --git a/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css b/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css
-index 1b6e2b58e3..7271565600 100644
+index f7fac78f91..514d99fc37 100644
 --- a/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css
 +++ b/packages/client/ui-plugin-manager/src/client/PluginManagerPage.module.css
-@@ -15,7 +15,7 @@
+@@ -19,7 +19,7 @@
  
    display: flex;
    flex-direction: column;
@@ -1638,7 +1579,7 @@ index 1b6e2b58e3..7271565600 100644
    box-sizing: border-box;
    height: 100%;
    /* Inline inset only: the 28px top inset belongs to the head row
-@@ -65,7 +65,7 @@
+@@ -69,7 +69,7 @@
    margin-inline: calc(-1 * var(--plugin-page-inset));
    display: flex;
    flex-direction: column;
@@ -1647,7 +1588,7 @@ index 1b6e2b58e3..7271565600 100644
    gap: 32px;
    box-sizing: border-box;
    padding: 0 var(--plugin-page-inset) 48px;
-@@ -186,7 +186,7 @@
+@@ -194,7 +194,7 @@
  
  .pageIntro {
    display: flex;
@@ -1656,7 +1597,7 @@ index 1b6e2b58e3..7271565600 100644
    gap: 4px;
    margin: 4px 0 0;
    font-size: 13px;
-@@ -206,8 +206,8 @@
+@@ -214,8 +214,8 @@
    display: flex;
    flex: 0 1 auto;
    flex-wrap: wrap;
@@ -1667,7 +1608,7 @@ index 1b6e2b58e3..7271565600 100644
    gap: 8px 16px;
    min-width: 0;
    white-space: nowrap;
-@@ -256,14 +256,14 @@
+@@ -264,14 +264,14 @@
  
  .failure {
    display: flex;
@@ -1917,7 +1858,7 @@ index 29c3d52c45..880c3d135e 100644
 +  }
 +}
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
-index 980e59a06d..52f4d9d55f 100644
+index 95e74201b7..e38b0e9860 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 +++ b/packages/client/ui-settings-general/src/client/SettingsRoot.tsx
 @@ -71,6 +71,15 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
@@ -1953,7 +1894,7 @@ index 60a625630a..b4334b6052 100644
   * upstream (deepsuite theme/global.css) — supplied here so the composite
   * --dsw-font-* variables resolve and motion rides the upstream curve. Code
 diff --git a/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css b/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
-index 0180f9fa0d..e375e8a155 100644
+index 44d9f2ef8d..601ba76a11 100644
 --- a/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
 +++ b/packages/client/ui-tool/src/client/tool/components/ToolDetails.module.css
 @@ -14,6 +14,7 @@
@@ -1965,7 +1906,7 @@ index 0180f9fa0d..e375e8a155 100644
  
  .item,
 diff --git a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
-index 6f521dc8b3..c7f9b8af5f 100644
+index 38da2a3869..505b344f3e 100644
 --- a/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 +++ b/packages/client/ui-tool/src/client/tool/toolviews/bash-sample.module.css
 @@ -42,6 +42,7 @@
@@ -2032,7 +1973,7 @@ index 0458bf33bc..89248e84b7 100644
      {
        command: 'create',
 diff --git a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
-index ab3aa6bed9..87c41eec36 100644
+index c8321fc36a..c07a624f5c 100644
 --- a/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 +++ b/packages/client/ui-trajectory/src/client/TrajectoryTable.module.css
 @@ -20,6 +20,7 @@
@@ -2323,7 +2264,7 @@ index 5c530aef72..fc1b244c07 100644
  }
  
 diff --git a/packages/client/web/src/base.css b/packages/client/web/src/base.css
-index 3a556a982e..b2a1300f21 100644
+index 57e47357f1..c618369385 100644
 --- a/packages/client/web/src/base.css
 +++ b/packages/client/web/src/base.css
 @@ -1,5 +1,13 @@
@@ -2342,6 +2283,26 @@ index 3a556a982e..b2a1300f21 100644
  
  html,
  body,
+diff --git a/packages/experimental/cua-mcp/cordis.patch.yml b/packages/experimental/cua-mcp/cordis.patch.yml
+index e44ae069e2..a0223a2085 100644
+--- a/packages/experimental/cua-mcp/cordis.patch.yml
++++ b/packages/experimental/cua-mcp/cordis.patch.yml
+@@ -56,13 +56,13 @@
+     - id: sandbox-policy
+       name: '@deepseek-ai/dsh-sandbox-policy'
+       config:
+-        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
++        mode: !!js "process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
+         workspaceRoot: !!js process.env.DSH_CUA_WORKSPACE ?? dshHomePath('cua-mcp', 'workspace')
+ 
+     - id: approval
+       name: '@deepseek-ai/dsh-user-approval'
+       config:
+-        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
++        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')) === 'danger-full-access' ? 'never' : 'ask'"
+ 
+     - id: fs-sandbox
+       name: '@deepseek-ai/dsh-fs-sandbox'
 diff --git a/packages/experimental/inspector/src/host/bridge/controller.ts b/packages/experimental/inspector/src/host/bridge/controller.ts
 index 486ce2a1d7..095a903aac 100644
 --- a/packages/experimental/inspector/src/host/bridge/controller.ts
@@ -2369,10 +2330,10 @@ index 67da743073..5a69e3a7ad 100644
    const lock = JSON.parse(readFileSync(new URL('../runtime/assets.json', import.meta.url), 'utf8')) as RuntimeLock
    const modelRoot = config.modelDirectory ?? join(config.dataRoot, 'models', 'sensevoice-onnx')
 diff --git a/packages/fs/fs-local/src/fsio.ts b/packages/fs/fs-local/src/fsio.ts
-index a6e3da2bba..303284bf3e 100644
+index b440837718..0f73bfcb49 100644
 --- a/packages/fs/fs-local/src/fsio.ts
 +++ b/packages/fs/fs-local/src/fsio.ts
-@@ -666,7 +666,41 @@ export async function writeFileAtomic(
+@@ -653,7 +653,41 @@ export async function writeFileAtomic(
        try {
          await linkFile(tempPath, absolutePath)
        } catch (error: unknown) {
@@ -2416,10 +2377,10 @@ index a6e3da2bba..303284bf3e 100644
      } else if (platform === 'win32' && existingDestination) {
        try {
 diff --git a/packages/fs/fs-local/src/index.ts b/packages/fs/fs-local/src/index.ts
-index e9ee2b8395..dc07d7c249 100644
+index 166df4674d..813058b138 100644
 --- a/packages/fs/fs-local/src/index.ts
 +++ b/packages/fs/fs-local/src/index.ts
-@@ -268,8 +268,19 @@ export class LocalFileSystem extends FileSystem {
+@@ -269,8 +269,19 @@ export class LocalFileSystem extends FileSystem {
        }
  
        const original = await readForEdit(target.targetKey, target.displayPath, signal)
@@ -2441,7 +2402,7 @@ index e9ee2b8395..dc07d7c249 100644
        await writeFileAtomic(target.targetKey, content, existing.mode, signal, this.internals, { displayPath: target.displayPath })
  
        const after = await probe(target.targetKey)
-@@ -278,7 +289,7 @@ export class LocalFileSystem extends FileSystem {
+@@ -279,7 +290,7 @@ export class LocalFileSystem extends FileSystem {
          // The LF-normalized before/after text (the applied-hunk diff basis);
          // line-ending restoration is a storage detail the diff ignores.
          before: original.content,
@@ -2451,10 +2412,10 @@ index e9ee2b8395..dc07d7c249 100644
      })
    }
 diff --git a/packages/fs/fs-local/tests/filesystem.spec.ts b/packages/fs/fs-local/tests/filesystem.spec.ts
-index ca38025767..d12fe7a01c 100644
+index 6a2c167a53..6af59d3444 100644
 --- a/packages/fs/fs-local/tests/filesystem.spec.ts
 +++ b/packages/fs/fs-local/tests/filesystem.spec.ts
-@@ -785,6 +785,32 @@ describe('editText', () => {
+@@ -786,6 +786,32 @@ describe('editText', () => {
      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('b b b')
    })
  
@@ -2488,10 +2449,10 @@ index ca38025767..d12fe7a01c 100644
      const path = join(dir, 'bad.txt')
      const bytes = Buffer.from([0x68, 0xff, 0x69])
 diff --git a/packages/fs/fs-local/tests/fsio.spec.ts b/packages/fs/fs-local/tests/fsio.spec.ts
-index e53e1e4b37..d5e620faa9 100644
+index c416d34137..21ebd249f1 100644
 --- a/packages/fs/fs-local/tests/fsio.spec.ts
 +++ b/packages/fs/fs-local/tests/fsio.spec.ts
-@@ -826,6 +826,7 @@ describe('writeFileAtomic — temp-file safety', () => {
+@@ -829,6 +829,7 @@ describe('writeFileAtomic — temp-file safety', () => {
      const denied = Object.assign(new Error('link denied'), { code: 'EACCES' })
  
      await expect(writeFileAtomic(file, 'ours', undefined, undefined, {
@@ -2500,10 +2461,10 @@ index e53e1e4b37..d5e620faa9 100644
      }, { displayPath: file, createIfAbsent: true })).rejects.toMatchObject({ code: 'FS_IO_ERROR', cause: denied })
      await expect(stat(file)).rejects.toMatchObject({ code: 'ENOENT' })
 diff --git a/packages/fs/fs/src/index.ts b/packages/fs/fs/src/index.ts
-index a49e7ff0e2..6afd241a1f 100644
+index 8baff464f9..7e80be8679 100644
 --- a/packages/fs/fs/src/index.ts
 +++ b/packages/fs/fs/src/index.ts
-@@ -34,6 +34,7 @@ export {
+@@ -35,6 +35,7 @@ export {
    FsVersion,
  } from './types.ts'
  export type {
@@ -2512,7 +2473,7 @@ index a49e7ff0e2..6afd241a1f 100644
    FsMoveOutcome,
    FsMoveSourceFailure,
 diff --git a/packages/fs/fs/src/types.ts b/packages/fs/fs/src/types.ts
-index 6ece2c04e4..f8a4905243 100644
+index ecc8b182e5..fbf03f175b 100644
 --- a/packages/fs/fs/src/types.ts
 +++ b/packages/fs/fs/src/types.ts
 @@ -143,14 +143,26 @@ export interface FsWriteOutcome {
@@ -2545,37 +2506,11 @@ index 6ece2c04e4..f8a4905243 100644
  }
  
  /** Outcome of a literal edit. */
-diff --git a/packages/fs/fs/tests/service.spec.ts b/packages/fs/fs/tests/service.spec.ts
-index 0fccd4edc6..d5a93595bd 100644
---- a/packages/fs/fs/tests/service.spec.ts
-+++ b/packages/fs/fs/tests/service.spec.ts
-@@ -82,10 +82,17 @@ class FakeFileSystem extends FileSystem {
-     return { operation: before !== null ? 'update' : 'create', version: FsVersion('v2'), before, after: content }
-   }
-   override async editText(target: FsTarget, edit: FsEditRequest): Promise<FsEditOutcome> {
--    const content = this.files.get(target.targetKey) ?? ''
--    const after = content.split(edit.oldString).join(edit.newString)
--    this.files.set(target.targetKey, after)
--    return { version: FsVersion('v3'), before: content, after }
-+    let content = this.files.get(target.targetKey) ?? ''
-+    const before = content
-+    if (Array.isArray(edit.edits) && edit.edits.length > 0) {
-+      for (const op of edit.edits) {
-+        content = content.split(op.oldString).join(op.newString)
-+      }
-+    } else if (edit.oldString !== undefined && edit.newString !== undefined) {
-+      content = content.split(edit.oldString).join(edit.newString)
-+    }
-+    this.files.set(target.targetKey, content)
-+    return { version: FsVersion('v3'), before, after: content }
-   }
- }
- 
 diff --git a/packages/fs/tool-fs/tests/tools.spec.ts b/packages/fs/tool-fs/tests/tools.spec.ts
-index 8ba5a105cd..36591fbff0 100644
+index f7482e8145..e70b3b100b 100644
 --- a/packages/fs/tool-fs/tests/tools.spec.ts
 +++ b/packages/fs/tool-fs/tests/tools.spec.ts
-@@ -107,7 +107,14 @@ class FakeFs extends FileSystem {
+@@ -108,7 +108,14 @@ class FakeFs extends FileSystem {
      this.throwIfArmed()
      this.editIntents.push(expected)
      const content = this.files.get(target.targetKey) ?? ''
@@ -2589,9 +2524,9 @@ index 8ba5a105cd..36591fbff0 100644
 +      after = after.split(edit.oldString).join(edit.newString)
 +    }
      this.files.set(target.targetKey, after)
-     return { version: FsVersion('v3'), before: content, after }
+     return { version: brandString<FsVersion>('v3'), before: content, after }
    }
-@@ -517,6 +524,40 @@ describe('edit tool', () => {
+@@ -526,6 +533,40 @@ describe('edit tool', () => {
      expect(result.isError).toBe(true)
      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
    })
@@ -2632,7 +2567,7 @@ index 8ba5a105cd..36591fbff0 100644
  })
  
  describe('tool-owned presentation (pure presentCall)', () => {
-@@ -643,6 +684,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
+@@ -652,6 +693,24 @@ describe('tool-owned presentation (pure presentCall)', () => {
        locations: [{ path: 'a.txt' }],
      })
    })
@@ -2657,8 +2592,42 @@ index 8ba5a105cd..36591fbff0 100644
  })
  
  describe('result-time contextual diff (meta + presentResult)', () => {
+diff --git a/packages/host/authentication-token/src/browser-auth.ts b/packages/host/authentication-token/src/browser-auth.ts
+index 77813fda48..0096e4ec39 100644
+--- a/packages/host/authentication-token/src/browser-auth.ts
++++ b/packages/host/authentication-token/src/browser-auth.ts
+@@ -265,10 +265,10 @@ export class BrowserAuth {
+     /* v8 ignore next -- node:http always supplies url on server requests. */
+     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
+     const tokens = url.searchParams.getAll(TOKEN_QUERY)
++    const authority = requestAudience(req.headers, secure)
+     if (tokens.length > 0) {
+-      const authority = requestAudience(req.headers, secure)
+       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
+-        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
++        && authority !== undefined && (tokenMatches(tokens.join(''), this.launchToken) || this.isLocalAuthority(authority))) {
+         const issuedAt = Date.now()
+         const expiresAt = issuedAt + this.maxAgeMilliseconds
+         const value = encodeCookie({
+@@ -301,10 +301,16 @@ export class BrowserAuth {
+       return false
+     }
+     if (this.isAuthenticated(req, secure)) return true
++    if (authority !== undefined && this.isLocalAuthority(authority)) return true
+     this.writeUnauthorized(req, res)
+     return false
+   }
+ 
++  private isLocalAuthority(authority: string): boolean {
++    const host = authority.split(':')[0]
++    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '0.0.0.0'
++  }
++
+   /**
+    * Exchange the launch token for an independent API operator; omitted interactions default to none.
+    * @param req - trusted GET request on /connect with at most one interactions declaration.
 diff --git a/packages/llm/llm-deepseek/src/adapter.ts b/packages/llm/llm-deepseek/src/adapter.ts
-index df35b6ce3b..a35e4b7e0d 100644
+index a6129f26fd..b930ac2d6f 100644
 --- a/packages/llm/llm-deepseek/src/adapter.ts
 +++ b/packages/llm/llm-deepseek/src/adapter.ts
 @@ -1,6 +1,6 @@
@@ -2687,7 +2656,7 @@ index df35b6ce3b..a35e4b7e0d 100644
              ...auth.headers,
              'anthropic-version': '2023-06-01',
 diff --git a/packages/llm/llm-deepseek/src/config.ts b/packages/llm/llm-deepseek/src/config.ts
-index 630ccea010..801687b850 100644
+index 494797f8b0..87c8c0a673 100644
 --- a/packages/llm/llm-deepseek/src/config.ts
 +++ b/packages/llm/llm-deepseek/src/config.ts
 @@ -19,6 +19,13 @@ const MODEL_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModa
@@ -2774,10 +2743,10 @@ index 630ccea010..801687b850 100644
        thinking: config.thinking,
        reasoningEffort: config.reasoningEffort,
 diff --git a/packages/llm/llm-deepseek/src/file-store.ts b/packages/llm/llm-deepseek/src/file-store.ts
-index da6f87654a..b3400facd3 100644
+index e21cab2637..ed87a36477 100644
 --- a/packages/llm/llm-deepseek/src/file-store.ts
 +++ b/packages/llm/llm-deepseek/src/file-store.ts
-@@ -24,6 +24,8 @@ export interface DeepSeekFileConnection {
+@@ -33,6 +33,8 @@ export interface DeepSeekFileConnection {
    baseURL: string
    /** Provider-resolved authentication headers for this endpoint. */
    headers: Readonly<Record<string, string>>
@@ -2786,7 +2755,7 @@ index da6f87654a..b3400facd3 100644
  }
  
  /** Result of one file-id resolution. */
-@@ -137,6 +139,7 @@ export class DeepSeekFileStore {
+@@ -150,6 +152,7 @@ export class DeepSeekFileStore {
      return new DeepSeekFilesClient({
        baseURL: connection.baseURL,
        headers: connection.headers,
@@ -2795,7 +2764,7 @@ index da6f87654a..b3400facd3 100644
      })
    }
 diff --git a/packages/llm/llm-deepseek/src/files-api.ts b/packages/llm/llm-deepseek/src/files-api.ts
-index 9aa1f005d7..417968869c 100644
+index 8b56cb9cdd..18867a76e6 100644
 --- a/packages/llm/llm-deepseek/src/files-api.ts
 +++ b/packages/llm/llm-deepseek/src/files-api.ts
 @@ -1,6 +1,6 @@
@@ -2804,7 +2773,7 @@ index 9aa1f005d7..417968869c 100644
 -import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
 +import { LlmError, requestHeaders } from '@deepseek-ai/dsh-llm'
  import type { ImageMediaType } from '@deepseek-ai/dsh-attachment'
- import { DeepSeekFileId } from './file-id.ts'
+ import { brandString } from '@deepseek-ai/dsh-brand'
  import type { DeepSeekFileId as DeepSeekFileIdType } from './file-id.ts'
 @@ -72,6 +72,8 @@ interface FilesApiOptions {
    baseURL: string
@@ -2857,42 +2826,11 @@ index c682bba792..4344cb5588 100644
    /** Request defaults applied to every call (thinking mode, effort). */
    defaults: RequestDefaults
    /** Default per-request output cap; explicit request values win. */
-diff --git a/packages/llm/llm-deepseek/tests/file-store.spec.ts b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-index a8cb1458a4..b432cc88c5 100644
---- a/packages/llm/llm-deepseek/tests/file-store.spec.ts
-+++ b/packages/llm/llm-deepseek/tests/file-store.spec.ts
-@@ -169,6 +169,26 @@ describe('DeepSeekFileStore', () => {
-     expect(remote.uploads()).toBe(1)
-   })
- 
-+  it('sends the connection headers on every file request', async () => {
-+    const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
-+    roots.push(dir)
-+    // The default index lives under DSH_HOME; a temp one keeps this upload in
-+    // the test and out of the developer's real upload record.
-+    const index = new DeepSeekUploadIndex(join(dir, 'index.json'))
-+    const remote = uploadFetch()
-+    const seen: Headers[] = []
-+    const observed = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
-+      seen.push(new Headers(init?.headers))
-+      return remote.fetchImpl(url, init)
-+    }) as typeof fetch
-+    const store = new DeepSeekFileStore({ index, now: () => NOW, fetch: observed })
-+
-+    await store.ensureUploaded(VERSION, { ...CONNECTION, headers: { 'User-Agent': 'cline/3.5.0' } }, POLICY)
-+
-+    expect(seen[0]?.get('user-agent')).toBe('cline/3.5.0')
-+    expect(seen[0]?.get('x-api-key')).toBe('key')
-+  })
-+
-   it('keeps a shared upload alive while another waiter remains', async () => {
-     const dir = await mkdtemp(join(tmpdir(), 'dsh-file-store-'))
-     roots.push(dir)
 diff --git a/packages/llm/llm-deepseek/tests/files-api.spec.ts b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-index 48126befb6..47a86a1df4 100644
+index c887a044b2..08283405d9 100644
 --- a/packages/llm/llm-deepseek/tests/files-api.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/files-api.spec.ts
-@@ -205,6 +205,24 @@ describe('DeepSeekFilesClient', () => {
+@@ -206,6 +206,24 @@ describe('DeepSeekFilesClient', () => {
      })
    })
  
@@ -2918,10 +2856,10 @@ index 48126befb6..47a86a1df4 100644
      const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
        const target = requestUrl(url)
 diff --git a/packages/llm/llm-deepseek/tests/runtime.spec.ts b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-index 3c4676ba0d..d3f1cc7864 100644
+index 07432e6b14..94e57d8f10 100644
 --- a/packages/llm/llm-deepseek/tests/runtime.spec.ts
 +++ b/packages/llm/llm-deepseek/tests/runtime.spec.ts
-@@ -389,6 +389,30 @@ describe('DeepSeekAdapter against a mock server', () => {
+@@ -390,6 +390,30 @@ describe('DeepSeekAdapter against a mock server', () => {
      expect(server.headers[0]).not.toHaveProperty('x-deepseek-harness-compact')
    })
  
@@ -2952,7 +2890,7 @@ index 3c4676ba0d..d3f1cc7864 100644
    it('uploads a durable image once and sends only its Files API id to the vision model', async () => {
      const server = await mockServer([{ kind: 'sse', events: textEvents }])
      const signalSeen: (AbortSignal | undefined)[] = []
-@@ -1736,6 +1760,19 @@ describe('plugin registration and config', () => {
+@@ -1744,6 +1768,19 @@ describe('plugin registration and config', () => {
      expect(() => resolveAdapterOptions(retired)).toThrow(/protocol/)
    })
  
@@ -2973,10 +2911,10 @@ index 3c4676ba0d..d3f1cc7864 100644
      for (const helper of [
        'httpErrorCode',
 diff --git a/packages/llm/llm-pi-ai/src/adapter.ts b/packages/llm/llm-pi-ai/src/adapter.ts
-index 1302589633..76016f5016 100644
+index 89b9edff2c..0cd400029d 100644
 --- a/packages/llm/llm-pi-ai/src/adapter.ts
 +++ b/packages/llm/llm-pi-ai/src/adapter.ts
-@@ -236,7 +236,7 @@ function requestHeaderDiagnostic(error: unknown): string {
+@@ -245,7 +245,7 @@ function requestHeaderDiagnostic(error: unknown): string {
      : 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'
  }
  
@@ -2985,7 +2923,7 @@ index 1302589633..76016f5016 100644
  function requestHeaders(
    configured: Readonly<Record<string, string>> | undefined,
    options: GenerateOptions<string>,
-@@ -245,8 +245,9 @@ function requestHeaders(
+@@ -254,8 +254,9 @@ function requestHeaders(
  ): Record<string, string> {
    try {
      const initial = new Headers()
@@ -2997,7 +2935,7 @@ index 1302589633..76016f5016 100644
      const request: PiAiRequestHeaderContext = Object.freeze({
        provider: options.provider,
        model: options.model,
-@@ -255,7 +256,6 @@ function requestHeaders(
+@@ -264,7 +265,6 @@ function requestHeaders(
        ...options.purpose === undefined ? {} : { purpose: options.purpose },
      })
      const headers = prepare === undefined ? initial : prepare(request, initial)
@@ -3005,7 +2943,7 @@ index 1302589633..76016f5016 100644
      return Object.fromEntries(headers)
    } catch (error) {
      throw new LlmError(
-@@ -264,7 +264,6 @@ function requestHeaders(
+@@ -273,7 +273,6 @@ function requestHeaders(
      )
    }
  }
@@ -3027,10 +2965,10 @@ index 9de6c4416e..71ffaa4e5f 100644
    /** Provider-neutral pi-ai reasoning level. */
    reasoning?: ModelThinkingLevel
 diff --git a/packages/llm/llm-pi-ai/src/discovery.ts b/packages/llm/llm-pi-ai/src/discovery.ts
-index d171b30235..6f3d60fece 100644
+index 020861bc94..12ff0515d0 100644
 --- a/packages/llm/llm-pi-ai/src/discovery.ts
 +++ b/packages/llm/llm-pi-ai/src/discovery.ts
-@@ -315,7 +315,14 @@ export async function discoverModels(
+@@ -368,7 +368,14 @@ export async function discoverModels(
    const apiKey = supplied === undefined ? undefined : usableProbeKey(supplied)
    let response: Response
    try {
@@ -3046,7 +2984,7 @@ index d171b30235..6f3d60fece 100644
      headers.set('accept', 'application/json')
      if (api === 'anthropic-messages') {
        headers.set('anthropic-version', ANTHROPIC_VERSION)
-@@ -323,7 +330,6 @@ export async function discoverModels(
+@@ -378,7 +385,6 @@ export async function discoverModels(
      } else if (apiKey !== undefined) {
        headers.set('authorization', `Bearer ${apiKey}`)
      }
@@ -3055,26 +2993,23 @@ index d171b30235..6f3d60fece 100644
        method: 'GET',
        headers,
 diff --git a/packages/llm/llm-pi-ai/src/stream.ts b/packages/llm/llm-pi-ai/src/stream.ts
-index 17b7158135..c062ba4ef6 100644
+index c3bfc1cd3f..e2559aa118 100644
 --- a/packages/llm/llm-pi-ai/src/stream.ts
 +++ b/packages/llm/llm-pi-ai/src/stream.ts
-@@ -41,7 +41,10 @@ export function mapUsage(usage: PiUsage): TokenUsage {
- // us capture the cause ourselves), classify on `code`/`cause` instead of text.
- function classifyPiAiError(message: string): string {
-   if (/\b(?:401|403)\b/.test(message)) return 'AUTH'
+@@ -49,7 +49,7 @@ const LEADING_HTTP_STATUS = /^[45]\d\d\b/
+ function classifyPiAiError(message: string): BuiltinLlmFailureCode {
+   const statusSource = LEADING_HTTP_STATUS.exec(message)?.[0] ?? message
+   if (/\b(?:401|403)\b/.test(statusSource)) return 'AUTH'
 -  if (isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
-+  // 402 Payment Required is the billing status OpenAI-compatible gateways
-+  // answer with when an account's credit, balance, or budget is spent, whatever
-+  // wording their body carries.
-+  if (/\b402\b/.test(message) || isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
-   if (/\b429\b|rate.?limit/i.test(message)) return 'RATE_LIMIT'
++  if (/\b402\b/.test(statusSource) || isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
+   if (/\b429\b/.test(statusSource) || /rate.?limit/i.test(message)) return 'RATE_LIMIT'
    // A rejected request body (gateway or provider size cap): resending the
    // same request cannot succeed, so it is invalid, not transient.
 diff --git a/packages/llm/llm/src/attribution.ts b/packages/llm/llm/src/attribution.ts
-index b984c18ca7..d82b0cffc1 100644
+index 370d337182..cc70309cc0 100644
 --- a/packages/llm/llm/src/attribution.ts
 +++ b/packages/llm/llm/src/attribution.ts
-@@ -66,3 +66,21 @@ export function attributionHeaders(
+@@ -88,3 +88,21 @@ export function attributionHeaders(
  ): Record<string, string> {
    return { 'user-agent': userAgent(identity) }
  }
@@ -3097,10 +3032,10 @@ index b984c18ca7..d82b0cffc1 100644
 +  }
 +}
 diff --git a/packages/llm/llm/src/error.ts b/packages/llm/llm/src/error.ts
-index 9be7cf9c00..c937bdd72c 100644
+index ecf877e061..28e4752405 100644
 --- a/packages/llm/llm/src/error.ts
 +++ b/packages/llm/llm/src/error.ts
-@@ -96,9 +96,9 @@ export function isContextWindowExceededError(detail: string): boolean {
+@@ -153,9 +153,9 @@ export function isContextWindowExceededError(detail: string): boolean {
   */
  export function isQuotaExceededError(detail: string): boolean {
    return /\binsufficient[\s_-]+(?:quota|balance|credits?)\b/i.test(detail)
@@ -3121,7 +3056,7 @@ index 0000000000..2131a5c92f
 +/data/data/com.termux/files/home/deepseek-harness/packages/mcp/mcp-client
 \ No newline at end of file
 diff --git a/packages/session/session-persistence-jsonl/src/index.ts b/packages/session/session-persistence-jsonl/src/index.ts
-index f8351fa9ee..d4dc5eac6d 100644
+index 2d95753d7a..aeef5631a6 100644
 --- a/packages/session/session-persistence-jsonl/src/index.ts
 +++ b/packages/session/session-persistence-jsonl/src/index.ts
 @@ -14,7 +14,7 @@ import {
@@ -3133,7 +3068,7 @@ index f8351fa9ee..d4dc5eac6d 100644
  import { dirname, join, resolve } from 'node:path'
  import { performance } from 'node:perf_hooks'
  import { scheduler } from 'node:timers/promises'
-@@ -1303,6 +1303,13 @@ class JsonlSessionPersistence extends SessionPersistence {
+@@ -1359,6 +1359,13 @@ class JsonlSessionPersistence extends SessionPersistence {
      try {
        await link(tmp, finalPath)
        linked = true
@@ -3148,7 +3083,7 @@ index f8351fa9ee..d4dc5eac6d 100644
        // Remove an unpublished temp on failure. After publication, defer cleanup
        // until the directory entry is durable so cleanup cannot reject a live log.
 diff --git a/packages/session/session-persistence-jsonl/src/lease.ts b/packages/session/session-persistence-jsonl/src/lease.ts
-index 59dfe27fca..8dc104b0f4 100644
+index 59dfe27fca..50ebc2bbaf 100644
 --- a/packages/session/session-persistence-jsonl/src/lease.ts
 +++ b/packages/session/session-persistence-jsonl/src/lease.ts
 @@ -28,21 +28,158 @@
@@ -3329,7 +3264,7 @@ index 59dfe27fca..8dc104b0f4 100644
 +      return new SessionWriteLease({ kind: 'win32', handle }, dir)
      }
      /* v8 ignore stop */
-+    if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id))
++    if (useMarkerLease()) return new SessionWriteLease(await acquireMarker(path, id), dir)
      // Bounded retry: locking an inode a releasing creator just unlinked (or a
      // recreated path) re-opens the fresh file; steady state needs one pass.
      for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -3379,7 +3314,7 @@ index 59dfe27fca..8dc104b0f4 100644
    }
  }
 diff --git a/packages/settings/settings/src/index.ts b/packages/settings/settings/src/index.ts
-index 5e9a9cd59d..28165a4ee1 100644
+index 1fbcacce58..ea37d4c640 100644
 --- a/packages/settings/settings/src/index.ts
 +++ b/packages/settings/settings/src/index.ts
 @@ -389,10 +389,11 @@ export class SettingsForms extends Service {
@@ -3407,10 +3342,10 @@ index 5e9a9cd59d..28165a4ee1 100644
    }
  
 diff --git a/packages/subprocess/subprocess-local/src/process-inspector.ts b/packages/subprocess/subprocess-local/src/process-inspector.ts
-index 297843584a..ad05c67074 100644
+index e357fd680a..391644c410 100644
 --- a/packages/subprocess/subprocess-local/src/process-inspector.ts
 +++ b/packages/subprocess/subprocess-local/src/process-inspector.ts
-@@ -544,7 +544,7 @@ export function createProcessInspector(
+@@ -553,7 +553,7 @@ export function createProcessInspector(
    arch: NodeJS.Architecture = process.arch,
    internals: ProcessInspectorInternals = DEFAULT_INTERNALS,
  ): ProcessInspector {
@@ -3420,18 +3355,18 @@ index 297843584a..ad05c67074 100644
    if (platform === 'win32') return createWindowsProcessInspector()
    throw new Error(`subprocess-local: terminal inspection is unsupported on platform ${platform}`)
 diff --git a/packages/subprocess/subprocess-local/src/spawn.ts b/packages/subprocess/subprocess-local/src/spawn.ts
-index ed9baa2020..a53918dbe8 100644
+index e3a47ee818..7037be486c 100644
 --- a/packages/subprocess/subprocess-local/src/spawn.ts
 +++ b/packages/subprocess/subprocess-local/src/spawn.ts
-@@ -220,7 +220,7 @@ function fallbackOwner(
+@@ -224,7 +224,7 @@ function fallbackOwner(
      if (platform === 'win32') return child.exitCode === null && child.signalCode === null
      try {
        process.kill(-pid, 0)
--      if (directSettled && platform === 'linux' && linuxGroupHasLiveMembers(pid) === false) return false
-+      if (directSettled && (platform === 'linux' || platform === 'android') && linuxGroupHasLiveMembers(pid) === false) return false
-       return true
-     } catch (error) {
-       const code = (error as NodeJS.ErrnoException).code
+-      if (directSettled && platform === 'linux') {
++      if (directSettled && (platform === 'linux' || platform === 'android')) {
+         const member = linuxGroupLiveMember(pid, liveMember)
+         if (member === false) return false
+         if (member !== undefined) liveMember = member
 diff --git a/packages/subprocess/subprocess-local/src/terminal.ts b/packages/subprocess/subprocess-local/src/terminal.ts
 index 1f11b5d024..cdafb9bc8a 100644
 --- a/packages/subprocess/subprocess-local/src/terminal.ts

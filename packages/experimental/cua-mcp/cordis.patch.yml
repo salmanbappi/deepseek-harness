@@ -56,13 +56,13 @@
     - id: sandbox-policy
       name: '@deepseek-ai/dsh-sandbox-policy'
       config:
-        mode: !!js process.env.DSH_PERMISSION_MODE ?? 'workspace-write'
+        mode: !!js "process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')"
         workspaceRoot: !!js process.env.DSH_CUA_WORKSPACE ?? dshHomePath('cua-mcp', 'workspace')
 
     - id: approval
       name: '@deepseek-ai/dsh-user-approval'
       config:
-        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? 'workspace-write') === 'danger-full-access' ? 'never' : 'ask'"
+        policy: !!js "(process.env.DSH_PERMISSION_MODE ?? (process.platform === 'android' ? 'danger-full-access' : 'workspace-write')) === 'danger-full-access' ? 'never' : 'ask'"
 
     - id: fs-sandbox
       name: '@deepseek-ai/dsh-fs-sandbox'

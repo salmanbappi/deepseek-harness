@@ -298,6 +298,7 @@
 
     - id: office-kit
       name: '@deepseek-ai/dsh-office-kit'
+      disabled: !!js process.platform === 'android'
       config:
         outputDirectory: !!js dshHomePath('office-kit', 'outputs')
 
