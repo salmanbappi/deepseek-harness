@@ -850,11 +850,20 @@ if [ "$INSTALL_OK" -eq 0 ]; then
     fail_and_dump "Install Production Dependencies (neither pnpm nor npm completed)"
 fi
 
-# sharp has no android-arm build; the wasm build is the one that works. A
-# failure here is not fatal — image handling degrades, the harness still runs —
-# so say so rather than claiming the step succeeded.
-if ! run_install_step "Adding the wasm image build of sharp" 600 \
-    pnpm add -w @img/sharp-wasm32 --ignore-scripts; then
+# sharp has no android-arm native build; the wasm build with emnapi works on Android.
+# Direct tarball extraction avoids pnpm workspace lockfile errors and cpu=wasm32 architecture rejections.
+install_sharp_wasm() {
+    mkdir -p "$DSH_DIR/node_modules/@img" "$DSH_DIR/node_modules/@emnapi"
+    curl -sL https://registry.npmjs.org/@img/sharp-wasm32/-/sharp-wasm32-0.35.5.tgz | tar -xz -C "$DSH_DIR/node_modules/@img"
+    rm -rf "$DSH_DIR/node_modules/@img/sharp-wasm32"
+    mv "$DSH_DIR/node_modules/@img/package" "$DSH_DIR/node_modules/@img/sharp-wasm32"
+    curl -sL https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.11.3.tgz | tar -xz -C "$DSH_DIR/node_modules/@emnapi"
+    rm -rf "$DSH_DIR/node_modules/@emnapi/runtime"
+    mv "$DSH_DIR/node_modules/@emnapi/package" "$DSH_DIR/node_modules/@emnapi/runtime"
+    node -e "require('sharp')" >/dev/null 2>&1
+}
+
+if ! run_install_step "Adding the wasm image build of sharp" 600 install_sharp_wasm; then
     echo "   [!] sharp/wasm not installed; image features may be unavailable."
 fi
 
