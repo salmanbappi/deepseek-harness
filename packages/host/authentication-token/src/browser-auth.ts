@@ -265,10 +265,10 @@ export class BrowserAuth {
     /* v8 ignore next -- node:http always supplies url on server requests. */
     const url = new URL(req.url ?? '/', 'http://dsh.invalid')
     const tokens = url.searchParams.getAll(TOKEN_QUERY)
-    const authority = requestAudience(req.headers, secure)
     if (tokens.length > 0) {
+      const authority = requestAudience(req.headers, secure)
       if (req.method === 'GET' && url.pathname === '/' && tokens.length === 1
-        && authority !== undefined && (tokenMatches(tokens.join(''), this.launchToken) || this.isLocalAuthority(authority))) {
+        && authority !== undefined && tokenMatches(tokens.join(''), this.launchToken)) {
         const issuedAt = Date.now()
         const expiresAt = issuedAt + this.maxAgeMilliseconds
         const value = encodeCookie({
@@ -301,14 +301,8 @@ export class BrowserAuth {
       return false
     }
     if (this.isAuthenticated(req, secure)) return true
-    if (authority !== undefined && this.isLocalAuthority(authority)) return true
     this.writeUnauthorized(req, res)
     return false
-  }
-
-  private isLocalAuthority(authority: string): boolean {
-    const host = authority.split(':')[0]
-    return host === '127.0.0.1' || host === 'localhost' || host === '::1' || host === '0.0.0.0'
   }
 
   /**

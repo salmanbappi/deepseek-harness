@@ -140,7 +140,10 @@ export function isTrustedApiRequest(
     && !isBindAddressAuthority(hostUrl, bindHost)) return false
   // Cross-site fence: modern browsers label the initiator relationship on
   // every fetch; an explicit cross-site marker is refused regardless of Origin.
-  if (header(request.headers, 'sec-fetch-site') === 'cross-site') return false
+  // Top-level document navigations (e.g. launched by an external app intent on Android)
+  // carry sec-fetch-mode: navigate and are allowed for trusted authorities.
+  const isNavigate = header(request.headers, 'sec-fetch-mode') === 'navigate'
+  if (header(request.headers, 'sec-fetch-site') === 'cross-site' && !isNavigate) return false
   // Origin fence: when a browser attaches an Origin it must be exactly this
   // authority (compared through the same normalization as the Host). Absent
   // Origin is fine — the Host fence above already bound the request. The
