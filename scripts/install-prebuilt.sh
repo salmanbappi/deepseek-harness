@@ -86,6 +86,18 @@ else
   echo "       No cached pty.node — run: bash $DSH_DIR/scripts/install-pty-prebuild.sh"
 fi
 
+# Ensure sharp-wasm32 and emnapi runtime are present for image processing on Android
+if ! node -e "require('sharp')" >/dev/null 2>&1; then
+  echo "       Configuring sharp wasm32 image runtime..."
+  mkdir -p "$DSH_DIR/node_modules/@img" "$DSH_DIR/node_modules/@emnapi"
+  curl -sL https://registry.npmjs.org/@img/sharp-wasm32/-/sharp-wasm32-0.35.5.tgz | tar -xz -C "$DSH_DIR/node_modules/@img"
+  rm -rf "$DSH_DIR/node_modules/@img/sharp-wasm32"
+  mv "$DSH_DIR/node_modules/@img/package" "$DSH_DIR/node_modules/@img/sharp-wasm32"
+  curl -sL https://registry.npmjs.org/@emnapi/runtime/-/runtime-1.11.3.tgz | tar -xz -C "$DSH_DIR/node_modules/@emnapi"
+  rm -rf "$DSH_DIR/node_modules/@emnapi/runtime"
+  mv "$DSH_DIR/node_modules/@emnapi/package" "$DSH_DIR/node_modules/@emnapi/runtime"
+fi
+
 # Verify profile bundle resolution. Since upstream 0.1.5 each profile is its
 # own workspace root whose dsh.profile.bundles (@deepseek-ai/dsh-*) resolve
 # through the REPO's node_modules workspace links — there is nothing to

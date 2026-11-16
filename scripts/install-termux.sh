@@ -626,14 +626,19 @@ cd "$DSH_DIR" || fail_and_dump "Workspace Change Directory"
 DOWNLOAD_SUCCESS=0
 
 # A previously unpacked build is only reusable if it is the release we would
-# otherwise download. Checking for files alone reports "Verified" over an older
-# bundle, which is how an install silently stays on the previous release.
+# otherwise download AND the checkout HEAD has not moved.
 INSTALLED_TAG=""
+INSTALLED_COMMIT=""
+CURRENT_HEAD=$(git -C "$DSH_DIR" rev-parse HEAD 2>/dev/null || true)
 if [ -f ".dsh-prebuilt-tag" ]; then
     INSTALLED_TAG=$(cat ".dsh-prebuilt-tag" 2>/dev/null || true)
 fi
+if [ -f ".dsh-prebuilt-commit" ]; then
+    INSTALLED_COMMIT=$(cat ".dsh-prebuilt-commit" 2>/dev/null || true)
+fi
 if [ -f "apps/cli/lib/bin.js" ] && [ -d "apps/web/dist" ] && [ -f "packages/client/ui-chat/lib/client.js" ] \
-    && { [ -z "$LATEST_TAG" ] || [ "$INSTALLED_TAG" = "$LATEST_TAG" ]; }; then
+    && { [ -z "$LATEST_TAG" ] || [ "$INSTALLED_TAG" = "$LATEST_TAG" ]; } \
+    && { [ -z "$CURRENT_HEAD" ] || [ "$INSTALLED_COMMIT" = "$CURRENT_HEAD" ]; }; then
     DOWNLOAD_SUCCESS=1
     # An unreadable release list reuses the existing build; name the tag as
     # unknown rather than printing a bare "Verified".
@@ -673,6 +678,7 @@ else
             if [ "$EXTRACTED" -eq 1 ]; then
                 DOWNLOAD_SUCCESS=1
                 printf '%s\n' "$LATEST_TAG" >.dsh-prebuilt-tag
+                [ -n "$CURRENT_HEAD" ] && printf '%s\n' "$CURRENT_HEAD" >.dsh-prebuilt-commit
             fi
         fi
         rm -f "$DEST_TAR"
